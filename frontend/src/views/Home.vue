@@ -2,7 +2,7 @@
   <div class="home-container">
     <!-- 顶部导航栏 -->
     <nav class="navbar">
-      <div class="nav-brand">MIROFISH</div>
+      <div class="nav-brand">NexusMind</div>
       <div class="nav-links">
         <a href="https://github.com/666ghj/MiroFish" target="_blank" class="github-link">
           访问我们的Github主页 <span class="arrow">↗</span>
@@ -170,7 +170,7 @@
             <!-- 输入区域 -->
             <div class="console-section">
               <div class="console-header">
-                <span class="console-label">>_ 02 / 模拟提示词</span>
+                <span class="console-label">02 / 模拟提示词</span>
               </div>
               <div class="input-wrapper">
                 <textarea
@@ -180,7 +180,7 @@
                   rows="6"
                   :disabled="loading"
                 ></textarea>
-                <div class="model-badge">引擎: MiroFish-V1.0</div>
+                <div class="model-badge">引擎: NexusMind</div>
               </div>
             </div>
 
