@@ -9,7 +9,7 @@ import warnings
 # 需要在所有其他导入之前设置
 warnings.filterwarnings("ignore", message=".*resource_tracker.*")
 
-from flask import Flask, request
+from flask import Flask, g, request
 from flask_cors import CORS
 
 from .config import Config
@@ -52,6 +52,17 @@ def create_app(config_class=Config):
     @app.before_request
     def log_request():
         logger = get_logger('mirofish.request')
+        path = request.path or ''
+        is_simulation_status_polling = (
+            request.method == 'GET'
+            and path.startswith('/api/simulation/')
+            and (path.endswith('/run-status') or path.endswith('/run-status/detail'))
+        )
+
+        g.skip_request_logging = is_simulation_status_polling
+        if is_simulation_status_polling:
+            return
+
         logger.debug(f"请求: {request.method} {request.path}")
         if request.content_type and 'json' in request.content_type:
             logger.debug(f"请求体: {request.get_json(silent=True)}")
@@ -59,6 +70,8 @@ def create_app(config_class=Config):
     @app.after_request
     def log_response(response):
         logger = get_logger('mirofish.request')
+        if getattr(g, 'skip_request_logging', False):
+            return response
         logger.debug(f"响应: {response.status_code}")
         return response
     
@@ -77,4 +90,3 @@ def create_app(config_class=Config):
         logger.info("MiroFish Backend 启动完成")
     
     return app
-
