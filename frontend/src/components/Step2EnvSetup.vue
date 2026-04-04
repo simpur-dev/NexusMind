@@ -854,6 +854,14 @@ const pollPrepareStatus = async () => {
     
     if (res.success && res.data) {
       const data = res.data
+
+      if (data.status === 'failed') {
+        stopConfigPolling()
+        const message = data.error || '环境搭建失败，请检查图谱构建结果'
+        addLog(`环境搭建失败: ${message}`)
+        emit('update-status', 'error')
+        return
+      }
       
       // 更新进度
       prepareProgress.value = data.progress || 0
@@ -1029,6 +1037,13 @@ const loadPreparedData = async () => {
   try {
     const res = await getSimulationConfigRealtime(props.simulationId)
     if (res.success && res.data) {
+      if (res.data.status === 'failed') {
+        const message = res.data.error || '环境搭建失败，请检查图谱构建结果'
+        addLog(`加载配置失败: ${message}`)
+        emit('update-status', 'error')
+        return
+      }
+
       if (res.data.config_generated && res.data.config) {
         simulationConfig.value = res.data.config
         addLog('✓ 模拟配置加载成功')

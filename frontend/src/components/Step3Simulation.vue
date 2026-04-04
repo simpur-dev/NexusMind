@@ -486,6 +486,29 @@ const stopPolling = () => {
 const prevTwitterRound = ref(0)
 const prevRedditRound = ref(0)
 
+const looksLikeMojibake = (text) => {
+  if (!text || typeof text !== 'string') return false
+  return /[�]/.test(text) || /[鍒妯鏈绔]/.test(text)
+}
+
+const getRunStatusErrorMessage = (data) => {
+  const rawError = typeof data?.error === 'string' ? data.error.trim() : ''
+
+  if (rawError && !looksLikeMojibake(rawError)) {
+    return rawError
+  }
+
+  if (data?.runner_status === 'failed') {
+    return '模拟运行失败，请检查后端日志'
+  }
+
+  if (data?.runner_status === 'stopped') {
+    return '模拟已中断，通常是开发服务被关闭、重启，或手动停止了进程'
+  }
+
+  return '模拟状态异常'
+}
+
 const fetchRunStatus = async () => {
   if (!props.simulationId) return
   
@@ -509,11 +532,23 @@ const fetchRunStatus = async () => {
       }
       
       // 检测模拟是否已完成（通过 runner_status 或平台完成状态判断）
-      const isCompleted = data.runner_status === 'completed' || data.runner_status === 'stopped'
+      const platformsCompleted = checkPlatformsCompleted(data)
+      const isFailed = data.runner_status === 'failed'
+      const isStoppedUnexpectedly = data.runner_status === 'stopped' && !platformsCompleted
+
+      if (isFailed || isStoppedUnexpectedly) {
+        stopPolling()
+        phase.value = 0
+        const errorMessage = getRunStatusErrorMessage(data)
+        startError.value = errorMessage
+        addLog(`✗ ${errorMessage}`)
+        emit('update-status', 'error')
+        return
+      }
+
+      const isCompleted = data.runner_status === 'completed'
       
       // 额外检查：如果后端还没来得及更新 runner_status，但平台已经报告完成
-      // 通过检测 twitter_completed 和 reddit_completed 状态判断
-      const platformsCompleted = checkPlatformsCompleted(data)
       
       if (isCompleted || platformsCompleted) {
         if (platformsCompleted && !isCompleted) {

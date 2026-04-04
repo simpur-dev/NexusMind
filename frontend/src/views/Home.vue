@@ -1,134 +1,227 @@
-<template>
+﻿<template>
   <div class="home-container">
-    <!-- 顶部导航栏 -->
     <nav class="navbar">
-      <div class="nav-brand">NexusMind</div>
+      <div class="nav-brand">
+        <div class="brand-mark">
+          <img src="../assets/logo/NexusMind Logo.png" alt="NexusMind Mark" class="brand-mark-image" />
+        </div>
+        <div class="brand-copy">
+          <div class="brand-name">NexusMind</div>
+        </div>
+      </div>
       <div class="nav-links">
-        <a href="https://github.com/666ghj/MiroFish" target="_blank" class="github-link">
-          访问我们的Github主页 <span class="arrow">↗</span>
+        <a href="https://github.com/simpur-dev/NexusMind" target="_blank" class="github-link github-link-ghost">
+          访问我们的 GitHub 主页 <span class="arrow">↗</span>
         </a>
       </div>
     </nav>
 
     <div class="main-content">
-      <!-- 上半部分：Hero 区域 -->
       <section class="hero-section">
         <div class="hero-left">
-          <div class="tag-row">
-            <span class="orange-tag">简洁通用的群体智能引擎</span>
-            <span class="version-text">/ v0.1-预览版</span>
+          <div class="hero-panel">
+            <div class="hero-panel-top">
+              <div class="tag-row">
+                <span class="orange-tag">简洁通用的群体智能引擎</span>
+                <span class="version-text">/ v0.1-预览版</span>
+              </div>
+              <div class="status-stack">
+                <span>// NexusCore: Operational</span>
+                <span>// Status: System Ready</span>
+              </div>
+            </div>
+
+            <h1 class="main-title">
+              载入现实锚点<br>
+              <span class="gradient-text">即刻映射未来</span>
+            </h1>
+
+            <div class="feature-cards">
+              <article class="feature-card">
+                <div class="feature-icon">
+                  <span class="feature-glyph">⌁</span>
+                </div>
+                <p>
+                  哪怕只是一份简报，<span class="highlight-bold">NexusMind</span> 擎亦能捕获其中的现实参数。瞬息之间，全自动完成百万量级 Agent 的自组织，构建高保真数字平行世界。
+                </p>
+              </article>
+
+              <article class="feature-card">
+                <div class="feature-icon">
+                  <span class="feature-glyph">⌬</span>
+                </div>
+                <p>
+                  开启全局观测与参数干预。在复杂多智能体（Multi-Agent）的动态博弈网络中，系统将持续演算，精准捕捉环境演变的
+                  <span class="highlight-code">“最优解”</span>。
+                </p>
+              </article>
+            </div>
+
+            <div class="hero-cta-banner">
+             在千万次演算中穷尽变数，于破局之时立于不败
+            </div>
+
+            <div class="hero-footer">
+              <span>// 并行世界: v1.0.3</span>
+              <span>// Agent 数量: 2,100,000</span>
+            </div>
+
+            <div class="hero-left-spacer" aria-hidden="true"></div>
           </div>
-          
-          <h1 class="main-title">
-            上传任意报告<br>
-            <span class="gradient-text">即刻推演未来</span>
-          </h1>
-          
-          <div class="hero-desc">
-            <p>
-              即使只有一段文字，<span class="highlight-bold">MiroFish</span> 也能基于其中的现实种子，全自动生成与之对应的至多<span class="highlight-orange">百万级Agent</span>构成的平行世界。通过上帝视角注入变量，在复杂的群体交互中寻找动态环境下的<span class="highlight-code">“局部最优解”</span>
-            </p>
-            <p class="slogan-text">
-              让未来在 Agent 群中预演，让决策在百战后胜出<span class="blinking-cursor">_</span>
-            </p>
-          </div>
-           
-          <div class="decoration-square"></div>
         </div>
-        
+
         <div class="hero-right">
-          <!-- Logo 区域 -->
-          <div class="logo-container">
-            <img src="../assets/logo/MiroFish_logo_left.jpeg" alt="MiroFish Logo" class="hero-logo" />
+          <div class="hero-actions">
+
           </div>
-          
-          <button class="scroll-down-btn" @click="scrollToBottom">
-            ↓
-          </button>
+
+          <div class="hero-visual">
+            <div class="visual-hud">
+              <span class="hud-pill">实时演算</span>
+              <span class="hud-pill">多线程代理</span>
+              <span class="hud-pill hud-pill-accent">未来推演中</span>
+            </div>
+
+            <div class="visual-dots">
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+
+            <div class="hex-cluster">
+              <span class="hex hex-1"></span>
+              <span class="hex hex-2"></span>
+              <span class="hex hex-3"></span>
+              <span class="hex hex-4"></span>
+              <span class="hex hex-5"></span>
+            </div>
+
+            <div class="data-ribbon data-ribbon-one"></div>
+            <div class="data-ribbon data-ribbon-two"></div>
+
+            <div class="visual-text visual-text-top">// NexusCore: Operational</div>
+            <div class="visual-text visual-text-right">// Status: System Ready</div>
+            <div class="visual-text visual-text-bottom">变量注入节点</div>
+
+            <div class="logo-container">
+              <div class="logo-aura"></div>
+              <div class="orbit-ring orbit-ring-one"></div>
+              <div class="orbit-ring orbit-ring-two"></div>
+              <div class="orbit-ring orbit-ring-three"></div>
+              <img src="../assets/logo/NexusMind Logo.png" alt="NexusMind Logo" class="hero-logo" />
+            </div>
+
+            <div class="visual-card">
+              <div class="visual-card-title">Agent 模拟网络</div>
+              <div class="network-map">
+                <span class="network-line line-1"></span>
+                <span class="network-line line-2"></span>
+                <span class="network-line line-3"></span>
+                <span class="network-line line-4"></span>
+                <span class="network-line line-5"></span>
+                <span class="network-node node-1"></span>
+                <span class="network-node node-2"></span>
+                <span class="network-node network-node-core node-3"></span>
+                <span class="network-node node-4"></span>
+                <span class="network-node network-node-hub node-5"></span>
+                <span class="network-node node-6"></span>
+              </div>
+            </div>
+          </div>
+
         </div>
       </section>
 
-      <!-- 下半部分：双栏布局 -->
+      <div class="hero-scroll-row">
+        <button class="scroll-down-btn" @click="scrollToBottom">
+          <span class="scroll-copy">
+            <span class="scroll-kicker">NEXT LAYER</span>
+            <span class="scroll-label">向下探索 / 进入模拟控制台</span>
+          </span>
+          <span class="scroll-arrow-wrap">
+            <span class="scroll-arrow">↓</span>
+          </span>
+        </button>
+      </div>
+
       <section class="dashboard-section">
-        <!-- 左栏：状态与步骤 -->
         <div class="left-panel">
           <div class="panel-header">
-            <span class="status-dot">■</span> 系统状态
+            <span class="status-dot">●</span> 系统状态
           </div>
-          
+
           <h2 class="section-title">准备就绪</h2>
           <p class="section-desc">
-            预测引擎待命中，可上传多份非结构化数据以初始化模拟序列
+            预测引擎待命中，可上传多份非结构化数据以初始化模拟序列。
           </p>
-          
-          <!-- 数据指标卡片 -->
+
           <div class="metrics-row">
             <div class="metric-card">
-              <div class="metric-value">低成本</div>
-              <div class="metric-label">常规模拟平均5$/次</div>
+              <div class="metric-value">零试错</div>
+              <div class="metric-label">全场景决策推演未来最优解</div>
             </div>
             <div class="metric-card">
-              <div class="metric-value">高可用</div>
-              <div class="metric-label">最多百万级Agent模拟</div>
+              <div class="metric-value">高可扩</div>
+              <div class="metric-label">百万级 Agent 并行构建数字平行世界</div>
             </div>
           </div>
 
-          <!-- 项目模拟步骤介绍 (新增区域) -->
           <div class="steps-container">
             <div class="steps-header">
-               <span class="diamond-icon">◇</span> 工作流序列
+              <span class="diamond-icon">◆</span> 工作流序列
             </div>
             <div class="workflow-list">
               <div class="workflow-item">
                 <span class="step-num">01</span>
                 <div class="step-info">
                   <div class="step-title">图谱构建</div>
-                  <div class="step-desc">现实种子提取 & 个体与群体记忆注入 & GraphRAG构建</div>
+                  <div class="step-desc">提取现实种子数据，注入记忆，完成 GraphRAG 知识图谱构建</div>
                 </div>
               </div>
               <div class="workflow-item">
                 <span class="step-num">02</span>
                 <div class="step-info">
                   <div class="step-title">环境搭建</div>
-                  <div class="step-desc">实体关系抽取 & 人设生成 & 环境配置Agent注入仿真参数</div>
+                  <div class="step-desc">抽取实体关联关系，生成智能体设定，完成环境配置与仿真参数部署</div>
                 </div>
               </div>
               <div class="workflow-item">
                 <span class="step-num">03</span>
                 <div class="step-info">
                   <div class="step-title">开始模拟</div>
-                  <div class="step-desc">双平台并行模拟 & 自动解析预测需求 & 动态更新时序记忆</div>
+                  <div class="step-desc">双平台并行启动仿真，自动解析预测任务，动态更新时序化交互记忆</div>
                 </div>
               </div>
               <div class="workflow-item">
                 <span class="step-num">04</span>
                 <div class="step-info">
                   <div class="step-title">报告生成</div>
-                  <div class="step-desc">ReportAgent拥有丰富的工具集与模拟后环境进行深度交互</div>
+                  <div class="step-desc">ReportAgent与仿真后环境深度交互，自动生成专业预测报告</div>
                 </div>
               </div>
               <div class="workflow-item">
                 <span class="step-num">05</span>
                 <div class="step-info">
                   <div class="step-title">深度互动</div>
-                  <div class="step-desc">与模拟世界中的任意一位进行对话 & 与ReportAgent进行对话</div>
+                  <div class="step-desc">与模拟世界中的任意角色对话，或与 ReportAgent 连续追问</div>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- 右栏：交互控制台 -->
         <div class="right-panel">
           <div class="console-box">
-            <!-- 上传区域 -->
             <div class="console-section">
               <div class="console-header">
                 <span class="console-label">01 / 现实种子</span>
                 <span class="console-meta">支持格式: PDF, MD, TXT</span>
               </div>
-              
-              <div 
+
+              <div
                 class="upload-zone"
                 :class="{ 'drag-over': isDragOver, 'has-files': files.length > 0 }"
                 @dragover.prevent="handleDragOver"
@@ -145,29 +238,27 @@
                   style="display: none"
                   :disabled="loading"
                 />
-                
+
                 <div v-if="files.length === 0" class="upload-placeholder">
                   <div class="upload-icon">↑</div>
                   <div class="upload-title">拖拽文件上传</div>
                   <div class="upload-hint">或点击浏览文件系统</div>
                 </div>
-                
+
                 <div v-else class="file-list">
                   <div v-for="(file, index) in files" :key="index" class="file-item">
-                    <span class="file-icon">📄</span>
+                    <span class="file-icon">FILE</span>
                     <span class="file-name">{{ file.name }}</span>
-                    <button @click.stop="removeFile(index)" class="remove-btn">×</button>
+                    <button @click.stop="removeFile(index)" class="remove-btn">x</button>
                   </div>
                 </div>
               </div>
             </div>
 
-            <!-- 分割线 -->
             <div class="console-divider">
               <span>输入参数</span>
             </div>
 
-            <!-- 输入区域 -->
             <div class="console-section">
               <div class="console-header">
                 <span class="console-label">02 / 模拟提示词</span>
@@ -176,7 +267,7 @@
                 <textarea
                   v-model="formData.simulationRequirement"
                   class="code-input"
-                  placeholder="// 用自然语言输入模拟或预测需求（例.武大若发布撤销肖某处分的公告，会引发什么舆情走向）"
+                  placeholder="// 用自然语言输入模拟或预测需求，例如：某地若发布撤销某处分的公告，会引发什么舆情走向？"
                   rows="6"
                   :disabled="loading"
                 ></textarea>
@@ -184,103 +275,88 @@
               </div>
             </div>
 
-            <!-- 启动按钮 -->
             <div class="console-section btn-section">
-              <button 
+              <button
                 class="start-engine-btn"
                 @click="startSimulation"
                 :disabled="!canSubmit || loading"
               >
                 <span v-if="!loading">启动引擎</span>
                 <span v-else>初始化中...</span>
-                <span class="btn-arrow">→</span>
+                <span class="btn-arrow">↗</span>
               </button>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- 历史项目数据库 -->
       <HistoryDatabase />
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import HistoryDatabase from '../components/HistoryDatabase.vue'
 
 const router = useRouter()
 
-// 表单数据
 const formData = ref({
   simulationRequirement: ''
 })
 
-// 文件列表
 const files = ref([])
-
-// 状态
 const loading = ref(false)
-const error = ref('')
 const isDragOver = ref(false)
-
-// 文件输入引用
 const fileInput = ref(null)
 
-// 计算属性:是否可以提交
 const canSubmit = computed(() => {
   return formData.value.simulationRequirement.trim() !== '' && files.value.length > 0
 })
 
-// 触发文件选择
 const triggerFileInput = () => {
   if (!loading.value) {
     fileInput.value?.click()
   }
 }
 
-// 处理文件选择
 const handleFileSelect = (event) => {
   const selectedFiles = Array.from(event.target.files)
   addFiles(selectedFiles)
 }
 
-// 处理拖拽相关
-const handleDragOver = (e) => {
+const handleDragOver = () => {
   if (!loading.value) {
     isDragOver.value = true
   }
 }
 
-const handleDragLeave = (e) => {
+const handleDragLeave = () => {
   isDragOver.value = false
 }
 
-const handleDrop = (e) => {
+const handleDrop = (event) => {
   isDragOver.value = false
   if (loading.value) return
-  
-  const droppedFiles = Array.from(e.dataTransfer.files)
+
+  const droppedFiles = Array.from(event.dataTransfer.files)
   addFiles(droppedFiles)
 }
 
-// 添加文件
 const addFiles = (newFiles) => {
-  const validFiles = newFiles.filter(file => {
+  const validFiles = newFiles.filter((file) => {
     const ext = file.name.split('.').pop().toLowerCase()
     return ['pdf', 'md', 'txt'].includes(ext)
   })
+
   files.value.push(...validFiles)
 }
 
-// 移除文件
 const removeFile = (index) => {
   files.value.splice(index, 1)
 }
 
-// 滚动到底部
 const scrollToBottom = () => {
   window.scrollTo({
     top: document.body.scrollHeight,
@@ -288,15 +364,12 @@ const scrollToBottom = () => {
   })
 }
 
-// 开始模拟 - 立即跳转，API调用在Process页面进行
 const startSimulation = () => {
   if (!canSubmit.value || loading.value) return
-  
-  // 存储待上传的数据
+
   import('../store/pendingUpload.js').then(({ setPendingUpload }) => {
     setPendingUpload(files.value, formData.value.simulationRequirement)
-    
-    // 立即跳转到Process页面（使用特殊标识表示新建项目）
+
     router.push({
       name: 'Process',
       params: { projectId: 'new' }
@@ -306,46 +379,185 @@ const startSimulation = () => {
 </script>
 
 <style scoped>
-/* 全局变量与重置 */
-:root {
+.home-container {
+  /* ================= 你的基础变量 (保持不变) ================= */
   --black: #000000;
-  --white: #FFFFFF;
-  --orange: #FF4500;
-  --gray-light: #F5F5F5;
-  --gray-text: #666666;
-  --border: #E5E5E5;
-  /* 
-    使用 Space Grotesk 作为主要标题字体，JetBrains Mono 作为代码/标签字体
-    确保已在 index.html 引入这些 Google Fonts 
-  */
+  --white: #ffffff;
+  --orange: #ffb86a;
+  --gray-light: #f5f5f5;
+  --gray-text: #7a95ac;
+  --border: rgba(126, 236, 255, 0.18);
   --font-mono: 'JetBrains Mono', monospace;
   --font-sans: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
   --font-cn: 'Noto Sans SC', system-ui, sans-serif;
-}
+  --bg-panel: rgba(9, 28, 54, 0.74);
+  --bg-panel-soft: rgba(8, 23, 44, 0.68);
+  --line-cyan: rgba(126, 236, 255, 0.72);
+  --text-primary: #9eefff;
+  --text-secondary: rgba(216, 241, 255, 0.82);
+  --text-muted: rgba(150, 191, 222, 0.62);
 
-.home-container {
+  /* ================= 容器基础设置 ================= */
   min-height: 100vh;
-  background: var(--white);
+  position: relative;
+  overflow-x: hidden;
   font-family: var(--font-sans);
-  color: var(--black);
+  color: var(--text-primary);
+  
+  /* ================= 核心：高亮科技感背景 ================= */
+  /* 1. 极深的基底色，用来反衬高光 */
+  background-color: #020813; 
+  
+  background-image: 
+    /* 层级1：全息坐标网格 (细锐的青色线，构建空间秩序感) */
+    linear-gradient(rgba(126, 236, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(126, 236, 255, 0.06) 1px, transparent 1px),
+    
+    /* 层级2：高亮核心光源 (大幅提升透明度，制造“发光”错觉) */
+    /* 左上：耀眼的青色主光源，照亮头部 */
+    radial-gradient(circle at 15% 0%, rgba(126, 236, 255, 0.35) 0%, transparent 45%),
+    /* 右中：深邃的科技蓝副光源，拉伸空间感 */
+    radial-gradient(circle at 85% 40%, rgba(65, 154, 255, 0.28) 0%, transparent 55%),
+    /* 左下：跳跃的橙色警示/点缀光，冷暖碰撞，极具高级感 */
+    radial-gradient(circle at 10% 90%, rgba(255, 184, 106, 0.22) 0%, transparent 35%),
+    /* 中心：微弱的蓝色泛光，防止页面中心过暗沉闷 */
+    radial-gradient(circle at 50% 50%, rgba(63, 190, 255, 0.06) 0%, transparent 65%),
+    
+    /* 层级3：底部的深邃宇宙渐变 */
+    linear-gradient(135deg, transparent 0%, rgba(7, 23, 46, 0.6) 50%, rgba(3, 10, 20, 0.9) 100%);
+
+  /* 定义网格大小(40px)和光晕铺满 */
+  background-size: 
+    40px 40px, 40px 40px, /* 网格尺寸 */
+    100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+    
+  /* 保证页面滚动时，背景光影和网格锁定不动，质感拉满 */
+  background-attachment: fixed;
+  z-index: 1;
 }
 
-/* 顶部导航 */
+/* ================= 极致加分项：增加电影级噪点 ================= */
+/* 这个伪元素会在背景上铺一层极微弱的磨砂质感，彻底消除渐变色带(Banding)，是高端 SaaS 网站的秘诀 */
+.home-container::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E");
+  pointer-events: none; /* 鼠标穿透，不影响点击 */
+  z-index: -1; /* 放在所有内容的底层 */
+}
+
+/* 确保你容器内的元素都在噪点层上方 */
+.home-container > * {
+  position: relative;
+  z-index: 1;
+}
+
+.home-container::before,
+.home-container::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.home-container::before {
+  background:
+    linear-gradient(rgba(126, 236, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(126, 236, 255, 0.05) 1px, transparent 1px);
+  background-size: 88px 88px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.56), transparent 82%);
+}
+
+.home-container::after {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(139, 221, 255, 0.16), transparent 36%),
+    linear-gradient(180deg, transparent 0%, rgba(4, 12, 24, 0.08) 48%, rgba(4, 12, 24, 0.38) 100%);
+}
+
+:global(html) {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(131, 231, 255, 0.72) rgba(8, 20, 36, 0.88);
+}
+
+:global(body) {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(131, 231, 255, 0.72) rgba(8, 20, 36, 0.88);
+}
+
+:global(html::-webkit-scrollbar),
+:global(body::-webkit-scrollbar) {
+  width: 12px;
+}
+
+:global(html::-webkit-scrollbar-track),
+:global(body::-webkit-scrollbar-track) {
+  background:
+    linear-gradient(180deg, rgba(6, 17, 31, 0.96), rgba(10, 26, 46, 0.92));
+  border-left: 1px solid rgba(126, 236, 255, 0.08);
+}
+
+:global(html::-webkit-scrollbar-thumb),
+:global(body::-webkit-scrollbar-thumb) {
+  background:
+    linear-gradient(180deg, rgba(174, 245, 255, 0.92), rgba(83, 203, 255, 0.88) 34%, rgba(33, 110, 214, 0.92) 100%);
+  border: 2px solid rgba(7, 20, 36, 0.96);
+  border-radius: 999px;
+  box-shadow:
+    inset 0 0 0 1px rgba(229, 252, 255, 0.18),
+    0 0 16px rgba(90, 205, 255, 0.22);
+}
+
+:global(html::-webkit-scrollbar-thumb:hover),
+:global(body::-webkit-scrollbar-thumb:hover) {
+  background:
+    linear-gradient(180deg, rgba(216, 252, 255, 0.96), rgba(109, 221, 255, 0.92) 34%, rgba(47, 127, 228, 0.96) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(240, 253, 255, 0.22),
+    0 0 20px rgba(102, 214, 255, 0.3);
+}
+
 .navbar {
-  height: 60px;
-  background: var(--black);
-  color: var(--white);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 40px;
+  gap: 24px;
+  padding: 20px 30px 8px;
+  position: relative;
+  z-index: 1;
 }
 
 .nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-mark {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid rgba(126, 236, 255, 0.48);
+  box-shadow:
+    0 0 0 1px rgba(126, 236, 255, 0.18),
+    0 0 20px rgba(75, 198, 255, 0.24);
+  background: rgba(8, 19, 38, 0.92);
+}
+
+.brand-mark-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.18);
+}
+
+.brand-name {
   font-family: var(--font-mono);
   font-weight: 800;
   letter-spacing: 1px;
   font-size: 1.2rem;
+  color: #87dcff;
 }
 
 .nav-links {
@@ -354,191 +566,718 @@ const startSimulation = () => {
 }
 
 .github-link {
-  color: var(--white);
+  color: #dff8ff;
   text-decoration: none;
   font-family: var(--font-mono);
-  font-size: 0.9rem;
+  font-size: 0.92rem;
   font-weight: 500;
   display: flex;
   align-items: center;
   gap: 8px;
-  transition: opacity 0.2s;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.github-link-ghost,
+.github-link-solid {
+  padding: 13px 18px;
+  border: 1px solid rgba(126, 236, 255, 0.52);
+  background: linear-gradient(180deg, rgba(30, 72, 118, 0.42), rgba(10, 25, 46, 0.56));
+  box-shadow:
+    inset 0 0 0 1px rgba(165, 242, 255, 0.12),
+    0 0 24px rgba(73, 170, 255, 0.14);
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+}
+
+.github-link-solid {
+  padding: 14px 24px;
+  font-size: 1rem;
+  background: linear-gradient(180deg, rgba(59, 116, 178, 0.3), rgba(12, 29, 54, 0.76));
+  box-shadow:
+    inset 0 0 0 1px rgba(165, 242, 255, 0.18),
+    0 0 30px rgba(76, 189, 255, 0.24),
+    0 0 0 1px rgba(128, 221, 255, 0.12);
 }
 
 .github-link:hover {
-  opacity: 0.8;
+  transform: translateY(-2px);
+  border-color: rgba(175, 239, 255, 0.76);
+  box-shadow:
+    inset 0 0 0 1px rgba(185, 244, 255, 0.18),
+    0 0 26px rgba(100, 202, 255, 0.24);
 }
 
 .arrow {
-  font-family: sans-serif;
+  font-family: var(--font-sans);
 }
 
-/* 主要内容区 */
 .main-content {
-  max-width: 1400px;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 60px 40px;
+  padding: 22px 24px 80px;
+  position: relative;
+  z-index: 1;
 }
 
-/* Hero 区域 */
 .hero-section {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 80px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(420px, 0.95fr);
+  gap: 28px;
+  align-items: stretch;
+  margin-bottom: 28px;
   position: relative;
 }
 
 .hero-left {
-  flex: 1;
-  padding-right: 60px;
+  min-width: 0;
+  align-self: stretch;
+}
+
+.hero-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 620px;
+  position: relative;
+  padding: 34px 38px 24px;
+  background:
+    linear-gradient(180deg, rgba(18, 44, 77, 0.18), transparent 12%),
+    linear-gradient(135deg, rgba(15, 36, 63, 0.88), rgba(6, 15, 31, 0.9));
+  border: 1px solid rgba(109, 213, 255, 0.42);
+  clip-path: polygon(0 18px, 18px 0, calc(100% - 24px) 0, 100% 24px, 100% calc(100% - 24px), calc(100% - 24px) 100%, 18px 100%, 0 calc(100% - 18px));
+  box-shadow:
+    inset 0 0 0 1px rgba(165, 242, 255, 0.08),
+    0 0 34px rgba(45, 139, 255, 0.16);
+  overflow: hidden;
+}
+
+.hero-panel::before,
+.hero-panel::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+
+.hero-panel::before {
+  inset: 12px;
+  border: 1px solid rgba(143, 231, 255, 0.12);
+  clip-path: polygon(0 10px, 10px 0, calc(100% - 12px) 0, 100% 12px, 100% calc(100% - 12px), calc(100% - 12px) 100%, 12px 100%, 0 calc(100% - 10px));
+}
+
+.hero-panel::after {
+  right: -40px;
+  top: 90px;
+  width: 340px;
+  height: 340px;
+  background: radial-gradient(circle, rgba(114, 208, 255, 0.2), transparent 70%);
+  filter: blur(10px);
+}
+
+.hero-panel-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 26px;
 }
 
 .tag-row {
   display: flex;
   align-items: center;
   gap: 15px;
-  margin-bottom: 25px;
   font-family: var(--font-mono);
   font-size: 0.8rem;
 }
 
 .orange-tag {
-  background: var(--orange);
-  color: var(--white);
-  padding: 4px 10px;
+  background: linear-gradient(180deg, rgba(137, 234, 255, 0.18), rgba(24, 88, 112, 0.28));
+  color: #c4f6ff;
+  padding: 8px 14px;
   font-weight: 700;
-  letter-spacing: 1px;
+  letter-spacing: 0.8px;
   font-size: 0.75rem;
+  border: 1px solid rgba(134, 235, 255, 0.34);
+  box-shadow: inset 0 0 0 1px rgba(185, 244, 255, 0.08);
 }
 
 .version-text {
-  color: #999;
+  color: var(--text-secondary);
   font-weight: 500;
   letter-spacing: 0.5px;
 }
 
+.status-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .main-title {
-  font-size: 4.5rem;
-  line-height: 1.2;
-  font-weight: 500;
-  margin: 0 0 40px 0;
-  letter-spacing: -2px;
-  color: var(--black);
+  font-size: clamp(3.6rem, 6vw, 5.6rem);
+  line-height: 1.05;
+  font-weight: 700;
+  margin: 0 0 30px 0;
+  letter-spacing: -3px;
+  color: #8fefff;
+  text-shadow: 0 0 18px rgba(104, 224, 255, 0.18);
 }
 
 .gradient-text {
-  background: linear-gradient(90deg, #000000 0%, #444444 100%);
+  background: linear-gradient(180deg, #c5fbff 0%, #74e0ff 48%, #8ce9ff 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   display: inline-block;
 }
 
-.hero-desc {
-  font-size: 1.05rem;
-  line-height: 1.8;
-  color: var(--gray-text);
-  max-width: 640px;
-  margin-bottom: 50px;
-  font-weight: 400;
-  text-align: justify;
+.feature-cards {
+  display: grid;
+  gap: 18px;
+  margin-bottom: 28px;
 }
 
-.hero-desc p {
-  margin-bottom: 1.5rem;
+.feature-card {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 16px;
+  align-items: center;
+  padding: 20px 22px;
+  background: linear-gradient(90deg, rgba(20, 51, 85, 0.44), rgba(10, 25, 44, 0.5));
+  border: 1px solid rgba(126, 236, 255, 0.42);
+  border-radius: 8px;
+  box-shadow:
+    inset 0 0 0 1px rgba(183, 245, 255, 0.05),
+    0 0 18px rgba(74, 174, 255, 0.12);
 }
 
-.highlight-bold {
-  color: var(--black);
-  font-weight: 700;
+.feature-card p {
+  font-size: 1.02rem;
+  line-height: 1.75;
+  color: var(--text-secondary);
 }
 
-.highlight-orange {
-  color: var(--orange);
-  font-weight: 700;
-  font-family: var(--font-mono);
-}
-
-.highlight-code {
-  background: rgba(0, 0, 0, 0.05);
-  padding: 2px 6px;
-  border-radius: 2px;
-  font-family: var(--font-mono);
-  font-size: 0.9em;
-  color: var(--black);
-  font-weight: 600;
-}
-
-.slogan-text {
-  font-size: 1.2rem;
-  font-weight: 520;
-  color: var(--black);
-  letter-spacing: 1px;
-  border-left: 3px solid var(--orange);
-  padding-left: 15px;
-  margin-top: 20px;
-}
-
-.blinking-cursor {
-  color: var(--orange);
-  animation: blink 1s step-end infinite;
-  font-weight: 700;
-}
-
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-.decoration-square {
-  width: 16px;
-  height: 16px;
-  background: var(--orange);
-}
-
-.hero-right {
-  flex: 0.8;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: flex-end;
-}
-
-.logo-container {
-  width: 100%;
-  display: flex;
-  justify-content: flex-end;
-  padding-right: 40px;
-}
-
-.hero-logo {
-  max-width: 500px; /* 调整logo大小 */
-  width: 100%;
-}
-
-.scroll-down-btn {
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--border);
-  background: transparent;
+.feature-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 1px solid rgba(126, 236, 255, 0.42);
+  background: linear-gradient(180deg, rgba(19, 52, 81, 0.58), rgba(8, 18, 33, 0.72));
+  box-shadow: inset 0 0 12px rgba(108, 208, 255, 0.08);
+}
+
+.feature-glyph {
+  font-family: var(--font-mono);
+  font-size: 1.35rem;
+  color: #79e7ff;
+}
+
+.highlight-bold {
+  color: #baf6ff;
+  font-weight: 700;
+}
+
+.highlight-code {
+  background: rgba(82, 177, 255, 0.12);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: #b7f7ff;
+  font-weight: 600;
+  border: 1px solid rgba(126, 236, 255, 0.18);
+}
+
+.hero-cta-banner {
+  display: inline-flex;
+  align-items: center;
+  padding: 18px 26px;
+  margin-bottom: 20px;
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: #bff7ff;
+  background: linear-gradient(90deg, rgba(18, 42, 70, 0.88), rgba(20, 56, 86, 0.76), rgba(13, 31, 53, 0.86));
+  border: 1px solid rgba(255, 201, 128, 0.72);
+  border-radius: 8px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 223, 167, 0.18),
+    0 0 22px rgba(255, 195, 109, 0.16);
+}
+
+.hero-footer {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  color: var(--text-muted);
+}
+
+.hero-left-spacer {
+  flex: 1;
+  min-height: 84px;
+}
+
+.hero-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  min-height: 0;
+  position: relative;
+  align-self: stretch;
+}
+
+.hero-actions {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 18px;
+}
+
+.hero-actions:empty {
+  display: none;
+}
+
+.hero-visual {
+  flex: 1;
+  width: 100%;
+  position: relative;
+  min-height: 560px;
+  padding: 22px 18px 96px;
+  border: 1px solid rgba(126, 236, 255, 0.12);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(98, 196, 255, 0.12), transparent 32%),
+    linear-gradient(180deg, rgba(12, 33, 58, 0.34), rgba(7, 18, 31, 0.06));
+  box-shadow:
+    inset 0 0 0 1px rgba(182, 244, 255, 0.05),
+    inset 0 -30px 60px rgba(3, 11, 21, 0.28);
+  overflow: hidden;
+}
+
+.hero-scroll-row {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin: 0 0 28px;
+}
+
+.hero-visual::before,
+.hero-visual::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+
+.hero-visual::before {
+  inset: 16px 18px 22px;
+  border: 1px solid rgba(126, 236, 255, 0.08);
+  border-radius: 20px;
+  mask-image: linear-gradient(135deg, rgba(0, 0, 0, 0.95), rgba(0, 0, 0, 0.45));
+}
+
+.hero-visual::after {
+  left: 10%;
+  right: 10%;
+  bottom: 24px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(126, 236, 255, 0), rgba(126, 236, 255, 0.38), rgba(126, 236, 255, 0));
+}
+
+.visual-hud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  position: relative;
+  z-index: 2;
+}
+
+.hud-pill {
+  padding: 7px 12px;
+  border: 1px solid rgba(126, 236, 255, 0.24);
+  border-radius: 999px;
+  background: rgba(9, 28, 54, 0.42);
+  color: #b6f6ff;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  box-shadow: inset 0 0 0 1px rgba(176, 245, 255, 0.04);
+}
+
+.hud-pill-accent {
+  border-color: rgba(255, 206, 135, 0.42);
+  color: #ffd8a1;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 225, 170, 0.06),
+    0 0 18px rgba(255, 193, 94, 0.08);
+}
+
+.visual-dots {
+  position: absolute;
+  left: 18px;
+  top: 108px;
+  display: grid;
+  gap: 8px;
+  z-index: 1;
+}
+
+.visual-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(136, 232, 255, 0.62);
+  box-shadow: 0 0 10px rgba(136, 232, 255, 0.28);
+}
+
+.hex-cluster {
+  position: absolute;
+  top: 34px;
+  right: 52px;
+  width: 230px;
+  height: 170px;
+  opacity: 0.9;
+}
+
+.hex {
+  position: absolute;
+  width: 58px;
+  height: 66px;
+  clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0 50%);
+  background: linear-gradient(180deg, rgba(72, 142, 255, 0.08), rgba(72, 142, 255, 0.02));
+  border: 1px solid rgba(126, 236, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(126, 236, 255, 0.04);
+}
+
+.hex-1 { top: 0; left: 68px; }
+.hex-2 { top: 30px; left: 128px; }
+.hex-3 { top: 58px; left: 70px; }
+.hex-4 { top: 88px; left: 130px; }
+.hex-5 { top: 86px; left: 10px; }
+
+.data-ribbon {
+  position: absolute;
+  height: 12px;
+  border-radius: 999px;
+  filter: blur(0.2px);
+  box-shadow:
+    0 0 20px rgba(108, 220, 255, 0.3),
+    0 0 36px rgba(108, 220, 255, 0.14);
+}
+
+.data-ribbon-one {
+  top: 228px;
+  left: 30px;
+  width: 88%;
+  transform: rotate(8deg);
+  background: linear-gradient(90deg, rgba(111, 223, 255, 0), rgba(126, 236, 255, 0.74) 36%, rgba(255, 205, 143, 0.2) 70%, rgba(255, 205, 143, 0));
+}
+
+.data-ribbon-two {
+  top: 318px;
+  left: -6px;
+  width: 92%;
+  transform: rotate(-9deg);
+  background: linear-gradient(90deg, rgba(111, 223, 255, 0), rgba(126, 236, 255, 0.48) 28%, rgba(126, 236, 255, 0.92) 56%, rgba(111, 223, 255, 0));
+}
+
+.visual-text {
+  position: absolute;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  letter-spacing: 0.4px;
+}
+
+.visual-text-top {
+  top: 198px;
+  left: 48px;
+}
+
+.visual-text-right {
+  right: 22px;
+  top: 346px;
+  text-align: left;
+}
+
+.visual-text-bottom {
+  left: 86px;
+  bottom: 138px;
+  font-size: 0.88rem;
+  color: #9fdbff;
+  letter-spacing: 0.8px;
+}
+
+.logo-container {
+  width: min(100%, 620px);
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin: 16px auto 0;
+}
+
+.logo-aura {
+  position: absolute;
+  inset: 12% 16%;
+  background: radial-gradient(circle, rgba(110, 221, 255, 0.3), rgba(68, 147, 255, 0.14) 34%, transparent 70%);
+  filter: blur(16px);
+}
+
+.orbit-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(126, 236, 255, 0.16);
+  box-shadow:
+    inset 0 0 30px rgba(89, 203, 255, 0.04),
+    0 0 24px rgba(89, 203, 255, 0.06);
+}
+
+.orbit-ring-one {
+  width: 74%;
+  height: 56%;
+  transform: rotate(18deg);
+}
+
+.orbit-ring-two {
+  width: 58%;
+  height: 80%;
+  transform: rotate(-26deg);
+}
+
+.orbit-ring-three {
+  width: 82%;
+  height: 34%;
+  transform: rotate(-8deg);
+}
+
+.hero-logo {
+  max-width: 100%;
+  width: min(100%, 590px);
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 0 40px rgba(83, 212, 255, 0.25)) drop-shadow(0 0 70px rgba(46, 129, 255, 0.22));
+  animation: logo-float 7s ease-in-out infinite;
+}
+
+@keyframes logo-float {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0) scale(1.015);
+  }
+}
+
+.visual-card {
+  position: absolute;
+  left: 50%;
+  right: auto;
+  bottom: 26px;
+  width: 278px;
+  padding: 15px 18px 18px;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, rgba(15, 35, 61, 0.76), rgba(8, 19, 34, 0.84));
+  border: 1px solid rgba(126, 236, 255, 0.34);
+  border-radius: 14px;
+  box-shadow:
+    inset 0 0 0 1px rgba(175, 242, 255, 0.06),
+    0 0 22px rgba(67, 166, 255, 0.14);
+}
+
+
+.visual-card-title {
+  font-size: 0.9rem;
+  color: #9eefff;
+  margin-bottom: 14px;
+  text-align: center;
+  letter-spacing: 0.8px;
+}
+
+.network-map {
+  position: relative;
+  height: 116px;
+  background:
+    radial-gradient(circle at center, rgba(66, 144, 255, 0.18), transparent 62%),
+    linear-gradient(180deg, rgba(156, 233, 255, 0.06), rgba(156, 233, 255, 0)),
+    linear-gradient(135deg, rgba(15, 42, 72, 0.38), rgba(7, 17, 30, 0.22));
+  border: 1px solid rgba(126, 236, 255, 0.1);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow:
+    inset 0 0 0 1px rgba(177, 244, 255, 0.04),
+    inset 0 -16px 28px rgba(4, 12, 23, 0.22);
+}
+
+.network-line,
+.network-node {
+  position: absolute;
+}
+
+.network-line {
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(126, 236, 255, 0.08), rgba(170, 241, 255, 0.82), rgba(126, 236, 255, 0.08));
+  transform-origin: left center;
+  box-shadow:
+    0 0 10px rgba(117, 223, 255, 0.12),
+    0 0 18px rgba(117, 223, 255, 0.08);
+}
+
+.line-1 { left: 32px; top: 82px; width: 118px; transform: rotate(-26deg); }
+.line-2 { left: 70px; top: 72px; width: 92px; transform: rotate(22deg); }
+.line-3 { left: 86px; top: 44px; width: 102px; transform: rotate(3deg); }
+.line-4 { left: 148px; top: 64px; width: 74px; transform: rotate(-36deg); }
+.line-5 { left: 36px; top: 42px; width: 188px; transform: rotate(14deg); }
+
+.network-node {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.98), rgba(196, 247, 255, 0.88) 18%, rgba(89, 202, 255, 0.92) 42%, rgba(18, 103, 218, 0.96) 72%, rgba(6, 27, 64, 0.98) 100%);
+  border: 1px solid rgba(197, 245, 255, 0.3);
+  box-shadow:
+    inset -2px -3px 6px rgba(7, 24, 55, 0.45),
+    inset 2px 2px 5px rgba(255, 255, 255, 0.18),
+    0 0 14px rgba(126, 236, 255, 0.42);
+}
+
+.network-node::before {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0) 55%);
+  opacity: 0.95;
+}
+
+.network-node::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(126, 236, 255, 0.22), rgba(126, 236, 255, 0) 72%);
+  z-index: -1;
+}
+
+.network-node-core {
+  background:
+    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 1), rgba(229, 252, 255, 0.95) 22%, rgba(143, 236, 255, 0.98) 44%, rgba(65, 195, 255, 0.95) 70%, rgba(8, 40, 92, 0.98) 100%);
+  box-shadow:
+    inset -2px -3px 6px rgba(6, 21, 50, 0.4),
+    inset 2px 2px 6px rgba(255, 255, 255, 0.22),
+    0 0 18px rgba(147, 240, 255, 0.7),
+    0 0 32px rgba(72, 202, 255, 0.28);
+}
+
+.network-node-hub {
+  background:
+    radial-gradient(circle at 30% 26%, rgba(255, 255, 255, 1), rgba(255, 247, 219, 0.95) 18%, rgba(255, 219, 123, 0.98) 42%, rgba(255, 176, 61, 0.96) 66%, rgba(116, 60, 4, 0.98) 100%);
+  border-color: rgba(255, 230, 173, 0.38);
+  box-shadow:
+    inset -2px -3px 6px rgba(74, 36, 3, 0.38),
+    inset 2px 2px 6px rgba(255, 255, 255, 0.24),
+    0 0 18px rgba(255, 214, 129, 0.82),
+    0 0 34px rgba(255, 185, 73, 0.3);
+}
+
+.node-1 { left: 30px; top: 76px; }
+.node-2 { left: 74px; top: 64px; }
+.node-3 { left: 124px; top: 28px; }
+.node-4 { left: 164px; top: 56px; }
+.node-5 { left: 210px; top: 18px; }
+.node-6 { left: 214px; top: 70px; }
+
+.scroll-down-btn {
+  width: 100%;
+  margin-top: 0;
+  padding: 14px 18px;
+  border: 1px solid rgba(126, 236, 255, 0.24);
+  border-radius: 18px;
+  background:
+    linear-gradient(90deg, rgba(10, 27, 47, 0.9), rgba(14, 38, 63, 0.7), rgba(8, 22, 39, 0.88));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   cursor: pointer;
-  color: var(--orange);
-  font-size: 1.2rem;
-  transition: all 0.2s;
+  color: #a5eeff;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  letter-spacing: 0.4px;
+  box-shadow:
+    inset 0 0 0 1px rgba(181, 244, 255, 0.04),
+    0 0 22px rgba(49, 138, 255, 0.12);
+  transition: color 0.25s ease, transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.scroll-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+}
+
+.scroll-kicker {
+  font-size: 0.68rem;
+  letter-spacing: 1.8px;
+  color: rgba(157, 225, 255, 0.68);
+}
+
+.scroll-label {
+  font-size: 0.96rem;
+  color: #cef9ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  
+}
+
+.scroll-arrow-wrap {
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, rgba(20, 54, 88, 0.8), rgba(10, 23, 38, 0.9));
+  border: 1px solid rgba(126, 236, 255, 0.28);
+  box-shadow:
+    inset 0 0 0 1px rgba(184, 245, 255, 0.05),
+    0 0 18px rgba(75, 184, 255, 0.12);
 }
 
 .scroll-down-btn:hover {
-  border-color: var(--orange);
+  color: #d4fbff;
+  transform: translateY(2px);
+  border-color: rgba(167, 239, 255, 0.42);
+  box-shadow:
+    inset 0 0 0 1px rgba(181, 244, 255, 0.08),
+    0 0 28px rgba(66, 176, 255, 0.18);
 }
 
-/* Dashboard 双栏布局 */
+.scroll-arrow {
+  font-size: 1.7rem;
+  line-height: 1;
+  text-shadow: 0 0 18px rgba(126, 236, 255, 0.36);
+}
+
 .dashboard-section {
   display: flex;
   gap: 60px;
-  border-top: 1px solid var(--border);
-  padding-top: 60px;
+  border-top: 1px solid rgba(126, 236, 255, 0.18);
+  padding-top: 52px;
   align-items: flex-start;
 }
 
@@ -548,7 +1287,6 @@ const startSimulation = () => {
   flex-direction: column;
 }
 
-/* 左侧面板 */
 .left-panel {
   flex: 0.8;
 }
@@ -556,7 +1294,7 @@ const startSimulation = () => {
 .panel-header {
   font-family: var(--font-mono);
   font-size: 0.8rem;
-  color: #999;
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -564,7 +1302,7 @@ const startSimulation = () => {
 }
 
 .status-dot {
-  color: var(--orange);
+  color: #8beeff;
   font-size: 0.8rem;
 }
 
@@ -572,10 +1310,11 @@ const startSimulation = () => {
   font-size: 2rem;
   font-weight: 520;
   margin: 0 0 15px 0;
+  color: var(--text-primary);
 }
 
 .section-desc {
-  color: var(--gray-text);
+  color: var(--text-secondary);
   margin-bottom: 25px;
   line-height: 1.6;
 }
@@ -587,9 +1326,11 @@ const startSimulation = () => {
 }
 
 .metric-card {
-  border: 1px solid var(--border);
+  border: 1px solid rgba(126, 236, 255, 0.18);
+  background: linear-gradient(180deg, rgba(16, 35, 58, 0.7), rgba(7, 17, 31, 0.76));
   padding: 20px 30px;
   min-width: 150px;
+  box-shadow: inset 0 0 0 1px rgba(185, 244, 255, 0.04);
 }
 
 .metric-value {
@@ -597,24 +1338,26 @@ const startSimulation = () => {
   font-size: 1.8rem;
   font-weight: 520;
   margin-bottom: 5px;
+  color: #9eefff;
 }
 
 .metric-label {
   font-size: 0.85rem;
-  color: #999;
+  color: var(--text-muted);
 }
 
-/* 项目模拟步骤介绍 */
 .steps-container {
-  border: 1px solid var(--border);
+  border: 1px solid rgba(126, 236, 255, 0.18);
+  background: linear-gradient(180deg, rgba(13, 32, 55, 0.68), rgba(7, 18, 31, 0.76));
   padding: 30px;
   position: relative;
+  box-shadow: inset 0 0 0 1px rgba(185, 244, 255, 0.04);
 }
 
 .steps-header {
   font-family: var(--font-mono);
   font-size: 0.8rem;
-  color: #999;
+  color: var(--text-muted);
   margin-bottom: 25px;
   display: flex;
   align-items: center;
@@ -641,8 +1384,8 @@ const startSimulation = () => {
 .step-num {
   font-family: var(--font-mono);
   font-weight: 700;
-  color: var(--black);
-  opacity: 0.3;
+  color: #7ddfff;
+  opacity: 0.5;
 }
 
 .step-info {
@@ -653,21 +1396,25 @@ const startSimulation = () => {
   font-weight: 520;
   font-size: 1rem;
   margin-bottom: 4px;
+  color: var(--text-primary);
 }
 
 .step-desc {
   font-size: 0.85rem;
-  color: var(--gray-text);
+  color: var(--text-secondary);
 }
 
-/* 右侧交互控制台 */
 .right-panel {
   flex: 1.2;
 }
 
 .console-box {
-  border: 1px solid #CCC; /* 外部实线 */
-  padding: 8px; /* 内边距形成双重边框感 */
+  border: 1px solid rgba(126, 236, 255, 0.24);
+  background: linear-gradient(180deg, rgba(11, 26, 47, 0.78), rgba(6, 15, 28, 0.84));
+  padding: 8px;
+  box-shadow:
+    inset 0 0 0 1px rgba(185, 244, 255, 0.04),
+    0 0 22px rgba(49, 138, 255, 0.12);
 }
 
 .console-section {
@@ -681,14 +1428,15 @@ const startSimulation = () => {
 .console-header {
   display: flex;
   justify-content: space-between;
+  gap: 12px;
   margin-bottom: 15px;
   font-family: var(--font-mono);
   font-size: 0.75rem;
-  color: #666;
+  color: var(--text-muted);
 }
 
 .upload-zone {
-  border: 1px dashed #CCC;
+  border: 1px dashed rgba(126, 236, 255, 0.24);
   height: 200px;
   overflow-y: auto;
   display: flex;
@@ -696,16 +1444,17 @@ const startSimulation = () => {
   justify-content: center;
   cursor: pointer;
   transition: all 0.3s;
-  background: #FAFAFA;
+  background: rgba(8, 20, 36, 0.74);
 }
 
 .upload-zone.has-files {
   align-items: flex-start;
 }
 
+.upload-zone.drag-over,
 .upload-zone:hover {
-  background: #F0F0F0;
-  border-color: #999;
+  background: rgba(11, 29, 49, 0.88);
+  border-color: rgba(146, 235, 255, 0.48);
 }
 
 .upload-placeholder {
@@ -715,24 +1464,25 @@ const startSimulation = () => {
 .upload-icon {
   width: 40px;
   height: 40px;
-  border: 1px solid #DDD;
+  border: 1px solid rgba(126, 236, 255, 0.24);
   display: flex;
   align-items: center;
   justify-content: center;
   margin: 0 auto 15px;
-  color: #999;
+  color: #8beeff;
 }
 
 .upload-title {
   font-weight: 500;
   font-size: 0.9rem;
   margin-bottom: 5px;
+  color: var(--text-primary);
 }
 
 .upload-hint {
   font-family: var(--font-mono);
   font-size: 0.75rem;
-  color: #999;
+  color: var(--text-muted);
 }
 
 .file-list {
@@ -746,24 +1496,32 @@ const startSimulation = () => {
 .file-item {
   display: flex;
   align-items: center;
-  background: var(--white);
+  gap: 10px;
+  background: rgba(13, 31, 53, 0.84);
   padding: 8px 12px;
-  border: 1px solid #EEE;
+  border: 1px solid rgba(126, 236, 255, 0.14);
   font-family: var(--font-mono);
   font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.file-icon {
+  font-size: 0.7rem;
+  letter-spacing: 1px;
+  color: #8beeff;
 }
 
 .file-name {
   flex: 1;
-  margin: 0 10px;
+  margin-right: 10px;
 }
 
 .remove-btn {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 1.2rem;
-  color: #999;
+  font-size: 1rem;
+  color: #9edfff;
 }
 
 .console-divider {
@@ -777,21 +1535,21 @@ const startSimulation = () => {
   content: '';
   flex: 1;
   height: 1px;
-  background: #EEE;
+  background: rgba(126, 236, 255, 0.12);
 }
 
 .console-divider span {
   padding: 0 15px;
   font-family: var(--font-mono);
   font-size: 0.7rem;
-  color: #BBB;
+  color: var(--text-muted);
   letter-spacing: 1px;
 }
 
 .input-wrapper {
   position: relative;
-  border: 1px solid #DDD;
-  background: #FAFAFA;
+  border: 1px solid rgba(126, 236, 255, 0.18);
+  background: rgba(8, 20, 36, 0.74);
 }
 
 .code-input {
@@ -805,6 +1563,11 @@ const startSimulation = () => {
   resize: vertical;
   outline: none;
   min-height: 150px;
+  color: var(--text-secondary);
+}
+
+.code-input::placeholder {
+  color: rgba(150, 191, 222, 0.46);
 }
 
 .model-badge {
@@ -813,14 +1576,14 @@ const startSimulation = () => {
   right: 15px;
   font-family: var(--font-mono);
   font-size: 0.7rem;
-  color: #AAA;
+  color: var(--text-muted);
 }
 
 .start-engine-btn {
   width: 100%;
-  background: var(--black);
-  color: var(--white);
-  border: none;
+  background: linear-gradient(90deg, rgba(24, 74, 120, 0.92), rgba(8, 28, 52, 0.94));
+  color: #e3fbff;
+  border: 1px solid rgba(126, 236, 255, 0.34);
   padding: 20px;
   font-family: var(--font-mono);
   font-weight: 700;
@@ -835,16 +1598,13 @@ const startSimulation = () => {
   overflow: hidden;
 }
 
-/* 可点击状态（非禁用） */
 .start-engine-btn:not(:disabled) {
-  background: var(--black);
-  border: 1px solid var(--black);
   animation: pulse-border 2s infinite;
 }
 
 .start-engine-btn:hover:not(:disabled) {
-  background: var(--orange);
-  border-color: var(--orange);
+  background: linear-gradient(90deg, rgba(42, 112, 176, 0.98), rgba(13, 48, 87, 0.98));
+  border-color: rgba(177, 244, 255, 0.66);
   transform: translateY(-2px);
 }
 
@@ -853,38 +1613,167 @@ const startSimulation = () => {
 }
 
 .start-engine-btn:disabled {
-  background: #E5E5E5;
-  color: #999;
+  background: rgba(41, 57, 78, 0.62);
+  color: rgba(170, 190, 208, 0.62);
   cursor: not-allowed;
   transform: none;
-  border: 1px solid #E5E5E5;
+  border: 1px solid rgba(126, 236, 255, 0.08);
 }
 
-/* 引导动画：微妙的边框脉冲 */
 @keyframes pulse-border {
-  0% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.2); }
-  70% { box-shadow: 0 0 0 6px rgba(0, 0, 0, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(126, 236, 255, 0.18); }
+  70% { box-shadow: 0 0 0 8px rgba(126, 236, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(126, 236, 255, 0); }
 }
 
-/* 响应式适配 */
+@media (max-width: 1180px) {
+  .hero-section {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .hero-right {
+    min-height: auto;
+  }
+
+  .hero-visual {
+    min-height: 480px;
+    padding-bottom: 92px;
+  }
+
+  .hero-actions {
+    justify-content: flex-start;
+  }
+
+  .hero-scroll-row {
+    margin-bottom: 24px;
+  }
+}
+
 @media (max-width: 1024px) {
   .dashboard-section {
     flex-direction: column;
   }
-  
-  .hero-section {
+
+  .hero-left {
+    margin-bottom: 0;
+  }
+
+  .hero-panel {
+    padding: 28px 24px;
+    min-height: auto;
+  }
+
+  .hero-panel-top {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .status-stack {
+    text-align: left;
+  }
+
+  .main-title {
+    letter-spacing: -1.5px;
+  }
+
+  .feature-card {
+    grid-template-columns: 1fr;
+  }
+
+  .logo-container {
+    width: min(100%, 520px);
+  }
+
+  .visual-card {
+    bottom: 18px;
+    width: 220px;
+  }
+
+  .visual-text-bottom {
+    left: 48px;
+  }
+}
+
+@media (max-width: 640px) {
+  .navbar {
+    padding: 18px 16px 8px;
+    align-items: flex-start;
     flex-direction: column;
   }
-  
-  .hero-left {
-    padding-right: 0;
-    margin-bottom: 40px;
+
+  .main-content {
+    padding: 18px 14px 64px;
   }
-  
-  .hero-logo {
-    max-width: 200px;
-    margin-bottom: 20px;
+
+  .hero-section {
+    gap: 18px;
+    margin-bottom: 18px;
+  }
+
+  .tag-row {
+    flex-wrap: wrap;
+  }
+
+  .main-title {
+    font-size: 2.8rem;
+  }
+
+  .feature-card p {
+    font-size: 0.95rem;
+  }
+
+  .hero-cta-banner {
+    font-size: 1rem;
+    padding: 16px 18px;
+  }
+
+  .hero-visual {
+    min-height: 360px;
+    padding-bottom: 92px;
+    padding-inline: 12px;
+  }
+
+  .hex-cluster,
+  .visual-text-top,
+  .visual-text-right,
+  .visual-dots {
+    display: none;
+  }
+
+  .visual-text-bottom {
+    left: 10px;
+    bottom: 92px;
+    font-size: 0.8rem;
+  }
+
+  .visual-card {
+    position: absolute;
+    left: 50%;
+    right: auto;
+    bottom: 6px;
+    width: min(100%, 248px);
+    transform: translateX(-50%);
+  }
+
+  .scroll-down-btn {
+    padding: 12px 14px;
+    border-radius: 16px;
+  }
+
+  .scroll-label {
+    font-size: 0.86rem;
+    white-space: normal;
+  }
+
+  .scroll-arrow-wrap {
+    width: 44px;
+    height: 44px;
+  }
+
+  .metrics-row,
+  .console-header {
+    flex-direction: column;
   }
 }
 </style>
