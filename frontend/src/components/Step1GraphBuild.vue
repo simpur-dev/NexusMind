@@ -170,16 +170,48 @@
       </div>
     </div>
 
-    <!-- Bottom Info / Logs -->
-    <div class="system-logs">
-      <div class="log-header">
-        <span class="log-title">SYSTEM DASHBOARD</span>
-        <span class="log-id">{{ projectData?.project_id || 'NO_PROJECT' }}</span>
+    <!-- Floating System Terminal -->
+    <div class="system-terminal" :class="{ 'is-live': hasActiveTerminalLine }">
+      <div class="terminal-progress-bar"></div>
+      <div class="terminal-header">
+        <div class="terminal-controls" aria-hidden="true">
+          <span class="control-dot dot-deep"></span>
+          <span class="control-dot dot-mid"></span>
+          <span class="control-dot dot-soft"></span>
+        </div>
+        <span class="terminal-label">SYSTEM TERMINAL</span>
+      </div>
+      <div class="terminal-meta">
+        <span class="terminal-project">{{ projectData?.project_id || 'NO_PROJECT' }}</span>
+        <span class="terminal-phase">{{ terminalPhaseLabel }}</span>
       </div>
       <div class="log-content" ref="logContent">
-        <div class="log-line" v-for="(log, idx) in systemLogs" :key="idx">
+        <div
+          class="log-line"
+          v-for="(log, idx) in terminalLogs"
+          :key="`${log.time}-${idx}`"
+          :class="{
+            current: log.isCurrent,
+            success: log.visualStatus === 'success',
+            error: log.visualStatus === 'error',
+            running: log.visualStatus === 'running'
+          }"
+        >
+          <span class="log-status" :class="log.visualStatus" aria-hidden="true">
+            <svg v-if="log.visualStatus === 'success'" viewBox="0 0 16 16" class="status-icon">
+              <path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+            </svg>
+            <svg v-else-if="log.visualStatus === 'error'" viewBox="0 0 16 16" class="status-icon">
+              <path d="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5" />
+            </svg>
+            <svg v-else viewBox="0 0 16 16" class="status-icon spinner-icon">
+              <circle cx="8" cy="8" r="5.5" />
+              <path d="M8 2.5A5.5 5.5 0 0 1 13.5 8" />
+            </svg>
+          </span>
           <span class="log-time">{{ log.time }}</span>
           <span class="log-msg">{{ log.msg }}</span>
+          <span v-if="log.isCurrent" class="terminal-cursor">_</span>
         </div>
       </div>
     </div>
@@ -207,6 +239,41 @@ defineEmits(['next-step'])
 const selectedOntologyItem = ref(null)
 const logContent = ref(null)
 const creatingSimulation = ref(false)
+
+const currentLogIndex = computed(() => props.systemLogs.length - 1)
+
+const isErrorMessage = (message = '') => /error|failed|exception|no pending/i.test(String(message))
+
+const hasActiveTerminalLine = computed(() => {
+  const latestLog = props.systemLogs[currentLogIndex.value]
+  if (!latestLog) return false
+  if (latestLog.status === 'error' || isErrorMessage(latestLog.msg)) return false
+  return props.currentPhase >= 0 && props.currentPhase < 2
+})
+
+const terminalPhaseLabel = computed(() => {
+  if (props.currentPhase >= 2) return 'READY'
+  if (props.currentPhase === 1) return `GRAPH ${props.buildProgress?.progress || 0}%`
+  if (props.currentPhase === 0) return 'ONTOLOGY'
+  return 'BOOTING'
+})
+
+const resolveLogState = (log, idx) => {
+  if (log?.status === 'error' || isErrorMessage(log?.msg)) return 'error'
+  if (idx === currentLogIndex.value && hasActiveTerminalLine.value) return 'running'
+  return 'success'
+}
+
+const terminalLogs = computed(() =>
+  props.systemLogs.map((log, idx) => {
+    const visualStatus = resolveLogState(log, idx)
+    return {
+      ...log,
+      visualStatus,
+      isCurrent: idx === currentLogIndex.value && visualStatus === 'running'
+    }
+  })
+)
 
 // 进入环境搭建 - 创建 simulation 并跳转
 const handleEnterEnvSetup = async () => {
@@ -273,35 +340,51 @@ watch(() => props.systemLogs.length, () => {
 <style scoped>
 .workbench-panel {
   height: 100%;
-  background-color: #FAFAFA;
+  background:
+    radial-gradient(circle at top right, rgba(96, 165, 250, 0.14), transparent 28%),
+    radial-gradient(circle at bottom left, rgba(191, 219, 254, 0.4), transparent 34%),
+    linear-gradient(180deg, #f8fbff 0%, #f3f7fc 100%);
   display: flex;
   flex-direction: column;
   position: relative;
   overflow: hidden;
+  --accent: #3b82f6;
+  --accent-strong: #2563eb;
+  --accent-soft: rgba(59, 130, 246, 0.12);
+  --panel-border: rgba(148, 163, 184, 0.22);
+  --panel-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
 }
 
 .scroll-container {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: 24px 24px 316px;
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
 .step-card {
-  background: #FFF;
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(14px);
+  border-radius: 18px;
   padding: 20px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  border: 1px solid #EAEAEA;
+  box-shadow: var(--panel-shadow);
+  border: 1px solid var(--panel-border);
   transition: all 0.3s ease;
   position: relative; /* For absolute overlay */
 }
 
 .step-card.active {
-  border-color: #FF5722;
-  box-shadow: 0 4px 12px rgba(255, 87, 34, 0.08);
+  border-color: rgba(59, 130, 246, 0.38);
+  box-shadow: 0 18px 36px rgba(37, 99, 235, 0.12);
+}
+
+.step-card.completed {
+  border-color: rgba(96, 165, 250, 0.26);
 }
 
 .card-header {
@@ -321,43 +404,60 @@ watch(() => props.systemLogs.length, () => {
   font-family: 'JetBrains Mono', monospace;
   font-size: 20px;
   font-weight: 700;
-  color: #E0E0E0;
+  color: #cbd5e1;
 }
 
 .step-card.active .step-num,
 .step-card.completed .step-num {
-  color: #000;
+  color: var(--accent-strong);
 }
 
 .step-title {
   font-weight: 600;
   font-size: 14px;
   letter-spacing: 0.5px;
+  color: var(--text-primary);
 }
 
 .badge {
   font-size: 10px;
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 5px 10px;
+  border-radius: 999px;
   font-weight: 600;
   text-transform: uppercase;
+  border: 1px solid transparent;
+  transition: all 0.3s ease;
 }
 
-.badge.success { background: #E8F5E9; color: #2E7D32; }
-.badge.processing { background: #FF5722; color: #FFF; }
-.badge.accent { background: #FF5722; color: #FFF; }
-.badge.pending { background: #F5F5F5; color: #999; }
+.badge.success {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+  border-color: rgba(34, 197, 94, 0.18);
+}
+
+.badge.processing,
+.badge.accent {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent-strong);
+  border-color: rgba(59, 130, 246, 0.2);
+}
+
+.badge.pending {
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--text-muted);
+  border-color: rgba(148, 163, 184, 0.2);
+}
 
 .api-note {
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
-  color: #999;
+  color: var(--text-muted);
   margin-bottom: 8px;
 }
 
 .description {
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
   line-height: 1.5;
   margin-bottom: 16px;
 }
@@ -376,7 +476,7 @@ watch(() => props.systemLogs.length, () => {
 .tag-label {
   display: block;
   font-size: 10px;
-  color: #AAA;
+  color: var(--text-muted);
   margin-bottom: 8px;
   font-weight: 600;
 }
@@ -388,14 +488,14 @@ watch(() => props.systemLogs.length, () => {
 }
 
 .entity-tag {
-  background: #F5F5F5;
-  border: 1px solid #EEE;
-  padding: 4px 10px;
-  border-radius: 4px;
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  padding: 6px 12px;
+  border-radius: 999px;
   font-size: 11px;
-  color: #333;
+  color: var(--text-primary);
   font-family: 'JetBrains Mono', monospace;
-  transition: all 0.2s;
+  transition: all 0.3s ease;
 }
 
 .entity-tag.clickable {
@@ -403,8 +503,10 @@ watch(() => props.systemLogs.length, () => {
 }
 
 .entity-tag.clickable:hover {
-    background: #E0E0E0;
-    border-color: #CCC;
+    background: rgba(219, 234, 254, 0.95);
+    border-color: rgba(59, 130, 246, 0.26);
+    color: var(--accent-strong);
+    transform: translateY(-1px);
 }
 
 /* Ontology Detail Overlay */
@@ -573,26 +675,31 @@ watch(() => props.systemLogs.length, () => {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 12px;
-  background: #F9F9F9;
+  background: rgba(248, 250, 252, 0.9);
   padding: 16px;
-  border-radius: 6px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
 }
 
 .stat-card {
   text-align: center;
+  padding: 12px 10px;
+  background: rgba(255, 255, 255, 0.68);
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
 }
 
 .stat-value {
   display: block;
   font-size: 20px;
   font-weight: 700;
-  color: #000;
+  color: var(--accent-strong);
   font-family: 'JetBrains Mono', monospace;
 }
 
 .stat-label {
   font-size: 9px;
-  color: #999;
+  color: var(--text-muted);
   text-transform: uppercase;
   margin-top: 4px;
   display: block;
@@ -601,24 +708,28 @@ watch(() => props.systemLogs.length, () => {
 /* Step 03 Button */
 .action-btn {
   width: 100%;
-  background: #000;
-  color: #FFF;
-  border: none;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: #eff6ff;
+  border: 1px solid rgba(59, 130, 246, 0.24);
   padding: 14px;
-  border-radius: 4px;
+  border-radius: 14px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.2s;
+  transition: all 0.3s ease;
+  box-shadow: 0 14px 28px rgba(37, 99, 235, 0.2);
 }
 
 .action-btn:hover:not(:disabled) {
-  opacity: 0.8;
+  transform: translateY(-1px);
+  box-shadow: 0 18px 32px rgba(37, 99, 235, 0.24);
 }
 
 .action-btn:disabled {
-  background: #CCC;
+  background: rgba(148, 163, 184, 0.48);
+  border-color: rgba(148, 163, 184, 0.2);
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .progress-section {
@@ -626,46 +737,118 @@ watch(() => props.systemLogs.length, () => {
   align-items: center;
   gap: 10px;
   font-size: 12px;
-  color: #FF5722;
+  color: var(--accent-strong);
   margin-bottom: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(219, 234, 254, 0.6);
+  border: 1px solid rgba(59, 130, 246, 0.14);
 }
 
 .spinner-sm {
   width: 14px;
   height: 14px;
-  border: 2px solid #FFCCBC;
-  border-top-color: #FF5722;
+  border: 2px solid rgba(59, 130, 246, 0.2);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* System Logs */
-.system-logs {
-  background: #000;
-  color: #DDD;
-  padding: 16px;
+/* Floating System Terminal */
+.system-terminal {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  width: min(460px, calc(100% - 48px));
+  padding: 0 16px 16px;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-top: 1px solid rgba(59, 130, 246, 0.5);
+  border-radius: 18px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.3);
   font-family: 'JetBrains Mono', monospace;
-  border-top: 1px solid #222;
-  flex-shrink: 0;
+  z-index: 20;
+  overflow: hidden;
+  transition: all 0.3s ease;
 }
 
-.log-header {
+.system-terminal.is-live {
+  box-shadow:
+    0 20px 50px rgba(15, 23, 42, 0.3),
+    0 0 0 1px rgba(59, 130, 246, 0.08),
+    0 0 28px rgba(59, 130, 246, 0.14);
+}
+
+.terminal-progress-bar {
+  height: 2px;
+  margin: 0 -16px 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(96, 165, 250, 0.18) 14%, rgba(59, 130, 246, 0.95) 50%, rgba(96, 165, 250, 0.18) 86%, transparent 100%);
+  background-size: 180% 100%;
+  animation: terminal-flow 2.2s linear infinite;
+}
+
+@keyframes terminal-flow {
+  0% { background-position: 180% 0; }
+  100% { background-position: -180% 0; }
+}
+
+.terminal-header {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  margin-bottom: 10px;
+}
+
+.terminal-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.control-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dot-deep { background: #1e293b; }
+.dot-mid { background: #334155; }
+.dot-soft { background: #475569; }
+
+.terminal-label {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: rgba(226, 232, 240, 0.78);
+}
+
+.terminal-meta {
   display: flex;
   justify-content: space-between;
-  border-bottom: 1px solid #333;
-  padding-bottom: 8px;
+  gap: 12px;
+  padding-bottom: 10px;
   margin-bottom: 8px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
   font-size: 10px;
-  color: #888;
+}
+
+.terminal-project {
+  color: #93c5fd;
+}
+
+.terminal-phase {
+  color: rgba(148, 163, 184, 0.86);
 }
 
 .log-content {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  height: 80px; /* Approx 4 lines visible */
+  gap: 6px;
+  height: 188px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -675,24 +858,111 @@ watch(() => props.systemLogs.length, () => {
 }
 
 .log-content::-webkit-scrollbar-thumb {
-  background: #333;
+  background: rgba(71, 85, 105, 0.65);
   border-radius: 2px;
 }
 
 .log-line {
   font-size: 11px;
   display: flex;
-  gap: 12px;
+  align-items: flex-start;
+  gap: 10px;
   line-height: 1.5;
+  color: #94a3b8;
+  transition: all 0.3s ease;
 }
 
 .log-time {
-  color: #666;
-  min-width: 75px;
+  color: #64748b;
+  min-width: 78px;
 }
 
 .log-msg {
-  color: #CCC;
-  word-break: break-all;
+  color: #94a3b8;
+  word-break: break-word;
+  flex: 1;
+}
+
+.log-status {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.status-icon {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.log-status.success {
+  color: #22c55e;
+}
+
+.log-status.error {
+  color: #ef4444;
+}
+
+.log-status.running {
+  color: #60a5fa;
+}
+
+.spinner-icon {
+  animation: spin 1s linear infinite;
+}
+
+.log-line.current .log-time,
+.log-line.current .log-msg {
+  color: #60a5fa;
+}
+
+.log-line.error .log-time,
+.log-line.error .log-msg {
+  color: #fca5a5;
+}
+
+.terminal-cursor {
+  color: #60a5fa;
+  animation: terminal-caret 1s steps(1, end) infinite;
+}
+
+@keyframes terminal-caret {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
+@media (max-width: 768px) {
+  .scroll-container {
+    padding: 18px 18px 278px;
+  }
+
+  .system-terminal {
+    right: 18px;
+    bottom: 18px;
+    width: calc(100% - 36px);
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .terminal-meta,
+  .log-line {
+    font-size: 10px;
+  }
+
+  .log-time {
+    min-width: 68px;
+  }
 }
 </style>

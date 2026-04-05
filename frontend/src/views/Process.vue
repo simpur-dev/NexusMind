@@ -1,5 +1,16 @@
 <template>
   <div class="process-page">
+    <!-- 极光渐变背景层 -->
+    <div class="aurora-bg">
+      <div class="aurora-orb aurora-orb-1"></div>
+      <div class="aurora-orb aurora-orb-2"></div>
+      <div class="aurora-orb aurora-orb-3"></div>
+      <div class="aurora-orb aurora-orb-4"></div>
+    </div>
+    
+    <!-- 十字星点阵背景层 -->
+    <canvas ref="starCanvas" class="star-canvas"></canvas>
+    
     <!-- 顶部导航栏 -->
     <nav class="navbar">
       <div class="nav-brand" @click="goHome">NexusMind</div>
@@ -177,16 +188,57 @@
           <!-- 等待构建 -->
           <div v-else-if="currentPhase < 1" class="graph-waiting">
             <div class="waiting-icon">
-              <svg viewBox="0 0 100 100" class="network-icon">
-                <circle cx="50" cy="20" r="8" fill="none" stroke="#000" stroke-width="1.5"/>
-                <circle cx="20" cy="60" r="8" fill="none" stroke="#000" stroke-width="1.5"/>
-                <circle cx="80" cy="60" r="8" fill="none" stroke="#000" stroke-width="1.5"/>
-                <circle cx="50" cy="80" r="8" fill="none" stroke="#000" stroke-width="1.5"/>
-                <line x1="50" y1="28" x2="25" y2="54" stroke="#000" stroke-width="1"/>
-                <line x1="50" y1="28" x2="75" y2="54" stroke="#000" stroke-width="1"/>
-                <line x1="28" y1="60" x2="72" y2="60" stroke="#000" stroke-width="1" stroke-dasharray="4"/>
-                <line x1="50" y1="72" x2="26" y2="66" stroke="#000" stroke-width="1"/>
-                <line x1="50" y1="72" x2="74" y2="66" stroke="#000" stroke-width="1"/>
+              <!-- 科技风发光环形图标 -->
+              <svg viewBox="0 0 120 120" class="tech-ring-icon">
+                <defs>
+                  <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                    <feMerge>
+                      <feMergeNode in="coloredBlur"/>
+                      <feMergeNode in="SourceGraphic"/>
+                    </feMerge>
+                  </filter>
+                  <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+                    <stop offset="50%" style="stop-color:#06b6d4;stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+                  </linearGradient>
+                </defs>
+                <!-- 外圈 -->
+                <circle cx="60" cy="60" r="50" fill="none" stroke="url(#ringGradient)" stroke-width="2" 
+                        stroke-dasharray="10 5" filter="url(#glow)" class="ring-outer">
+                  <animateTransform attributeName="transform" type="rotate" from="0 60 60" to="360 60 60" dur="20s" repeatCount="indefinite"/>
+                </circle>
+                <!-- 中圈 -->
+                <circle cx="60" cy="60" r="38" fill="none" stroke="url(#ringGradient)" stroke-width="1.5" 
+                        stroke-dasharray="6 4" filter="url(#glow)" opacity="0.7" class="ring-middle">
+                  <animateTransform attributeName="transform" type="rotate" from="360 60 60" to="0 60 60" dur="15s" repeatCount="indefinite"/>
+                </circle>
+                <!-- 内圈 -->
+                <circle cx="60" cy="60" r="26" fill="none" stroke="url(#ringGradient)" stroke-width="1" 
+                        stroke-dasharray="4 3" filter="url(#glow)" opacity="0.5" class="ring-inner">
+                  <animateTransform attributeName="transform" type="rotate" from="0 60 60" to="360 60 60" dur="10s" repeatCount="indefinite"/>
+                </circle>
+                <!-- 中心光点 -->
+                <circle cx="60" cy="60" r="8" fill="url(#ringGradient)" filter="url(#glow)" class="core-pulse">
+                  <animate attributeName="r" values="8;10;8" dur="2s" repeatCount="indefinite"/>
+                  <animate attributeName="opacity" values="1;0.6;1" dur="2s" repeatCount="indefinite"/>
+                </circle>
+                <!-- 十字星 -->
+                <g stroke="url(#ringGradient)" stroke-width="1.5" filter="url(#glow)" opacity="0.6">
+                  <line x1="60" y1="20" x2="60" y2="40">
+                    <animate attributeName="opacity" values="0.3;1;0.3" dur="1.5s" repeatCount="indefinite"/>
+                  </line>
+                  <line x1="60" y1="80" x2="60" y2="100">
+                    <animate attributeName="opacity" values="0.3;1;0.3" dur="1.5s" repeatCount="indefinite" begin="0.2s"/>
+                  </line>
+                  <line x1="20" y1="60" x2="40" y2="60">
+                    <animate attributeName="opacity" values="0.3;1;0.3" dur="1.5s" repeatCount="indefinite" begin="0.4s"/>
+                  </line>
+                  <line x1="80" y1="60" x2="100" y2="60">
+                    <animate attributeName="opacity" values="0.3;1;0.3" dur="1.5s" repeatCount="indefinite" begin="0.6s"/>
+                  </line>
+                </g>
               </svg>
             </div>
             <p class="waiting-text">等待本体生成</p>
@@ -415,11 +467,16 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { generateOntology, getProject, buildGraph, getTaskStatus, getGraphData } from '../api/graph'
+import { createSimulation } from '../api/simulation'
 import { getPendingUpload, clearPendingUpload } from '../store/pendingUpload'
 import * as d3 from 'd3'
 
 const route = useRoute()
 const router = useRouter()
+
+// 十字星点阵画布引用
+const starCanvas = ref(null)
+let starAnimationId = null
 
 // 当前项目ID（可能从'new'变为实际ID）
 const currentProjectId = ref(route.params.projectId)
@@ -442,6 +499,115 @@ const graphSvg = ref(null)
 
 // 轮询定时器
 let pollTimer = null
+
+// 初始化十字星点阵动画
+const initStarCanvas = () => {
+  const canvas = starCanvas.value
+  if (!canvas) return
+  
+  const ctx = canvas.getContext('2d')
+  
+  // 设置画布尺寸
+  const resizeCanvas = () => {
+    const rect = canvas.getBoundingClientRect()
+    canvas.width = rect.width
+    canvas.height = rect.height
+  }
+  
+  resizeCanvas()
+  window.addEventListener('resize', resizeCanvas)
+  
+  // 十字星配置
+  const stars = []
+  const starCount = 80 // 十字星数量
+  
+  for (let i = 0; i < starCount; i++) {
+    stars.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      size: Math.random() * 2 + 1,
+      opacity: Math.random() * 0.5 + 0.1,
+      speed: Math.random() * 0.02 + 0.01,
+      angle: Math.random() * Math.PI / 2, // 45度基准
+      twinkleSpeed: Math.random() * 0.02 + 0.01,
+      twinkleOffset: Math.random() * Math.PI * 2
+    })
+  }
+  
+  // 绘制十字星
+  const drawStar = (star, time) => {
+    const twinkle = Math.sin(time * star.twinkleSpeed + star.twinkleOffset) * 0.3 + 0.7
+    const alpha = star.opacity * twinkle
+    
+    ctx.save()
+    ctx.translate(star.x, star.y)
+    ctx.rotate(star.angle)
+    
+    // 发光效果
+    ctx.shadowBlur = 10
+    ctx.shadowColor = `rgba(59, 130, 246, ${alpha})`
+    
+    ctx.strokeStyle = `rgba(147, 197, 253, ${alpha})`
+    ctx.lineWidth = star.size * 0.5
+    
+    // 横线
+    ctx.beginPath()
+    ctx.moveTo(-star.size * 3, 0)
+    ctx.lineTo(star.size * 3, 0)
+    ctx.stroke()
+    
+    // 竖线
+    ctx.beginPath()
+    ctx.moveTo(0, -star.size * 3)
+    ctx.lineTo(0, star.size * 3)
+    ctx.stroke()
+    
+    // 中心点
+    ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.8})`
+    ctx.beginPath()
+    ctx.arc(0, 0, star.size * 0.5, 0, Math.PI * 2)
+    ctx.fill()
+    
+    ctx.restore()
+  }
+  
+  // 动画循环
+  let animationTime = 0
+  const animate = () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    animationTime += 16 // 约60fps
+    
+    // 更新星星位置（缓慢漂移）
+    stars.forEach(star => {
+      star.x += Math.sin(animationTime * 0.0001 + star.twinkleOffset) * 0.3
+      star.y += Math.cos(animationTime * 0.0001 + star.twinkleOffset) * 0.3
+      
+      // 边界检查
+      if (star.x < -20) star.x = canvas.width + 20
+      if (star.x > canvas.width + 20) star.x = -20
+      if (star.y < -20) star.y = canvas.height + 20
+      if (star.y > canvas.height + 20) star.y = -20
+      
+      // 旋转
+      star.angle += star.speed * 0.01
+    })
+    
+    // 绘制所有星星
+    stars.forEach(star => drawStar(star, animationTime))
+    
+    starAnimationId = requestAnimationFrame(animate)
+  }
+  
+  animate()
+}
+
+// 停止十字星动画
+const stopStarAnimation = () => {
+  if (starAnimationId) {
+    cancelAnimationFrame(starAnimationId)
+    starAnimationId = null
+  }
+}
 
 // 计算属性
 const statusClass = computed(() => {
@@ -480,9 +646,29 @@ const goHome = () => {
   router.push('/')
 }
 
-const goToNextStep = () => {
-  // TODO: 进入环境搭建步骤
-  alert('环境搭建功能开发中...')
+const goToNextStep = async () => {
+  if (!projectData.value?.project_id || !projectData.value?.graph_id) {
+    alert('缺少项目或图谱信息，请等待图谱构建完成')
+    return
+  }
+
+  try {
+    const res = await createSimulation({
+      project_id: projectData.value.project_id,
+      graph_id: projectData.value.graph_id,
+      enable_twitter: true,
+      enable_reddit: true
+    })
+
+    if (res.success && res.data?.simulation_id) {
+      router.push({ name: 'Simulation', params: { simulationId: res.data.simulation_id } })
+    } else {
+      alert('创建模拟失败: ' + (res.error || '未知错误'))
+    }
+  } catch (err) {
+    console.error('创建模拟异常:', err)
+    alert('创建模拟异常: ' + err.message)
+  }
 }
 
 const toggleFullScreen = () => {
@@ -1082,11 +1268,13 @@ watch(graphData, () => {
 // 生命周期
 onMounted(() => {
   initProject()
+  initStarCanvas()
 })
 
 onUnmounted(() => {
   stopPolling()
   stopGraphPolling()
+  stopStarAnimation()
 })
 </script>
 
@@ -1103,9 +1291,10 @@ onUnmounted(() => {
 
 .process-page {
   min-height: 100vh;
-  background: var(--white);
+  background: linear-gradient(135deg, #0a0a1a 0%, #0d1525 50%, #0a1628 100%);
   font-family: 'JetBrains Mono', 'Noto Sans SC', monospace;
   overflow: hidden; /* Prevent body scroll in fullscreen */
+  position: relative;
 }
 
 /* 导航栏 */
@@ -1115,10 +1304,12 @@ onUnmounted(() => {
   justify-content: space-between;
   padding: 0 24px;
   height: 56px;
-  background: #000;
+  background: rgba(10, 10, 26, 0.9);
+  backdrop-filter: blur(20px);
   color: #fff;
-  z-index: 10;
+  z-index: 100;
   position: relative;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .nav-brand {
@@ -1126,11 +1317,16 @@ onUnmounted(() => {
   font-weight: 700;
   letter-spacing: 0.1em;
   cursor: pointer;
-  transition: opacity 0.2s;
+  transition: all 0.2s;
+  background: linear-gradient(135deg, #3b82f6, #06b6d4);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .nav-brand:hover {
   opacity: 0.8;
+  transform: translateX(2px);
 }
 
 .nav-center {
@@ -1143,19 +1339,20 @@ onUnmounted(() => {
 }
 
 .step-badge {
-  background: #FF6B35;
+  background: linear-gradient(135deg, #3b82f6, #06b6d4);
   color: #fff;
   padding: 2px 8px;
   font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   border-radius: 2px;
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
 }
 
 .step-name {
   font-size: 0.85rem;
   letter-spacing: 0.05em;
-  color: #fff;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .nav-status {
@@ -1167,21 +1364,24 @@ onUnmounted(() => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #666;
+  background: rgba(255, 255, 255, 0.3);
   margin-right: 8px;
 }
 
 .status-dot.processing {
-  background: #FF6B35;
+  background: #3b82f6;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.8);
   animation: pulse 1.5s infinite;
 }
 
 .status-dot.completed {
-  background: #1A936F;
+  background: #10b981;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.8);
 }
 
 .status-dot.error {
-  background: #C5283D;
+  background: #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.8);
 }
 
 @keyframes pulse {
@@ -1191,7 +1391,7 @@ onUnmounted(() => {
 
 .status-text {
   font-size: 0.75rem;
-  color: #999;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 /* 主内容区 */
@@ -1207,10 +1407,12 @@ onUnmounted(() => {
   flex: none; /* Fixed width initially */
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #E0E0E0;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
   transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  background: #fff;
+  background: transparent;
   z-index: 5;
+  position: relative;
+  overflow: hidden;
 }
 
 .left-panel.full-screen {
@@ -1218,14 +1420,98 @@ onUnmounted(() => {
   border-right: none;
 }
 
+/* 极光渐变背景 */
+.aurora-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.aurora-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.4;
+  animation: aurora-float 20s ease-in-out infinite;
+}
+
+.aurora-orb-1 {
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.5) 0%, rgba(59, 130, 246, 0) 70%);
+  top: -10%;
+  left: -15%;
+  animation-delay: 0s;
+}
+
+.aurora-orb-2 {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.5) 0%, rgba(6, 182, 212, 0) 70%);
+  bottom: -10%;
+  right: -10%;
+  animation-delay: -5s;
+}
+
+.aurora-orb-3 {
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.4) 0%, rgba(139, 92, 246, 0) 70%);
+  top: 40%;
+  left: 30%;
+  animation-delay: -10s;
+}
+
+.aurora-orb-4 {
+  width: 350px;
+  height: 350px;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.35) 0%, rgba(34, 211, 238, 0) 70%);
+  top: 20%;
+  right: 20%;
+  animation-delay: -15s;
+}
+
+@keyframes aurora-float {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(30px, -30px) scale(1.05);
+  }
+  50% {
+    transform: translate(-20px, 20px) scale(0.95);
+  }
+  75% {
+    transform: translate(20px, 10px) scale(1.02);
+  }
+}
+
+/* 十字星点阵画布 */
+.star-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 1;
+}
+
 .panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 12px 24px;
-  border-bottom: 1px solid #E0E0E0;
-  background: #fff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(10, 10, 26, 0.8);
+  backdrop-filter: blur(20px);
   height: 50px;
+  z-index: 10;
 }
 
 .header-left {
@@ -1235,7 +1521,7 @@ onUnmounted(() => {
 }
 
 .header-deco {
-  color: #FF6B35;
+  color: #3b82f6;
   font-size: 0.8rem;
 }
 
@@ -1243,6 +1529,7 @@ onUnmounted(() => {
   font-size: 0.85rem;
   font-weight: 600;
   letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .header-right {
@@ -1250,7 +1537,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 16px;
   font-size: 0.75rem;
-  color: #666;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .stat-item {
@@ -1261,11 +1548,11 @@ onUnmounted(() => {
 
 .stat-val {
   font-weight: 600;
-  color: #333;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .stat-divider {
-  color: #eee;
+  color: rgba(255, 255, 255, 0.2);
 }
 
 .action-buttons {
@@ -1316,6 +1603,7 @@ onUnmounted(() => {
   flex: 1;
   position: relative;
   overflow: hidden;
+  background: transparent;
 }
 
 .graph-loading,
@@ -1326,71 +1614,105 @@ onUnmounted(() => {
   left: 50%;
   transform: translate(-50%, -50%);
   text-align: center;
+  z-index: 50;
 }
 
+/* 科技风发光环形加载动画 */
 .loading-animation {
   position: relative;
-  width: 80px;
-  height: 80px;
-  margin: 0 auto 20px;
+  width: 120px;
+  height: 120px;
+  margin: 0 auto 24px;
 }
 
 .loading-ring {
   position: absolute;
-  border: 2px solid transparent;
   border-radius: 50%;
-  animation: ring-rotate 1.5s linear infinite;
+  animation: ring-rotate 2s linear infinite;
 }
 
 .loading-ring:nth-child(1) {
-  width: 80px;
-  height: 80px;
-  border-top-color: #000;
+  width: 120px;
+  height: 120px;
+  top: 0;
+  left: 0;
+  border: 3px solid transparent;
+  border-top-color: rgba(59, 130, 246, 0.8);
+  box-shadow: 0 0 30px rgba(59, 130, 246, 0.5), inset 0 0 30px rgba(59, 130, 246, 0.1);
 }
 
 .loading-ring:nth-child(2) {
-  width: 60px;
-  height: 60px;
-  top: 10px;
-  left: 10px;
-  border-right-color: #FF6B35;
-  animation-delay: 0.2s;
+  width: 90px;
+  height: 90px;
+  top: 15px;
+  left: 15px;
+  border: 2px solid transparent;
+  border-right-color: rgba(6, 182, 212, 0.8);
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.4);
+  animation-direction: reverse;
+  animation-duration: 1.5s;
 }
 
 .loading-ring:nth-child(3) {
-  width: 40px;
-  height: 40px;
-  top: 20px;
-  left: 20px;
-  border-bottom-color: #666;
-  animation-delay: 0.4s;
+  width: 60px;
+  height: 60px;
+  top: 30px;
+  left: 30px;
+  border: 2px solid transparent;
+  border-bottom-color: rgba(139, 92, 246, 0.7);
+  box-shadow: 0 0 15px rgba(139, 92, 246, 0.3);
+  animation-duration: 1s;
+}
+
+.loading-ring:nth-child(4) {
+  width: 30px;
+  height: 30px;
+  top: 45px;
+  left: 45px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.8) 0%, rgba(6, 182, 212, 0.4) 100%);
+  border: none;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.6), 0 0 40px rgba(6, 182, 212, 0.4);
+  animation: pulse-glow 1s ease-in-out infinite;
 }
 
 @keyframes ring-rotate {
   to { transform: rotate(360deg); }
 }
 
+@keyframes pulse-glow {
+  0%, 100% { 
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% { 
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+}
+
 .loading-text,
 .waiting-text {
-  font-size: 0.9rem;
-  color: #333;
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.9);
   margin: 0 0 8px;
+  font-weight: 500;
+  text-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
 }
 
 .waiting-hint {
-  font-size: 0.8rem;
-  color: #999;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.5);
   margin: 0;
 }
 
 .waiting-icon {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
-.network-icon {
-  width: 100px;
-  height: 100px;
-  opacity: 0.6;
+.tech-ring-icon {
+  width: 120px;
+  height: 120px;
+  filter: drop-shadow(0 0 20px rgba(59, 130, 246, 0.5));
 }
 
 .graph-view {
@@ -1647,8 +1969,9 @@ onUnmounted(() => {
   flex-wrap: wrap;
   gap: 16px;
   padding: 12px 24px;
-  border-top: 1px solid #E0E0E0;
-  background: #FAFAFA;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(10, 10, 26, 0.6);
+  backdrop-filter: blur(10px);
 }
 
 .legend-item {
@@ -1662,14 +1985,15 @@ onUnmounted(() => {
   width: 10px;
   height: 10px;
   border-radius: 50%;
+  box-shadow: 0 0 10px currentColor;
 }
 
 .legend-label {
-  color: #333;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .legend-count {
-  color: #999;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 /* 右侧面板 - 50% default */
@@ -1678,7 +2002,8 @@ onUnmounted(() => {
   flex: none;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: rgba(10, 10, 26, 0.7);
+  backdrop-filter: blur(10px);
   transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, transform 0.3s ease;
   overflow: hidden;
   opacity: 1;
@@ -1692,7 +2017,8 @@ onUnmounted(() => {
 }
 
 .right-panel .panel-header.dark-header {
-  background: #000;
+  background: rgba(10, 10, 26, 0.9);
+  backdrop-filter: blur(20px);
   color: #fff;
   border-bottom: none;
 }
@@ -1707,14 +2033,19 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   padding: 24px;
+  background: transparent;
 }
 
 /* 流程阶段 */
 .process-phase {
   margin-bottom: 24px;
-  border: 1px solid #E0E0E0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
   opacity: 0.5;
   transition: all 0.3s;
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 .process-phase.active,
@@ -1723,11 +2054,13 @@ onUnmounted(() => {
 }
 
 .process-phase.active {
-  border-color: #FF6B35;
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 30px rgba(59, 130, 246, 0.2);
 }
 
 .process-phase.completed {
-  border-color: #1A936F;
+  border-color: rgba(16, 185, 129, 0.5);
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
 }
 
 .phase-header {
@@ -1735,31 +2068,33 @@ onUnmounted(() => {
   align-items: flex-start;
   gap: 16px;
   padding: 16px;
-  background: #FAFAFA;
-  border-bottom: 1px solid #E0E0E0;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .process-phase.active .phase-header {
-  background: #FFF5F2;
+  background: rgba(59, 130, 246, 0.1);
 }
 
 .process-phase.completed .phase-header {
-  background: #F2FAF6;
+  background: rgba(16, 185, 129, 0.08);
 }
 
 .phase-num {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #ddd;
+  color: rgba(255, 255, 255, 0.2);
   line-height: 1;
 }
 
 .process-phase.active .phase-num {
-  color: #FF6B35;
+  color: #3b82f6;
+  text-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
 }
 
 .process-phase.completed .phase-num {
-  color: #1A936F;
+  color: #10b981;
+  text-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
 }
 
 .phase-info {
@@ -1770,34 +2105,39 @@ onUnmounted(() => {
   font-size: 1rem;
   font-weight: 600;
   margin-bottom: 4px;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .phase-api {
   font-size: 0.75rem;
-  color: #999;
+  color: rgba(255, 255, 255, 0.4);
   font-family: 'JetBrains Mono', monospace;
 }
 
 .phase-status {
   font-size: 0.75rem;
   padding: 4px 10px;
-  background: #eee;
-  color: #666;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.6);
+  border-radius: 4px;
 }
 
 .phase-status.active {
-  background: #FF6B35;
-  color: #fff;
+  background: rgba(59, 130, 246, 0.3);
+  color: #60a5fa;
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
 }
 
 .phase-status.completed {
-  background: #1A936F;
-  color: #fff;
+  background: rgba(16, 185, 129, 0.3);
+  color: #34d399;
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
 }
 
 /* 阶段详情 */
 .phase-detail {
   padding: 16px;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 /* 实体标签 */
@@ -1810,9 +2150,10 @@ onUnmounted(() => {
 .entity-tag {
   font-size: 0.75rem;
   padding: 4px 10px;
-  background: #F5F5F5;
-  border: 1px solid #E0E0E0;
-  color: #333;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.8);
+  border-radius: 4px;
 }
 
 /* 关系列表 */
@@ -1825,7 +2166,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 6px 0;
-  border-bottom: 1px dashed #eee;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .relation-item:last-child {
@@ -1834,21 +2176,21 @@ onUnmounted(() => {
 
 .rel-source,
 .rel-target {
-  color: #333;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .rel-arrow {
-  color: #ccc;
+  color: rgba(255, 255, 255, 0.3);
 }
 
 .rel-name {
-  color: #FF6B35;
+  color: #60a5fa;
   font-weight: 500;
 }
 
 .relation-more {
   padding-top: 8px;
-  color: #999;
+  color: rgba(255, 255, 255, 0.4);
   font-size: 0.75rem;
 }
 
@@ -1858,49 +2200,53 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   padding: 12px;
-  background: #FFF5F2;
-  border: 1px solid #FFE0D6;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 8px;
 }
 
 .progress-spinner {
   width: 20px;
   height: 20px;
-  border: 2px solid #FFE0D6;
-  border-top-color: #FF6B35;
+  border: 2px solid rgba(59, 130, 246, 0.2);
+  border-top-color: #3b82f6;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
 
 .progress-text {
   font-size: 0.85rem;
-  color: #333;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 /* 等待状态 */
 .waiting-state {
   padding: 16px;
-  background: #F9F9F9;
-  border: 1px dashed #E0E0E0;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
   text-align: center;
+  border-radius: 8px;
 }
 
 .waiting-hint {
   font-size: 0.85rem;
-  color: #999;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 /* 进度条 */
 .progress-bar {
   height: 6px;
-  background: #E0E0E0;
+  background: rgba(255, 255, 255, 0.1);
   margin-bottom: 8px;
   overflow: hidden;
+  border-radius: 3px;
 }
 
 .progress-fill {
   height: 100%;
-  background: #FF6B35;
+  background: linear-gradient(90deg, #3b82f6, #06b6d4);
   transition: width 0.3s;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
 }
 
 .progress-info {
@@ -1910,11 +2256,11 @@ onUnmounted(() => {
 }
 
 .progress-message {
-  color: #666;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .progress-percent {
-  color: #FF6B35;
+  color: #60a5fa;
   font-weight: 600;
 }
 
@@ -1928,20 +2274,22 @@ onUnmounted(() => {
   flex: 1;
   text-align: center;
   padding: 12px;
-  background: #F5F5F5;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
 }
 
 .result-value {
   display: block;
   font-size: 1.5rem;
   font-weight: 700;
-  color: #000;
+  color: rgba(255, 255, 255, 0.95);
   margin-bottom: 4px;
 }
 
 .result-label {
   font-size: 0.7rem;
-  color: #999;
+  color: rgba(255, 255, 255, 0.4);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -1950,7 +2298,7 @@ onUnmounted(() => {
 .next-step-section {
   margin-top: 24px;
   padding-top: 24px;
-  border-top: 1px solid #E0E0E0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .next-step-btn {
@@ -1960,23 +2308,27 @@ onUnmounted(() => {
   justify-content: center;
   gap: 10px;
   padding: 16px;
-  background: #000;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.9) 0%, rgba(6, 182, 212, 0.9) 100%);
   color: #fff;
   border: none;
   font-size: 1rem;
   font-weight: 500;
   letter-spacing: 0.05em;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.3);
 }
 
 .next-step-btn:hover:not(:disabled) {
-  background: #FF6B35;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(59, 130, 246, 0.5);
 }
 
 .next-step-btn:disabled {
-  background: #ccc;
+  background: rgba(255, 255, 255, 0.1);
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .btn-arrow {
@@ -1985,8 +2337,9 @@ onUnmounted(() => {
 
 /* 项目信息面板 */
 .project-panel {
-  border-top: 1px solid #E0E0E0;
-  background: #FAFAFA;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(10px);
 }
 
 .project-header {
@@ -1994,16 +2347,17 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   padding: 12px 24px;
-  border-bottom: 1px solid #E0E0E0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .project-icon {
-  color: #FF6B35;
+  color: #3b82f6;
 }
 
 .project-title {
   font-size: 0.85rem;
   font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .project-details {
@@ -2015,7 +2369,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: flex-start;
   padding: 8px 0;
-  border-bottom: 1px dashed #E0E0E0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
   font-size: 0.8rem;
 }
 
@@ -2024,12 +2378,12 @@ onUnmounted(() => {
 }
 
 .item-label {
-  color: #999;
+  color: rgba(255, 255, 255, 0.5);
   flex-shrink: 0;
 }
 
 .item-value {
-  color: #333;
+  color: rgba(255, 255, 255, 0.8);
   text-align: right;
   max-width: 60%;
   word-break: break-all;
@@ -2038,7 +2392,7 @@ onUnmounted(() => {
 .item-value.code {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.75rem;
-  color: #666;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 /* 响应式 */

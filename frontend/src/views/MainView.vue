@@ -138,9 +138,25 @@ const statusText = computed(() => {
 })
 
 // --- Helpers ---
-const addLog = (msg) => {
+const inferLogStatus = (msg = '', explicitStatus) => {
+  if (explicitStatus) return explicitStatus
+
+  const normalized = String(msg).toLowerCase()
+
+  if (/(error|failed|exception|no pending)/.test(normalized)) {
+    return 'error'
+  }
+
+  if (/(success|completed|loaded successfully|loaded\.|stopped)/.test(normalized)) {
+    return 'success'
+  }
+
+  return 'info'
+}
+
+const addLog = (msg, status) => {
   const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.' + new Date().getMilliseconds().toString().padStart(3, '0')
-  systemLogs.value.push({ time, msg })
+  systemLogs.value.push({ time, msg, status: inferLogStatus(msg, status) })
   // Keep last 100 logs
   if (systemLogs.value.length > 100) {
     systemLogs.value.shift()
@@ -409,20 +425,30 @@ onUnmounted(() => {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #FFF;
+  background:
+    radial-gradient(circle at top left, rgba(147, 197, 253, 0.28), transparent 24%),
+    radial-gradient(circle at top right, rgba(191, 219, 254, 0.38), transparent 26%),
+    linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%);
   overflow: hidden;
   font-family: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
+  --accent: #3b82f6;
+  --accent-strong: #2563eb;
+  --accent-soft: rgba(59, 130, 246, 0.12);
+  --line: rgba(148, 163, 184, 0.18);
+  --shadow-soft: 0 18px 40px rgba(15, 23, 42, 0.08);
 }
 
 /* Header */
 .app-header {
-  height: 60px;
-  border-bottom: 1px solid #EAEAEA;
+  height: 64px;
+  border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  background: #FFF;
+  background: rgba(255, 255, 255, 0.74);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.04);
   z-index: 100;
   position: relative;
 }
@@ -439,14 +465,17 @@ onUnmounted(() => {
   font-size: 18px;
   letter-spacing: 1px;
   cursor: pointer;
+  color: #0f172a;
 }
 
 .view-switcher {
   display: flex;
-  background: #F5F5F5;
+  background: rgba(255, 255, 255, 0.72);
   padding: 4px;
-  border-radius: 6px;
+  border-radius: 999px;
   gap: 4px;
+  border: 1px solid var(--line);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 .switch-btn {
@@ -455,16 +484,22 @@ onUnmounted(() => {
   padding: 6px 16px;
   font-size: 12px;
   font-weight: 600;
-  color: #666;
-  border-radius: 4px;
+  color: #64748b;
+  border-radius: 999px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s ease;
+}
+
+.switch-btn:hover {
+  color: #0f172a;
 }
 
 .switch-btn.active {
-  background: #FFF;
-  color: #000;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  background: linear-gradient(135deg, #ffffff 0%, #eff6ff 100%);
+  color: var(--accent-strong);
+  box-shadow:
+    0 8px 18px rgba(37, 99, 235, 0.12),
+    inset 0 0 0 1px rgba(59, 130, 246, 0.08);
 }
 
 .status-indicator {
@@ -472,8 +507,13 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #666;
+  color: #475569;
   font-weight: 500;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
 }
 
 .header-right {
@@ -492,28 +532,28 @@ onUnmounted(() => {
 .step-num {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
-  color: #999;
+  color: #64748b;
 }
 
 .step-name {
   font-weight: 700;
-  color: #000;
+  color: #0f172a;
 }
 
 .step-divider {
   width: 1px;
   height: 14px;
-  background-color: #E0E0E0;
+  background-color: var(--line);
 }
 
 .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #CCC;
+  background: #cbd5e1;
 }
 
-.status-indicator.processing .dot { background: #FF5722; animation: pulse 1s infinite; }
+.status-indicator.processing .dot { background: var(--accent); animation: pulse 1s infinite; }
 .status-indicator.completed .dot { background: #4CAF50; }
 .status-indicator.error .dot { background: #F44336; }
 
@@ -525,6 +565,7 @@ onUnmounted(() => {
   display: flex;
   position: relative;
   overflow: hidden;
+  background: transparent;
 }
 
 .panel-wrapper {
@@ -532,9 +573,10 @@ onUnmounted(() => {
   overflow: hidden;
   transition: width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.3s ease, transform 0.3s ease;
   will-change: width, opacity, transform;
+  background: rgba(255, 255, 255, 0.48);
 }
 
 .panel-wrapper.left {
-  border-right: 1px solid #EAEAEA;
+  border-right: 1px solid var(--line);
 }
 </style>
