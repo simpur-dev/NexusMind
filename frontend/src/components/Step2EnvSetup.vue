@@ -50,7 +50,7 @@
           </div>
           <div class="step-status">
             <span v-if="phase > 1" class="badge success">已完成</span>
-            <span v-else-if="phase === 1" class="badge processing">{{ prepareProgress }}%</span>
+            <span v-else-if="phase === 1" class="badge processing">进行中</span>
             <span v-else class="badge pending">等待</span>
           </div>
         </div>
@@ -1097,10 +1097,11 @@ onUnmounted(() => {
 
 <style scoped>
 .env-setup-panel {
-  height: 100%;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  background: #FAFAFA;
+  overflow: hidden;
+  background: transparent;
   font-family: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
 }
 
@@ -1125,8 +1126,8 @@ onUnmounted(() => {
 }
 
 .step-card.active {
-  border-color: #FF5722;
-  box-shadow: 0 4px 12px rgba(255, 87, 34, 0.08);
+  border-color: #73A8B9;
+  box-shadow: 0 4px 12px rgba(115, 168, 185, 0.12);
 }
 
 .card-header {
@@ -1168,10 +1169,10 @@ onUnmounted(() => {
   text-transform: uppercase;
 }
 
-.badge.success { background: #E8F5E9; color: #2E7D32; }
-.badge.processing { background: #FF5722; color: #FFF; }
-.badge.pending { background: #F5F5F5; color: #999; }
-.badge.accent { background: #E3F2FD; color: #1565C0; }
+.badge.success { background: rgba(115, 168, 185, 0.15); color: #3A5A6A; border: 1px solid rgba(115, 168, 185, 0.3); }
+.badge.processing { background: #73A8B9; color: #fff; }
+.badge.pending { background: rgba(115, 168, 185, 0.1); color: #73A8B9; }
+.badge.accent { background: rgba(115, 168, 185, 0.15); color: #3A5A6A; }
 
 .card-content {
   /* No extra padding - uses step-card's padding */
@@ -1341,19 +1342,26 @@ onUnmounted(() => {
   max-height: 320px;
   overflow-y: auto;
   padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: #73a8b9 #e6f2f7;
 }
 
 .profiles-list::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
+}
+
+.profiles-list::-webkit-scrollbar-track {
+  background: #e6f2f7;
+  border-radius: 3px;
 }
 
 .profiles-list::-webkit-scrollbar-thumb {
-  background: #DDD;
-  border-radius: 2px;
+  background: #73a8b9;
+  border-radius: 3px;
 }
 
 .profiles-list::-webkit-scrollbar-thumb:hover {
-  background: #CCC;
+  background: #5c9eaf;
 }
 
 .profile-card {
@@ -1551,19 +1559,26 @@ onUnmounted(() => {
   max-height: 400px;
   overflow-y: auto;
   padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: #73a8b9 #e6f2f7;
 }
 
 .agents-cards::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
+}
+
+.agents-cards::-webkit-scrollbar-track {
+  background: #e6f2f7;
+  border-radius: 3px;
 }
 
 .agents-cards::-webkit-scrollbar-thumb {
-  background: #DDD;
-  border-radius: 2px;
+  background: #73a8b9;
+  border-radius: 3px;
 }
 
 .agents-cards::-webkit-scrollbar-thumb:hover {
-  background: #CCC;
+  background: #5c9eaf;
 }
 
 .agent-card {
@@ -2046,13 +2061,27 @@ onUnmounted(() => {
   border-radius: 0;
 }
 
+.persona-content {
+  scrollbar-width: thin;
+  scrollbar-color: #73a8b9 #e6f2f7;
+}
+
 .persona-content::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
+}
+
+.persona-content::-webkit-scrollbar-track {
+  background: #e6f2f7;
+  border-radius: 3px;
 }
 
 .persona-content::-webkit-scrollbar-thumb {
-  background: #DDD;
-  border-radius: 2px;
+  background: #73a8b9;
+  border-radius: 3px;
+}
+
+.persona-content::-webkit-scrollbar-thumb:hover {
+  background: #5c9eaf;
 }
 
 .section-persona {

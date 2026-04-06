@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="home-container">
     <nav class="navbar">
       <div class="nav-brand">
@@ -477,44 +477,36 @@ const startSimulation = () => {
 
 :global(html) {
   scrollbar-width: thin;
-  scrollbar-color: rgba(131, 231, 255, 0.72) rgba(8, 20, 36, 0.88);
+  scrollbar-color: #73a8b9 #e6f2f7;
 }
 
 :global(body) {
   scrollbar-width: thin;
-  scrollbar-color: rgba(131, 231, 255, 0.72) rgba(8, 20, 36, 0.88);
+  scrollbar-color: #73a8b9 #e6f2f7;
 }
 
 :global(html::-webkit-scrollbar),
 :global(body::-webkit-scrollbar) {
-  width: 12px;
+  width: 10px;
 }
 
 :global(html::-webkit-scrollbar-track),
 :global(body::-webkit-scrollbar-track) {
-  background:
-    linear-gradient(180deg, rgba(6, 17, 31, 0.96), rgba(10, 26, 46, 0.92));
-  border-left: 1px solid rgba(126, 236, 255, 0.08);
+  background: #e6f2f7;
+  border-left: 1px solid rgba(115, 168, 185, 0.12);
 }
 
 :global(html::-webkit-scrollbar-thumb),
 :global(body::-webkit-scrollbar-thumb) {
-  background:
-    linear-gradient(180deg, rgba(174, 245, 255, 0.92), rgba(83, 203, 255, 0.88) 34%, rgba(33, 110, 214, 0.92) 100%);
-  border: 2px solid rgba(7, 20, 36, 0.96);
+  background: linear-gradient(180deg, #8ebdcb, #73a8b9);
+  border: 2px solid #e6f2f7;
   border-radius: 999px;
-  box-shadow:
-    inset 0 0 0 1px rgba(229, 252, 255, 0.18),
-    0 0 16px rgba(90, 205, 255, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(248, 250, 252, 0.5);
 }
 
 :global(html::-webkit-scrollbar-thumb:hover),
 :global(body::-webkit-scrollbar-thumb:hover) {
-  background:
-    linear-gradient(180deg, rgba(216, 252, 255, 0.96), rgba(109, 221, 255, 0.92) 34%, rgba(47, 127, 228, 0.96) 100%);
-  box-shadow:
-    inset 0 0 0 1px rgba(240, 253, 255, 0.22),
-    0 0 20px rgba(102, 214, 255, 0.3);
+  background: linear-gradient(180deg, #73a8b9, #5c9eaf);
 }
 
 .navbar {

@@ -1,15 +1,44 @@
 <template>
   <div class="report-panel">
-    <!-- Main Split Layout -->
-    <div class="main-split-layout">
+    <div class="step4-shell">
+      <aside class="step4-sidebar" aria-label="阶段导航">
+        <p class="sidebar-brand">NEXUSMIND 智能系统</p>
+        <h2 class="sidebar-title">未来预测报告</h2>
+        <p class="sidebar-desc">基于模拟结果由智能体生成结构化预测报告，进度与章节将随生成过程更新。</p>
+        <div class="phase-card">
+          <span class="phase-num mono">{{ currentPhaseBadge.num }}</span>
+          <div class="phase-text">
+            <span class="phase-label">当前阶段</span>
+            <span class="phase-name">{{ currentPhaseBadge.label }}</span>
+          </div>
+        </div>
+        <nav class="phase-stepper">
+          <div
+            v-for="(st, i) in sidebarStages"
+            :key="i"
+            class="phase-step"
+            :class="'phase-step--' + st.state"
+          >
+            <div class="phase-step-track">
+              <span class="phase-step-dot"></span>
+              <span v-if="i < sidebarStages.length - 1" class="phase-step-line"></span>
+            </div>
+            <span class="phase-step-label">{{ st.label }}</span>
+          </div>
+        </nav>
+      </aside>
+
+      <div class="step4-workspace">
+        <!-- Main Split Layout -->
+        <div class="main-split-layout">
       <!-- LEFT PANEL: Report Style -->
-      <div class="left-panel report-style" ref="leftPanel">
+      <div class="left-panel report-style content-card" ref="leftPanel">
         <div v-if="reportOutline" class="report-content-wrapper">
           <!-- Report Header -->
           <div class="report-header-block">
             <div class="report-meta">
-              <span class="report-tag">Prediction Report</span>
-              <span class="report-id">ID: {{ reportId || 'REF-2024-X92' }}</span>
+              <span class="report-tag">预测报告</span>
+              <span class="report-id">编号 {{ reportId || '—' }}</span>
             </div>
             <h1 class="main-title">{{ reportOutline.title }}</h1>
             <p class="sub-title">{{ reportOutline.summary }}</p>
@@ -72,12 +101,12 @@
             <div class="waiting-ring"></div>
             <div class="waiting-ring"></div>
           </div>
-          <span class="waiting-text">Waiting for Report Agent...</span>
+          <span class="waiting-text">正在连接报告智能体…</span>
         </div>
       </div>
 
       <!-- RIGHT PANEL: Workflow Timeline -->
-      <div class="right-panel" ref="rightPanel">
+      <div class="right-panel content-card" ref="rightPanel">
         <div class="panel-header" :class="`panel-header--${activeStep.status}`" v-if="!isComplete">
           <span class="header-dot" v-if="activeStep.status === 'active'"></span>
           <span class="header-index mono">{{ activeStep.noLabel }}</span>
@@ -89,15 +118,15 @@
         <div class="workflow-overview" v-if="agentLogs.length > 0 || reportOutline">
           <div class="workflow-metrics">
             <div class="metric">
-              <span class="metric-label">Sections</span>
+              <span class="metric-label">章节</span>
               <span class="metric-value mono">{{ completedSections }}/{{ totalSections }}</span>
             </div>
             <div class="metric">
-              <span class="metric-label">Elapsed</span>
+              <span class="metric-label">耗时</span>
               <span class="metric-value mono">{{ formatElapsedTime }}</span>
             </div>
             <div class="metric">
-              <span class="metric-label">Tools</span>
+              <span class="metric-label">工具调用</span>
               <span class="metric-value mono">{{ totalToolCalls }}</span>
             </div>
             <div class="metric metric-right">
@@ -166,11 +195,11 @@
                   <!-- Report Start -->
                   <template v-if="log.action === 'report_start'">
                     <div class="info-row">
-                      <span class="info-key">Simulation</span>
+                      <span class="info-key">模拟</span>
                       <span class="info-val mono">{{ log.details?.simulation_id }}</span>
                     </div>
                     <div class="info-row" v-if="log.details?.simulation_requirement">
-                      <span class="info-key">Requirement</span>
+                      <span class="info-key">需求</span>
                       <span class="info-val">{{ log.details.simulation_requirement }}</span>
                     </div>
                   </template>
@@ -182,7 +211,7 @@
                   <template v-if="log.action === 'planning_complete'">
                     <div class="status-message success">{{ log.details?.message }}</div>
                     <div class="outline-badge" v-if="log.details?.outline">
-                      {{ log.details.outline.sections?.length || 0 }} sections planned
+                      已规划 {{ log.details.outline.sections?.length || 0 }} 个章节
                     </div>
                   </template>
 
@@ -307,12 +336,12 @@
                   <!-- LLM Response -->
                   <template v-if="log.action === 'llm_response'">
                     <div class="llm-meta">
-                      <span class="meta-tag">Iteration {{ log.details?.iteration }}</span>
+                      <span class="meta-tag">轮次 {{ log.details?.iteration }}</span>
                       <span class="meta-tag" :class="{ active: log.details?.has_tool_calls }">
-                        Tools: {{ log.details?.has_tool_calls ? 'Yes' : 'No' }}
+                        工具 {{ log.details?.has_tool_calls ? '是' : '否' }}
                       </span>
                       <span class="meta-tag" :class="{ active: log.details?.has_final_answer, 'final-answer': log.details?.has_final_answer }">
-                        Final: {{ log.details?.has_final_answer ? 'Yes' : 'No' }}
+                        终答 {{ log.details?.has_final_answer ? '是' : '否' }}
                       </span>
                     </div>
                     <!-- 当是最终答案时，显示特殊提示 -->
@@ -320,7 +349,7 @@
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="20 6 9 17 4 12"></polyline>
                       </svg>
-                      <span>Section "{{ log.section_title }}" content generated</span>
+                      <span>章节「{{ log.section_title }}」内容已生成</span>
                     </div>
                     <div v-if="expandedLogs.has(log.timestamp) && log.details?.response" class="llm-content">
                       <pre>{{ log.details.response }}</pre>
@@ -334,7 +363,7 @@
                         <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                         <polyline points="22 4 12 14.01 9 11.01"></polyline>
                       </svg>
-                      <span>Report Generation Complete</span>
+                      <span>报告生成完成</span>
                     </div>
                   </template>
                 </div>
@@ -347,17 +376,17 @@
                   <div class="footer-actions">
                     <!-- Tool Call: Show/Hide Params -->
                     <button v-if="log.action === 'tool_call' && log.details?.parameters" class="action-btn" @click.stop="toggleLogExpand(log)">
-                      {{ expandedLogs.has(log.timestamp) ? 'Hide Params' : 'Show Params' }}
+                      {{ expandedLogs.has(log.timestamp) ? '隐藏参数' : '显示参数' }}
                     </button>
                     
                     <!-- Tool Result: Raw/Structured View -->
                     <button v-if="log.action === 'tool_result'" class="action-btn" @click.stop="toggleRawResult(log.timestamp, $event)">
-                      {{ showRawResult[log.timestamp] ? 'Structured View' : 'Raw Output' }}
+                      {{ showRawResult[log.timestamp] ? '结构化视图' : '原始输出' }}
                     </button>
                     
                     <!-- LLM Response: Show/Hide Response -->
                     <button v-if="log.action === 'llm_response' && log.details?.response" class="action-btn" @click.stop="toggleLogExpand(log)">
-                      {{ expandedLogs.has(log.timestamp) ? 'Hide Response' : 'Show Response' }}
+                      {{ expandedLogs.has(log.timestamp) ? '隐藏回复' : '显示回复' }}
                     </button>
                   </div>
                 </div>
@@ -368,21 +397,23 @@
           <!-- Empty State -->
           <div v-if="agentLogs.length === 0 && !isComplete" class="workflow-empty">
             <div class="empty-pulse"></div>
-            <span>Waiting for agent activity...</span>
+            <span>等待智能体活动…</span>
           </div>
         </div>
       </div>
-    </div>
+        </div>
 
-    <!-- Bottom Console Logs -->
-    <div class="console-logs">
+        <!-- Bottom Console Logs -->
+        <div class="console-logs">
       <div class="log-header">
-        <span class="log-title">CONSOLE OUTPUT</span>
-        <span class="log-id">{{ reportId || 'NO_REPORT' }}</span>
+        <span class="log-title">控制台输出</span>
+        <span class="log-id">{{ reportId || '无报告' }}</span>
       </div>
       <div class="log-content" ref="logContent">
         <div class="log-line" v-for="(log, idx) in consoleLogs" :key="idx">
           <span class="log-msg" :class="getLogLevelClass(log)">{{ log }}</span>
+        </div>
+      </div>
         </div>
       </div>
     </div>
@@ -391,10 +422,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, h, reactive } from 'vue'
-import { useRouter } from 'vue-router'
 import { getAgentLog, getConsoleLog } from '../api/report'
-
-const router = useRouter()
 
 const props = defineProps({
   reportId: String,
@@ -402,12 +430,12 @@ const props = defineProps({
   systemLogs: Array
 })
 
-const emit = defineEmits(['add-log', 'update-status'])
+const emit = defineEmits(['add-log', 'update-status', 'next-step'])
 
 // Navigation
 const goToInteraction = () => {
   if (props.reportId) {
-    router.push({ name: 'Interaction', params: { reportId: props.reportId } })
+    emit('next-step', { reportId: props.reportId })
   }
 }
 
@@ -495,32 +523,32 @@ const isLogCollapsed = (log) => {
 // Tool configurations with display names and colors
 const toolConfig = {
   'insight_forge': {
-    name: 'Deep Insight',
+    name: '深度洞察',
     color: 'purple',
     icon: 'lightbulb' // 灯泡图标 - 代表洞察
   },
   'panorama_search': {
-    name: 'Panorama Search',
+    name: '全景检索',
     color: 'blue',
     icon: 'globe' // 地球图标 - 代表全景搜索
   },
   'interview_agents': {
-    name: 'Agent Interview',
+    name: '智能体访谈',
     color: 'green',
     icon: 'users' // 用户图标 - 代表对话
   },
   'quick_search': {
-    name: 'Quick Search',
+    name: '快速检索',
     color: 'orange',
     icon: 'zap' // 闪电图标 - 代表快速
   },
   'get_graph_statistics': {
-    name: 'Graph Stats',
+    name: '图谱统计',
     color: 'cyan',
     icon: 'chart' // 图表图标 - 代表统计
   },
   'get_entities_by_type': {
-    name: 'Entity Query',
+    name: '实体查询',
     color: 'pink',
     icon: 'database' // 数据库图标 - 代表实体
   }
@@ -1708,9 +1736,9 @@ const statusClass = computed(() => {
 })
 
 const statusText = computed(() => {
-  if (isComplete.value) return 'Completed'
-  if (agentLogs.value.length > 0) return 'Generating...'
-  return 'Waiting'
+  if (isComplete.value) return '已完成'
+  if (agentLogs.value.length > 0) return '生成中'
+  return '等待中'
 })
 
 const totalSections = computed(() => {
@@ -1787,9 +1815,9 @@ const workflowSteps = computed(() => {
   steps.push({
     key: 'planning',
     noLabel: 'PL',
-    title: 'Planning / Outline',
+    title: '规划与大纲',
     status: planningStatus,
-    meta: planningStatus === 'active' ? 'IN PROGRESS' : ''
+    meta: planningStatus === 'active' ? '进行中' : ''
   })
 
   // Sections (if outline exists)
@@ -1805,7 +1833,7 @@ const workflowSteps = computed(() => {
       noLabel: String(idx).padStart(2, '0'),
       title: section.title,
       status,
-      meta: status === 'active' ? 'IN PROGRESS' : ''
+      meta: status === 'active' ? '进行中' : ''
     })
   })
 
@@ -1814,12 +1842,46 @@ const workflowSteps = computed(() => {
   steps.push({
     key: 'complete',
     noLabel: 'OK',
-    title: 'Complete',
+    title: '报告完成',
     status: completeStatus,
-    meta: completeStatus === 'active' ? 'FINALIZING' : ''
+    meta: completeStatus === 'active' ? '收尾' : ''
   })
 
   return steps
+})
+
+/** 侧栏「当前阶段」角标：输入 num 展示、label 文案 */
+const currentPhaseBadge = computed(() => {
+  if (isComplete.value) return { num: '04', label: '报告已就绪' }
+  if (isFinalizing.value) return { num: '04', label: '最终预测合成' }
+  if (reportOutline.value && totalSections.value > 0) return { num: '03', label: '撰写章节内容' }
+  if (agentLogs.value.length > 0) return { num: '02', label: '规划报告结构' }
+  return { num: '02', label: '连接报告智能体' }
+})
+
+/** 侧栏四段进度：数据同化 / 神经映射 / 参数注入 / 最终预测合成 */
+const sidebarStages = computed(() => {
+  const labels = ['数据同化', '神经映射', '参数注入', '最终预测合成']
+  const done = (i) => ({ label: labels[i], state: 'done' })
+  const active = (i) => ({ label: labels[i], state: 'active' })
+  const todo = (i) => ({ label: labels[i], state: 'todo' })
+
+  if (isComplete.value) {
+    return labels.map((label) => ({ label, state: 'done' }))
+  }
+  if (isFinalizing.value) {
+    return [done(0), done(1), done(2), active(3)]
+  }
+  // 撰写章节：前两段完成，第三段进行中
+  if (reportOutline.value && totalSections.value > 0 && !isFinalizing.value) {
+    return [done(0), done(1), active(2), todo(3)]
+  }
+  // 仅有日志或规划中：第二段进行中
+  if (agentLogs.value.length > 0 || isPlanningStarted.value) {
+    return [done(0), active(1), todo(2), todo(3)]
+  }
+  // 初始等待：第一段视为已完成（上游已入库），第二段等待激活
+  return [done(0), todo(1), todo(2), todo(3)]
 })
 
 // Methods
@@ -1834,11 +1896,11 @@ const isSectionCompleted = (sectionIndex) => {
 const formatTime = (timestamp) => {
   if (!timestamp) return ''
   try {
-    return new Date(timestamp).toLocaleTimeString('en-US', { 
-      hour12: false, 
-      hour: '2-digit', 
-      minute: '2-digit', 
-      second: '2-digit' 
+    return new Date(timestamp).toLocaleTimeString('zh-CN', {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
     })
   } catch {
     return ''
@@ -1856,8 +1918,8 @@ const formatParams = (params) => {
 
 const formatResultSize = (length) => {
   if (!length) return ''
-  if (length < 1000) return `${length} chars`
-  return `${(length / 1000).toFixed(1)}k chars`
+  if (length < 1000) return `${length} 字符`
+  return `${(length / 1000).toFixed(1)}k 字符`
 }
 
 const truncateText = (text, maxLen) => {
@@ -1991,16 +2053,16 @@ const getConnectorClass = (log, idx, total) => {
 
 const getActionLabel = (action) => {
   const labels = {
-    'report_start': 'Report Started',
-    'planning_start': 'Planning',
-    'planning_complete': 'Plan Complete',
-    'section_start': 'Section Start',
-    'section_content': 'Content Ready',
-    'section_complete': 'Section Done',
-    'tool_call': 'Tool Call',
-    'tool_result': 'Tool Result',
-    'llm_response': 'LLM Response',
-    'report_complete': 'Complete'
+    'report_start': '报告开始',
+    'planning_start': '规划中',
+    'planning_complete': '规划完成',
+    'section_start': '章节开始',
+    'section_content': '内容就绪',
+    'section_complete': '章节完成',
+    'tool_call': '工具调用',
+    'tool_result': '工具结果',
+    'llm_response': '模型回复',
+    'report_complete': '全部完成'
   }
   return labels[action] || action
 }
@@ -2204,12 +2266,193 @@ watch(() => props.reportId, (newId) => {
 
 <style scoped>
 .report-panel {
+  --nm-teal: #006680;
+  --nm-teal-dark: #004d63;
+  --nm-teal-soft: #e6f4f7;
+  --nm-teal-muted: #5a9dad;
+  --nm-bg: #f0f5f7;
+  --nm-grid: rgba(255, 255, 255, 0.85);
+  --nm-card-border: #dce8ec;
+  --nm-text: #1a3a42;
+  --nm-text-muted: #5c7a82;
+
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #F8F9FA;
+  background-color: var(--nm-bg);
+  background-image:
+    linear-gradient(var(--nm-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--nm-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
   font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
   overflow: hidden;
+  color: var(--nm-text);
+}
+
+.step4-shell {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  gap: 0;
+}
+
+.step4-sidebar {
+  width: 272px;
+  flex-shrink: 0;
+  padding: 28px 22px 24px;
+  background: rgba(255, 255, 255, 0.72);
+  border-right: 1px solid var(--nm-card-border);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+
+}
+
+.sidebar-brand {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--nm-teal);
+  text-transform: uppercase;
+}
+
+.sidebar-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--nm-text);
+  line-height: 1.25;
+  letter-spacing: 0.02em;
+}
+
+.sidebar-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--nm-text-muted);
+}
+
+.phase-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid var(--nm-card-border);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 102, 128, 0.06);
+}
+
+.phase-num {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--nm-teal);
+  line-height: 1;
+}
+
+.phase-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.phase-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--nm-text-muted);
+  text-transform: uppercase;
+}
+
+.phase-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--nm-text);
+}
+
+.phase-stepper {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 4px;
+}
+
+.phase-step {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-height: 40px;
+}
+
+.phase-step-track {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 20px;
+}
+
+.phase-step-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #cfd9dd;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px var(--nm-card-border);
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.phase-step-line {
+  width: 2px;
+  flex: 1;
+  min-height: 12px;
+  background: #e2e8ec;
+  margin-top: -1px;
+}
+
+.phase-step-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--nm-text-muted);
+  padding: 2px 0 10px;
+  line-height: 1.35;
+}
+
+.phase-step--done .phase-step-dot {
+  background: var(--nm-teal-muted);
+  box-shadow: 0 0 0 2px rgba(0, 102, 128, 0.15);
+}
+
+.phase-step--done .phase-step-label {
+  color: var(--nm-teal);
+}
+
+.phase-step--active .phase-step-dot {
+  background: var(--nm-teal);
+  box-shadow: 0 0 0 3px rgba(0, 102, 128, 0.22);
+}
+
+.phase-step--active .phase-step-label {
+  color: var(--nm-teal);
+  font-weight: 600;
+}
+
+.phase-step--done .phase-step-line,
+.phase-step--active .phase-step-line {
+  background: linear-gradient(180deg, var(--nm-teal-muted), #e2e8ec);
+}
+
+.step4-workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
 }
 
 /* Main Split Layout */
@@ -2217,6 +2460,16 @@ watch(() => props.reportId, (newId) => {
   flex: 1;
   display: flex;
   overflow: hidden;
+  gap: 16px;
+  padding: 16px 16px 0;
+  min-height: 0;
+}
+
+.content-card {
+  border-radius: 12px;
+  border: 1px solid var(--nm-card-border);
+  background: #fff;
+  box-shadow: 0 8px 32px rgba(0, 60, 80, 0.06);
 }
 
 /* Panel Headers */
@@ -2225,24 +2478,25 @@ watch(() => props.reportId, (newId) => {
   align-items: center;
   gap: 10px;
   padding: 14px 20px;
-  background: #FFFFFF;
-  border-bottom: 1px solid #E5E7EB;
-  font-size: 13px;
+  background: #fbfdfe;
+  border-bottom: 1px solid var(--nm-card-border, #dce8ec);
+  font-size: 12px;
   font-weight: 600;
-  color: #374151;
+  color: var(--nm-text-muted, #5c7a82);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   position: sticky;
   top: 0;
   z-index: 10;
+  border-radius: 12px 12px 0 0;
 }
 
 .header-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #1F2937;
-  box-shadow: 0 0 0 3px rgba(31, 41, 55, 0.15);
+  background: var(--nm-teal, #006680);
+  box-shadow: 0 0 0 3px rgba(0, 102, 128, 0.2);
   margin-right: 10px;
   flex-shrink: 0;
   animation: pulse-dot 1.5s ease-in-out infinite;
@@ -2250,10 +2504,10 @@ watch(() => props.reportId, (newId) => {
 
 @keyframes pulse-dot {
   0%, 100% {
-    box-shadow: 0 0 0 3px rgba(31, 41, 55, 0.15);
+    box-shadow: 0 0 0 3px rgba(0, 102, 128, 0.2);
   }
   50% {
-    box-shadow: 0 0 0 5px rgba(31, 41, 55, 0.1);
+    box-shadow: 0 0 0 5px rgba(0, 102, 128, 0.12);
   }
 }
 
@@ -2286,20 +2540,20 @@ watch(() => props.reportId, (newId) => {
 
 /* Panel header status variants */
 .panel-header--active {
-  background: #FAFAFA;
-  border-color: #1F2937;
+  background: var(--nm-teal-soft, #e6f4f7);
+  border-color: rgba(0, 102, 128, 0.25);
 }
 
 .panel-header--active .header-index {
-  color: #1F2937;
+  color: var(--nm-teal, #006680);
 }
 
 .panel-header--active .header-title {
-  color: #1F2937;
+  color: var(--nm-teal-dark, #004d63);
 }
 
 .panel-header--active .header-meta {
-  color: #1F2937;
+  color: var(--nm-teal, #006680);
 }
 
 .panel-header--done {
@@ -2320,11 +2574,12 @@ watch(() => props.reportId, (newId) => {
   width: 45%;
   min-width: 450px;
   background: #FFFFFF;
-  border-right: 1px solid #E5E7EB;
+  border-right: none;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  padding: 30px 50px 60px 50px;
+  padding: 28px 40px 48px 40px;
+
 }
 
 .left-panel::-webkit-scrollbar {
@@ -2346,7 +2601,7 @@ watch(() => props.reportId, (newId) => {
 }
 
 .left-panel::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.25);
+  background: linear-gradient(180deg, rgba(0, 102, 128, 0.25), rgba(0, 102, 128, 0.15));
 }
 
 /* Report Header */
@@ -2368,45 +2623,47 @@ watch(() => props.reportId, (newId) => {
 }
 
 .report-tag {
-  background: #000000;
-  color: #FFFFFF;
+  background: var(--nm-teal-soft);
+  color: var(--nm-teal);
   font-size: 11px;
   font-weight: 700;
-  padding: 4px 8px;
-  letter-spacing: 0.05em;
+  padding: 4px 10px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 102, 128, 0.12);
 }
 
 .report-id {
   font-size: 11px;
-  color: #9CA3AF;
+  color: var(--nm-text-muted, #5c7a82);
   font-weight: 500;
   letter-spacing: 0.02em;
 }
 
 .main-title {
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 36px;
+  font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  font-size: 32px;
   font-weight: 700;
-  color: #111827;
-  line-height: 1.2;
-  margin: 0 0 16px 0;
+  color: var(--nm-text);
+  line-height: 1.25;
+  margin: 0 0 14px 0;
   letter-spacing: -0.02em;
 }
 
 .sub-title {
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 16px;
-  color: #6B7280;
-  font-style: italic;
-  line-height: 1.6;
-  margin: 0 0 30px 0;
+  font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  font-size: 15px;
+  color: var(--nm-text-muted);
+  font-style: normal;
+  line-height: 1.65;
+  margin: 0 0 24px 0;
   font-weight: 400;
 }
 
 .header-divider {
   height: 1px;
-  background: #E5E7EB;
+  background: linear-gradient(90deg, var(--nm-teal-soft), transparent);
   width: 100%;
 }
 
@@ -2461,10 +2718,10 @@ watch(() => props.reportId, (newId) => {
 }
 
 .section-title {
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 24px;
+  font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  font-size: 20px;
   font-weight: 600;
-  color: #111827;
+  color: var(--nm-text);
   margin: 0;
   transition: color 0.3s ease;
 }
@@ -2566,9 +2823,9 @@ watch(() => props.reportId, (newId) => {
 }
 
 .loading-text {
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 15px;
-  color: #4B5563;
+  font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  font-size: 14px;
+  color: var(--nm-text-muted);
 }
 
 .cursor-blink {
@@ -2663,26 +2920,26 @@ watch(() => props.reportId, (newId) => {
 /* Right Panel */
 .right-panel {
   flex: 1;
-  background: #FFFFFF;
+  background:
+    linear-gradient(160deg, #ffffff 0%, #f9fcfe 40%, #f2f8fa 100%);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
 
-  /* Functional palette (low saturation, status-based) */
-  --wf-border: #E5E7EB;
-  --wf-divider: #F3F4F6;
+  --wf-border: var(--nm-card-border, #dce8ec);
+  --wf-divider: #eef4f6;
 
-  --wf-active-bg: #FAFAFA;
-  --wf-active-border: #1F2937;
-  --wf-active-dot: #1F2937;
-  --wf-active-text: #1F2937;
+  --wf-active-bg: linear-gradient(135deg, rgba(230, 244, 247, 0.9) 0%, rgba(220, 240, 244, 0.8) 100%);
+  --wf-active-border: rgba(0, 102, 128, 0.3);
+  --wf-active-dot: var(--nm-teal, #006680);
+  --wf-active-text: var(--nm-teal-dark, #004d63);
 
-  --wf-done-bg: #F9FAFB;
-  --wf-done-border: #E5E7EB;
-  --wf-done-dot: #10B981;
+  --wf-done-bg: linear-gradient(135deg, rgba(247, 252, 253, 0.95) 0%, rgba(240, 248, 250, 0.9) 100%);
+  --wf-done-border: rgba(0, 102, 128, 0.12);
+  --wf-done-dot: #2a9d8f;
 
-  --wf-muted-dot: #D1D5DB;
-  --wf-todo-text: #9CA3AF;
+  --wf-muted-dot: #c5d5da;
+  --wf-todo-text: #8aa3ab;
 }
 
 .right-panel::-webkit-scrollbar {
@@ -2755,20 +3012,20 @@ watch(() => props.reportId, (newId) => {
   padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid var(--wf-border);
-  background: #F9FAFB;
-  color: #6B7280;
+  background: #f7fcfd;
+  color: var(--nm-text-muted, #5c7a82);
 }
 
 .metric-pill.pill--processing {
-  background: var(--wf-active-bg);
-  border-color: var(--wf-active-border);
-  color: var(--wf-active-text);
+  background: var(--nm-teal-soft, #e6f4f7);
+  border-color: rgba(0, 102, 128, 0.25);
+  color: var(--nm-teal, #006680);
 }
 
 .metric-pill.pill--completed {
-  background: #ECFDF5;
-  border-color: #A7F3D0;
-  color: #065F46;
+  background: #e8f8f4;
+  border-color: #a7d9ce;
+  color: #1d7a66;
 }
 
 .metric-pill.pill--pending {
@@ -2836,7 +3093,7 @@ watch(() => props.reportId, (newId) => {
 
 .wf-step--active .wf-step-dot {
   background: var(--wf-active-dot);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  box-shadow: 0 0 0 3px rgba(0, 102, 128, 0.18);
 }
 
 .wf-step--done .wf-step-dot {
@@ -2859,10 +3116,10 @@ watch(() => props.reportId, (newId) => {
 }
 
 .wf-step-title {
-  font-family: 'Times New Roman', Times, serif;
+  font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
   font-size: 13px;
   font-weight: 600;
-  color: #111827;
+  color: var(--nm-text, #1a3a42);
   line-height: 1.35;
   min-width: 0;
   overflow: hidden;
@@ -2961,7 +3218,7 @@ watch(() => props.reportId, (newId) => {
 /* Connector dot: status only */
 .dot-active {
   background: var(--wf-active-dot);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  box-shadow: 0 0 0 3px rgba(0, 102, 128, 0.18);
 }
 
 .dot-done {
@@ -2996,9 +3253,9 @@ watch(() => props.reportId, (newId) => {
 .action-label {
   font-size: 12px;
   font-weight: 600;
-  color: #374151;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  color: var(--nm-teal-dark, #004d63);
+  text-transform: none;
+  letter-spacing: 0.02em;
 }
 
 .action-time {
@@ -3071,9 +3328,9 @@ watch(() => props.reportId, (newId) => {
 }
 
 .status-message.success {
-  background: #ECFDF5;
-  border-color: #A7F3D0;
-  color: #065F46;
+  background: #e8f8f4;
+  border-color: #a7d9ce;
+  color: #1d7a66;
 }
 
 .outline-badge {
@@ -3109,12 +3366,12 @@ watch(() => props.reportId, (newId) => {
 
 
 .section-tag.completed {
-  background: #ECFDF5;
-  border: 1px solid #A7F3D0;
+  background: #e8f8f4;
+  border: 1px solid #a7d9ce;
 }
 
 .section-tag.completed svg {
-  color: #059669;
+  color: #1d7a66;
 }
 
 .tag-num {
@@ -3124,7 +3381,7 @@ watch(() => props.reportId, (newId) => {
 }
 
 .section-tag.completed .tag-num {
-  color: #059669;
+  color: #1d7a66;
 }
 
 .tag-title {
@@ -3389,11 +3646,11 @@ watch(() => props.reportId, (newId) => {
   align-items: center;
   gap: 10px;
   padding: 12px 16px;
-  background: #ECFDF5;
-  border: 1px solid #A7F3D0;
-  border-radius: 8px;
-  color: #065F46;
-  font-weight: 600;
+  background: #e8f8f4;
+  border: 1px solid #a7d9ce;
+  border-radius: 10px;
+  color: #1d7a66;
+  font-weight: 700;
   font-size: 14px;
 }
 
@@ -3401,22 +3658,25 @@ watch(() => props.reportId, (newId) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
   width: calc(100% - 40px);
   margin: 4px 20px 0 20px;
-  padding: 14px 20px;
+  padding: 15px 22px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   color: #FFFFFF;
-  background: #1F2937;
+  background: linear-gradient(180deg, var(--nm-teal, #006680) 0%, var(--nm-teal-dark, #004d63) 100%);
   border: none;
-  border-radius: 8px;
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
+  box-shadow: 0 6px 20px rgba(0, 102, 128, 0.28);
 }
 
 .next-step-btn:hover {
-  background: #374151;
+  filter: brightness(1.06);
+  box-shadow: 0 8px 26px rgba(0, 102, 128, 0.32);
 }
 
 .next-step-btn svg {
@@ -5097,42 +5357,46 @@ watch(() => props.reportId, (newId) => {
   border-radius: 4px;
 }
 
-/* Console Logs - 与 Step3Simulation.vue 保持一致 */
+/* Console Logs */
 .console-logs {
-  background: #000;
-  color: #DDD;
-  padding: 16px;
+  background: linear-gradient(180deg, #0a1f24 0%, #061418 100%);
+  color: #c8e3e8;
+  padding: 14px 20px;
   font-family: 'JetBrains Mono', monospace;
-  border-top: 1px solid #222;
+  border-top: 1px solid rgba(0, 102, 128, 0.35);
   flex-shrink: 0;
+  margin: 16px 0 0;
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .log-header {
   display: flex;
   justify-content: space-between;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid rgba(0, 102, 128, 0.25);
   padding-bottom: 8px;
   margin-bottom: 8px;
   font-size: 10px;
-  color: #666;
+  color: #6eb8c4;
 }
 
 .log-title {
   text-transform: uppercase;
   letter-spacing: 0.1em;
+  color: #6eb8c4;
 }
 
 .log-content {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  height: 100px;
+  height: 80px;
   overflow-y: auto;
   padding-right: 4px;
 }
 
 .log-content::-webkit-scrollbar { width: 4px; }
-.log-content::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+.log-content::-webkit-scrollbar-thumb { background: rgba(0, 102, 128, 0.35); border-radius: 2px; }
 
 .log-line {
   font-size: 11px;
@@ -5140,11 +5404,11 @@ watch(() => props.reportId, (newId) => {
 }
 
 .log-msg {
-  color: #BBB;
+  color: #b0d4db;
   word-break: break-all;
 }
 
-.log-msg.error { color: #EF5350; }
-.log-msg.warning { color: #FFA726; }
-.log-msg.success { color: #66BB6A; }
+.log-msg.error { color: #ef9a9a; }
+.log-msg.warning { color: #ffcc80; }
+.log-msg.success { color: #80cbc4; }
 </style>

@@ -170,8 +170,8 @@
       </div>
     </div>
 
-    <!-- Floating System Terminal -->
-    <div class="system-terminal" :class="{ 'is-live': hasActiveTerminalLine }">
+    <!-- Floating System Terminal (已隐藏) -->
+    <div v-if="false" class="system-terminal" :class="{ 'is-live': hasActiveTerminalLine }">
       <div class="terminal-progress-bar"></div>
       <div class="terminal-header">
         <div class="terminal-controls" aria-hidden="true">
@@ -220,10 +220,7 @@
 
 <script setup>
 import { computed, ref, watch, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
 import { createSimulation } from '../api/simulation'
-
-const router = useRouter()
 
 const props = defineProps({
   currentPhase: { type: Number, default: 0 },
@@ -234,12 +231,11 @@ const props = defineProps({
   systemLogs: { type: Array, default: () => [] }
 })
 
-defineEmits(['next-step'])
+const emit = defineEmits(['next-step', 'simulation-created'])
 
 const selectedOntologyItem = ref(null)
 const logContent = ref(null)
 const creatingSimulation = ref(false)
-
 const currentLogIndex = computed(() => props.systemLogs.length - 1)
 
 const isErrorMessage = (message = '') => /error|failed|exception|no pending/i.test(String(message))
@@ -275,15 +271,15 @@ const terminalLogs = computed(() =>
   })
 )
 
-// 进入环境搭建 - 创建 simulation 并跳转
+// 进入环境搭建 - 创建 simulation 并通知父组件
 const handleEnterEnvSetup = async () => {
   if (!props.projectData?.project_id || !props.projectData?.graph_id) {
     console.error('缺少项目或图谱信息')
     return
   }
-  
+
   creatingSimulation.value = true
-  
+
   try {
     const res = await createSimulation({
       project_id: props.projectData.project_id,
@@ -291,13 +287,10 @@ const handleEnterEnvSetup = async () => {
       enable_twitter: true,
       enable_reddit: true
     })
-    
+
     if (res.success && res.data?.simulation_id) {
-      // 跳转到 simulation 页面
-      router.push({
-        name: 'Simulation',
-        params: { simulationId: res.data.simulation_id }
-      })
+      // 通知父组件 simulation 已创建，由父组件统一处理导航
+      emit('simulation-created', { simulationId: res.data.simulation_id })
     } else {
       console.error('创建模拟失败:', res.error)
       alert('创建模拟失败: ' + (res.error || '未知错误'))
@@ -361,7 +354,7 @@ watch(() => props.systemLogs.length, () => {
 .scroll-container {
   flex: 1;
   overflow-y: auto;
-  padding: 24px 24px 316px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -941,7 +934,7 @@ watch(() => props.systemLogs.length, () => {
 
 @media (max-width: 768px) {
   .scroll-container {
-    padding: 18px 18px 278px;
+    padding: 18px;
   }
 
   .system-terminal {

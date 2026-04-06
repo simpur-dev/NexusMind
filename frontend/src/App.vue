@@ -27,37 +27,32 @@
   padding: 0;
 }
 
-/* 滚动条样式 */
+/* 滚动条：与导航栏浅蓝系 #73A8B9 / #E6F2F7 / #F8FAFC 一致 */
 html,
 body {
   scrollbar-width: thin;
-  scrollbar-color: rgba(131, 231, 255, 0.72) rgba(8, 20, 36, 0.88);
+  scrollbar-color: #73a8b9 #e6f2f7;
 }
 
 ::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: linear-gradient(180deg, rgba(6, 17, 31, 0.96), rgba(10, 26, 46, 0.92));
-  border-left: 1px solid rgba(126, 236, 255, 0.08);
+  background: #e6f2f7;
+  border-left: 1px solid rgba(115, 168, 185, 0.12);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgba(174, 245, 255, 0.92), rgba(83, 203, 255, 0.88) 34%, rgba(33, 110, 214, 0.92) 100%);
-  border: 2px solid rgba(7, 20, 36, 0.96);
+  background: linear-gradient(180deg, #8ebdcb, #73a8b9);
+  border: 2px solid #e6f2f7;
   border-radius: 999px;
-  box-shadow:
-    inset 0 0 0 1px rgba(229, 252, 255, 0.18),
-    0 0 16px rgba(90, 205, 255, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(248, 250, 252, 0.5);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, rgba(216, 252, 255, 0.96), rgba(109, 221, 255, 0.92) 34%, rgba(47, 127, 228, 0.96) 100%);
-  box-shadow:
-    inset 0 0 0 1px rgba(240, 253, 255, 0.22),
-    0 0 20px rgba(102, 214, 255, 0.3);
+  background: linear-gradient(180deg, #73a8b9, #5c9eaf);
 }
 
 /* 全局按钮样式 */

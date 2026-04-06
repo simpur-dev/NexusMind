@@ -17,8 +17,20 @@
       
       <!-- 中间步骤指示器 -->
       <div class="nav-center">
-        <div class="step-badge">STEP 01</div>
-        <div class="step-name">图谱构建</div>
+        <div class="step-badge">STEP {{ String(currentStep).padStart(2, '0') }}</div>
+        <div class="step-name">{{ stepNames[currentStep - 1] }}</div>
+        <!-- 顶部同步 dot -->
+        <div class="nav-step-dots">
+          <div
+            v-for="(n, idx) in stepNames"
+            :key="idx"
+            class="nav-dot"
+            :class="{
+              active: currentStep === idx + 1,
+              completed: currentStep > idx + 1
+            }"
+          ></div>
+        </div>
       </div>
 
       <div class="nav-status">
@@ -29,8 +41,10 @@
 
     <!-- 主内容区 -->
     <div class="main-content">
-      <!-- 左侧: 实时图谱展示 -->
-      <div class="left-panel" :class="{ 'full-screen': isFullScreen }">
+
+      <!-- 左侧图谱：仅 Step 1-2 显示 -->
+      <Transition name="panel-slide">
+        <div v-if="currentStep <= 2" class="left-panel" :class="{ 'full-screen': isFullScreen }">
         <div class="panel-header">
           <div class="header-left">
             <span class="header-deco">◆</span>
@@ -272,193 +286,132 @@
           </div>
         </div>
       </div>
+    </Transition>
 
-      <!-- 右侧: 构建流程详情 -->
-      <div class="right-panel" :class="{ 'hidden': isFullScreen }">
+      <!-- 右侧: Step 组件容器 -->
+      <div
+        class="right-panel"
+        :class="{
+          'hidden': isFullScreen && currentStep <= 2,
+          'full-screen-step': currentStep >= 3
+        }"
+      >
+        <!-- 顶部导航条（Step 1-2 仅在右侧显示） -->
         <div class="panel-header dark-header">
-          <span class="header-icon">▣</span>
-          <span class="header-title">构建流程</span>
-        </div>
-
-        <div class="process-content">
-          <!-- 阶段1: 本体生成 -->
-          <div class="process-phase" :class="{ 'active': currentPhase === 0, 'completed': currentPhase > 0 }">
-            <div class="phase-header">
-              <span class="phase-num">01</span>
-              <div class="phase-info">
-                <div class="phase-title">本体生成</div>
-                <div class="phase-api">/api/graph/ontology/generate</div>
-              </div>
-              <span class="phase-status" :class="getPhaseStatusClass(0)">
-                {{ getPhaseStatusText(0) }}
-              </span>
-            </div>
-            
-            <div class="phase-detail">
-              <div class="detail-section">
-                <div class="detail-label">接口说明</div>
-                <div class="detail-content">
-                  上传文档后，LLM分析文档内容，自动生成适合舆论模拟的本体结构（实体类型 + 关系类型）
-                </div>
-              </div>
-              
-              <!-- 本体生成进度 -->
-              <div class="detail-section" v-if="ontologyProgress && currentPhase === 0">
-                <div class="detail-label">生成进度</div>
-                <div class="ontology-progress">
-                  <div class="progress-spinner"></div>
-                  <span class="progress-text">{{ ontologyProgress.message }}</span>
-                </div>
-              </div>
-              
-              <!-- 已生成的本体信息 -->
-              <div class="detail-section" v-if="projectData?.ontology">
-                <div class="detail-label">生成的实体类型 ({{ projectData.ontology.entity_types?.length || 0 }})</div>
-                <div class="entity-tags">
-                  <span 
-                    v-for="entity in projectData.ontology.entity_types" 
-                    :key="entity.name"
-                    class="entity-tag"
-                  >
-                    {{ entity.name }}
-                  </span>
-                </div>
-              </div>
-              
-              <div class="detail-section" v-if="projectData?.ontology">
-                <div class="detail-label">生成的关系类型 ({{ projectData.ontology.relation_types?.length || 0 }})</div>
-                <div class="relation-list">
-                  <div 
-                    v-for="(rel, idx) in projectData.ontology.relation_types?.slice(0, 5) || []" 
-                    :key="idx"
-                    class="relation-item"
-                  >
-                    <span class="rel-source">{{ rel.source_type }}</span>
-                    <span class="rel-arrow">→</span>
-                    <span class="rel-name">{{ rel.name }}</span>
-                    <span class="rel-arrow">→</span>
-                    <span class="rel-target">{{ rel.target_type }}</span>
-                  </div>
-                  <div v-if="(projectData.ontology.relation_types?.length || 0) > 5" class="relation-more">
-                    +{{ projectData.ontology.relation_types.length - 5 }} 更多关系...
-                  </div>
-                </div>
-              </div>
-              
-              <!-- 等待状态 -->
-              <div class="detail-section waiting-state" v-if="!projectData?.ontology && currentPhase === 0 && !ontologyProgress">
-                <div class="waiting-hint">等待本体生成...</div>
-              </div>
-            </div>
+          <div class="header-left">
+            <span class="header-icon">▣</span>
+            <span class="header-title">构建流程</span>
           </div>
-
-          <!-- 阶段2: 图谱构建 -->
-          <div class="process-phase" :class="{ 'active': currentPhase === 1, 'completed': currentPhase > 1 }">
-            <div class="phase-header">
-              <span class="phase-num">02</span>
-              <div class="phase-info">
-                <div class="phase-title">图谱构建</div>
-                <div class="phase-api">/api/graph/build</div>
+          <!-- Step dot 指示器 -->
+          <div class="step-dots">
+            <div
+              v-for="(name, idx) in stepNames"
+              :key="idx"
+              class="step-dot-wrap"
+              :title="name"
+              @click="currentStep > idx + 1 && (currentStep = idx + 1)"
+              :style="{ cursor: currentStep > idx + 1 ? 'pointer' : 'default' }"
+            >
+              <div
+                class="step-dot"
+                :class="{
+                  active: currentStep === idx + 1,
+                  completed: currentStep > idx + 1,
+                  pending: currentStep < idx + 1
+                }"
+              >
+                <span v-if="currentStep > idx + 1" class="dot-check">✓</span>
+                <span v-else class="dot-num">{{ idx + 1 }}</span>
               </div>
-              <span class="phase-status" :class="getPhaseStatusClass(1)">
-                {{ getPhaseStatusText(1) }}
-              </span>
+              <span class="step-dot-label">{{ name }}</span>
             </div>
-            
-            <div class="phase-detail">
-              <div class="detail-section">
-                <div class="detail-label">接口说明</div>
-                <div class="detail-content">
-                  基于生成的本体，将文档分块后调用 Zep API 构建知识图谱，提取实体和关系
-                </div>
-              </div>
-              
-              <!-- 等待本体完成 -->
-              <div class="detail-section waiting-state" v-if="currentPhase < 1">
-                <div class="waiting-hint">等待本体生成完成...</div>
-              </div>
-              
-              <!-- 构建进度 -->
-              <div class="detail-section" v-if="buildProgress && currentPhase >= 1">
-                <div class="detail-label">构建进度</div>
-                <div class="progress-bar">
-                  <div class="progress-fill" :style="{ width: buildProgress.progress + '%' }"></div>
-                </div>
-                <div class="progress-info">
-                  <span class="progress-message">{{ buildProgress.message }}</span>
-                  <span class="progress-percent">{{ buildProgress.progress }}%</span>
-                </div>
-              </div>
-              
-              <div class="detail-section" v-if="graphData">
-                <div class="detail-label">构建结果</div>
-                <div class="build-result">
-                  <div class="result-item">
-                    <span class="result-value">{{ graphData.node_count }}</span>
-                    <span class="result-label">实体节点</span>
-                  </div>
-                  <div class="result-item">
-                    <span class="result-value">{{ graphData.edge_count }}</span>
-                    <span class="result-label">关系边</span>
-                  </div>
-                  <div class="result-item">
-                    <span class="result-value">{{ entityTypes.length }}</span>
-                    <span class="result-label">实体类型</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 阶段3: 完成 -->
-          <div class="process-phase" :class="{ 'active': currentPhase === 2, 'completed': currentPhase > 2 }">
-            <div class="phase-header">
-              <span class="phase-num">03</span>
-              <div class="phase-info">
-                <div class="phase-title">构建完成</div>
-                <div class="phase-api">准备进入下一步骤</div>
-              </div>
-              <span class="phase-status" :class="getPhaseStatusClass(2)">
-                {{ getPhaseStatusText(2) }}
-              </span>
-            </div>
-          </div>
-
-          <!-- 下一步按钮 -->
-          <div class="next-step-section" v-if="currentPhase >= 2">
-            <button class="next-step-btn" @click="goToNextStep" :disabled="currentPhase < 2">
-              进入环境搭建
-              <span class="btn-arrow">→</span>
-            </button>
           </div>
         </div>
 
-        <!-- 项目信息面板 -->
-        <div class="project-panel">
-          <div class="project-header">
-            <span class="project-icon">◇</span>
-            <span class="project-title">项目信息</span>
+        <!-- 本体/图谱进度条（仅 Step 1 时显示） -->
+        <div class="progress-strip" v-if="currentStep === 1">
+          <div class="strip-ontology" v-if="currentPhase === 0">
+            <div class="strip-spinner"></div>
+            <span class="strip-text">{{ ontologyProgress?.message || '本体生成中...' }}</span>
           </div>
-          <div class="project-details" v-if="projectData">
-            <div class="project-item">
-              <span class="item-label">项目名称</span>
-              <span class="item-value">{{ projectData.name }}</span>
+          <div class="strip-graph" v-else-if="currentPhase >= 1 && currentPhase < 2">
+            <div class="strip-label">
+              <span>图谱构建</span>
+              <span class="strip-pct">{{ buildProgress?.progress || 0 }}%</span>
             </div>
-            <div class="project-item">
-              <span class="item-label">项目ID</span>
-              <span class="item-value code">{{ projectData.project_id }}</span>
-            </div>
-            <div class="project-item" v-if="projectData.graph_id">
-              <span class="item-label">图谱ID</span>
-              <span class="item-value code">{{ projectData.graph_id }}</span>
-            </div>
-            <div class="project-item">
-              <span class="item-label">模拟需求</span>
-              <span class="item-value">{{ projectData.simulation_requirement || '-' }}</span>
+            <div class="strip-bar">
+              <div class="strip-fill" :style="{ width: (buildProgress?.progress || 0) + '%' }"></div>
             </div>
           </div>
+          <div class="strip-done" v-else-if="currentPhase >= 2">
+            <span class="strip-done-icon">◆</span>
+            <span class="strip-done-text">图谱构建完成 · {{ graphData?.node_count || graphData?.nodes?.length || 0 }} 节点 · {{ graphData?.edge_count || graphData?.edges?.length || 0 }} 关系</span>
+          </div>
+        </div>
+
+        <!-- Step 内容区 -->
+        <div class="step-area">
+          <Transition name="step-slide" mode="out-in">
+            <div :key="currentStep" class="step-area-inner">
+              <Step1GraphBuild
+                v-if="currentStep === 1"
+                :currentPhase="currentPhase"
+                :projectData="projectData"
+                :ontologyProgress="ontologyProgress"
+                :buildProgress="buildProgress"
+                :graphData="graphData"
+                :systemLogs="systemLogs"
+                @next-step="handleNextStep"
+                @simulation-created="handleSimulationCreated"
+              />
+              <!-- Step 2 用和 Step 1 相同的外层包裹 -->
+              <div v-else-if="currentStep === 2" class="workbench-wrapper">
+                <div class="scroll-container">
+                  <Step2EnvSetup
+                    :simulationId="currentSimulationId"
+                    :projectData="projectData"
+                    :graphData="graphData"
+                    :systemLogs="systemLogs"
+                    @go-back="handleGoBack"
+                    @next-step="handleNextStep"
+                    @add-log="addLog"
+                    @update-status="updateStatus"
+                  />
+                </div>
+              </div>
+              <Step3Simulation
+                v-else-if="currentStep === 3"
+                :simulationId="currentSimulationId"
+                :maxRounds="maxRounds"
+                :projectData="projectData"
+                :graphData="graphData"
+                :systemLogs="systemLogs"
+                @go-back="handleGoBack"
+                @next-step="handleNextStep"
+                @add-log="addLog"
+                @update-status="updateStatus"
+              />
+              <Step4Report
+                v-else-if="currentStep === 4"
+                :reportId="currentReportId"
+                :simulationId="currentSimulationId"
+                :systemLogs="systemLogs"
+                @next-step="handleNextStep"
+                @add-log="addLog"
+                @update-status="updateStatus"
+              />
+              <Step5Interaction
+                v-else
+                :reportId="currentReportId"
+                :simulationId="currentSimulationId"
+                @add-log="addLog"
+                @update-status="updateStatus"
+              />
+            </div>
+          </Transition>
         </div>
       </div>
+
     </div>
   </div>
 </template>
@@ -467,8 +420,12 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { generateOntology, getProject, buildGraph, getTaskStatus, getGraphData } from '../api/graph'
-import { createSimulation } from '../api/simulation'
 import { getPendingUpload, clearPendingUpload } from '../store/pendingUpload'
+import Step1GraphBuild from '../components/Step1GraphBuild.vue'
+import Step2EnvSetup from '../components/Step2EnvSetup.vue'
+import Step3Simulation from '../components/Step3Simulation.vue'
+import Step4Report from '../components/Step4Report.vue'
+import Step5Interaction from '../components/Step5Interaction.vue'
 import * as d3 from 'd3'
 
 const route = useRoute()
@@ -492,6 +449,14 @@ const ontologyProgress = ref(null) // 本体生成进度
 const currentPhase = ref(-1) // -1: 上传中, 0: 本体生成中, 1: 图谱构建, 2: 完成
 const selectedItem = ref(null) // 选中的节点或边
 const isFullScreen = ref(false)
+
+// Step 导航状态
+const currentStep = ref(1) // 1: 图谱构建, 2: 环境搭建, 3: 开始模拟, 4: 报告生成, 5: 深度互动
+const stepNames = ['图谱构建', '环境搭建', '开始模拟', '报告生成', '深度互动']
+const currentSimulationId = ref(null)
+const currentReportId = ref(null)
+const maxRounds = ref(null) // 从 Step2 传入的模拟轮数配置
+const systemLogs = ref([])
 
 // DOM引用
 const graphContainer = ref(null)
@@ -646,29 +611,56 @@ const goHome = () => {
   router.push('/')
 }
 
-const goToNextStep = async () => {
-  if (!projectData.value?.project_id || !projectData.value?.graph_id) {
-    alert('缺少项目或图谱信息，请等待图谱构建完成')
-    return
+const addLog = (msg, status) => {
+  const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.' + new Date().getMilliseconds().toString().padStart(3, '0')
+  const inferStatus = (m) => {
+    const n = String(m).toLowerCase()
+    if (/(error|failed|exception)/.test(n)) return 'error'
+    if (/(success|completed|loaded|done|ready)/.test(n)) return 'success'
+    return 'info'
   }
+  systemLogs.value.push({ time, msg, status: status || inferStatus(msg) })
+  if (systemLogs.value.length > 100) systemLogs.value.shift()
+}
 
-  try {
-    const res = await createSimulation({
-      project_id: projectData.value.project_id,
-      graph_id: projectData.value.graph_id,
-      enable_twitter: true,
-      enable_reddit: true
-    })
+const updateStatus = (s) => {
+  // status reflected in statusClass/statusText
+}
 
-    if (res.success && res.data?.simulation_id) {
-      router.push({ name: 'Simulation', params: { simulationId: res.data.simulation_id } })
-    } else {
-      alert('创建模拟失败: ' + (res.error || '未知错误'))
-    }
-  } catch (err) {
-    console.error('创建模拟异常:', err)
-    alert('创建模拟异常: ' + err.message)
+const handleNextStep = (params = {}) => {
+  // Step2 passes maxRounds
+  if (params.maxRounds) {
+    maxRounds.value = params.maxRounds
+    addLog(`配置模拟轮数: ${params.maxRounds} 轮`)
   }
+  if (params.reportId) {
+    currentReportId.value = params.reportId
+  }
+  if (currentStep.value < 5) {
+    currentStep.value++
+    addLog(`进入 ${stepNames[currentStep.value - 1]} (Step ${currentStep.value}/5)`)
+  }
+}
+
+const handleGoBack = () => {
+  if (currentStep.value > 1) {
+    currentStep.value--
+    addLog(`返回 ${stepNames[currentStep.value - 1]} (Step ${currentStep.value}/5)`)
+  }
+}
+
+const handleGoBackTo = (step) => {
+  if (step < currentStep.value) {
+    currentStep.value = step
+    addLog(`返回 ${stepNames[step - 1]} (Step ${step}/5)`)
+  }
+}
+
+const handleSimulationCreated = ({ simulationId }) => {
+  currentSimulationId.value = simulationId
+  currentStep.value = 2
+  addLog(`模拟实例已创建: ${simulationId}`)
+  addLog(`进入 ${stepNames[1]} (Step 2/5)`)
 }
 
 const toggleFullScreen = () => {
@@ -739,12 +731,13 @@ const getPhaseStatusText = (phase) => {
 // 初始化 - 处理新建项目或加载已有项目
 const initProject = async () => {
   const paramProjectId = route.params.projectId
-  
+
   if (paramProjectId === 'new') {
     // 新建项目：从 store 获取待上传的数据
+    currentStep.value = 1
     await handleNewProject()
   } else {
-    // 加载已有项目
+    // 加载已有项目（可能是从历史记录跳转回来）
     currentProjectId.value = paramProjectId
     await loadProject()
   }
@@ -809,26 +802,41 @@ const loadProject = async () => {
   try {
     loading.value = true
     const response = await getProject(currentProjectId.value)
-    
+
     if (response.success) {
       projectData.value = response.data
       updatePhaseByStatus(response.data.status)
-      
-      // 自动开始图谱构建
+
+      // 从项目数据恢复 Step 导航状态
+      if (response.data.report_id) {
+        // 报告已生成，恢复到 Step 4
+        currentStep.value = 4
+        currentSimulationId.value = response.data.simulation_id
+        currentReportId.value = response.data.report_id
+        addLog(`从历史记录恢复项目，已在 Step 4 (报告生成)`)
+      } else if (response.data.simulation_id) {
+        // 模拟已创建，恢复到 Step 2
+        currentStep.value = 2
+        currentSimulationId.value = response.data.simulation_id
+        addLog(`从历史记录恢复项目，已在 Step 2 (环境搭建)`)
+      } else if (response.data.status === 'graph_completed' && response.data.graph_id) {
+        // 图谱构建完成，默认在 Step 1
+        currentPhase.value = 2
+        currentStep.value = 1
+        await loadGraph(response.data.graph_id)
+      } else if (response.data.status === 'graph_building' && response.data.graph_build_task_id) {
+        currentPhase.value = 1
+        currentStep.value = 1
+        startPollingTask(response.data.graph_build_task_id)
+      } else {
+        currentStep.value = 1
+      }
+
+      // 继续轮询构建中的任务（仅当图谱尚未完成时）
       if (response.data.status === 'ontology_generated' && !response.data.graph_id) {
         await startBuildGraph()
-      }
-      
-      // 继续轮询构建中的任务
-      if (response.data.status === 'graph_building' && response.data.graph_build_task_id) {
-        currentPhase.value = 1
-        startPollingTask(response.data.graph_build_task_id)
-      }
-      
-      // 加载已完成的图谱
-      if (response.data.status === 'graph_completed' && response.data.graph_id) {
-        currentPhase.value = 2
-        await loadGraph(response.data.graph_id)
+      } else if (response.data.status === 'graph_building' && response.data.graph_build_task_id) {
+        startGraphPolling()
       }
     } else {
       error.value = response.error || '加载项目失败'
@@ -1304,12 +1312,12 @@ onUnmounted(() => {
   justify-content: space-between;
   padding: 0 24px;
   height: 56px;
-  background: rgba(10, 10, 26, 0.9);
+  background: #E6F2F7;
   backdrop-filter: blur(20px);
-  color: #fff;
+  color: #3A5A6A;
   z-index: 100;
   position: relative;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(115, 168, 185, 0.2);
 }
 
 .nav-brand {
@@ -1318,7 +1326,7 @@ onUnmounted(() => {
   letter-spacing: 0.1em;
   cursor: pointer;
   transition: all 0.2s;
-  background: linear-gradient(135deg, #3b82f6, #06b6d4);
+  background: linear-gradient(135deg, #73A8B9, #3A5A6A);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -1338,45 +1346,74 @@ onUnmounted(() => {
   transform: translateX(-50%);
 }
 
+.nav-step-dots {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 4px;
+}
+
+.nav-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(115, 168, 185, 0.3);
+  transition: all 0.25s ease;
+}
+
+.nav-dot.active {
+  background: #73A8B9;
+  box-shadow: 0 0 8px rgba(115, 168, 185, 0.8);
+  transform: scale(1.3);
+}
+
+.nav-dot.completed {
+  background: #5C9EAF;
+  box-shadow: 0 0 6px rgba(115, 168, 185, 0.5);
+}
+
 .step-badge {
-  background: linear-gradient(135deg, #3b82f6, #06b6d4);
+  background: linear-gradient(135deg, #73A8B9, #5C9EAF);
   color: #fff;
   padding: 2px 8px;
   font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   border-radius: 2px;
-  box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 0 15px rgba(115, 168, 185, 0.4);
 }
 
 .step-name {
   font-size: 0.85rem;
   letter-spacing: 0.05em;
-  color: rgba(255, 255, 255, 0.9);
+  color: #3A5A6A;
+  font-weight: 500;
 }
 
 .nav-status {
   display: flex;
   align-items: center;
+  color: #3A5A6A;
+  font-size: 0.8rem;
 }
 
 .status-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(115, 168, 185, 0.4);
   margin-right: 8px;
 }
 
 .status-dot.processing {
-  background: #3b82f6;
-  box-shadow: 0 0 10px rgba(59, 130, 246, 0.8);
+  background: #73A8B9;
+  box-shadow: 0 0 10px rgba(115, 168, 185, 0.8);
   animation: pulse 1.5s infinite;
 }
 
 .status-dot.completed {
-  background: #10b981;
-  box-shadow: 0 0 10px rgba(16, 185, 129, 0.8);
+  background: #5C9EAF;
+  box-shadow: 0 0 10px rgba(92, 158, 175, 0.8);
 }
 
 .status-dot.error {
@@ -1391,7 +1428,8 @@ onUnmounted(() => {
 
 .status-text {
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: #3A5A6A;
+  opacity: 0.7;
 }
 
 /* 主内容区 */
@@ -1415,9 +1453,44 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+/* 左侧面板与右侧面板之间的渐变过渡 */
+.left-panel::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -1px;
+  width: 120px;
+  height: 100%;
+  background: linear-gradient(
+    to right,
+    rgba(115, 168, 185, 0) 0%,
+    rgba(115, 168, 185, 0.03) 30%,
+    rgba(115, 168, 185, 0.08) 60%,
+    rgba(115, 168, 185, 0.12) 100%
+  );
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* 图谱区域内部的渐变叠加，让内容与底部过渡更自然 */
+.graph-view {
+  position: relative;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 10, 26, 0.4) 0%,
+    rgba(10, 10, 26, 0.2) 50%,
+    rgba(115, 168, 185, 0.05) 100%
+  );
+  border-radius: 0 0 12px 0;
+}
+
 .left-panel.full-screen {
   width: 100%;
   border-right: none;
+}
+
+.left-panel.full-screen::after {
+  display: none;
 }
 
 /* 极光渐变背景 */
@@ -1512,6 +1585,24 @@ onUnmounted(() => {
   backdrop-filter: blur(20px);
   height: 50px;
   z-index: 10;
+  position: relative;
+}
+
+/* 面板header底部渐变过渡，与内容区协调 */
+.panel-header::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    rgba(59, 130, 246, 0.6) 0%,
+    rgba(6, 182, 212, 0.4) 30%,
+    rgba(115, 168, 185, 0.3) 60%,
+    rgba(115, 168, 185, 0.1) 100%
+  );
 }
 
 .header-left {
@@ -1604,6 +1695,24 @@ onUnmounted(() => {
   position: relative;
   overflow: hidden;
   background: transparent;
+}
+
+/* 图谱容器底部渐变 - 与右侧底部色调协调 */
+.graph-container::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 80px;
+  background: linear-gradient(
+    to top,
+    rgba(248, 250, 252, 0.12) 0%,
+    rgba(230, 242, 247, 0.06) 40%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 1;
 }
 
 .graph-loading,
@@ -1969,9 +2078,43 @@ onUnmounted(() => {
   flex-wrap: wrap;
   gap: 16px;
   padding: 12px 24px;
+  padding-top: 20px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(10, 10, 26, 0.6);
   backdrop-filter: blur(10px);
+  position: relative;
+}
+
+/* 图例区域顶部渐变，与图谱内容过渡 */
+.graph-legend::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 20px;
+  background: linear-gradient(
+    to top,
+    rgba(115, 168, 185, 0.06) 0%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+/* 图例区域左侧渐变，与整体过渡协调 */
+.graph-legend::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 100%;
+  background: linear-gradient(
+    to bottom,
+    rgba(59, 130, 246, 0.3) 0%,
+    rgba(6, 182, 212, 0.2) 40%,
+    transparent 100%
+  );
 }
 
 .legend-item {
@@ -2002,11 +2145,30 @@ onUnmounted(() => {
   flex: none;
   display: flex;
   flex-direction: column;
-  background: rgba(10, 10, 26, 0.7);
-  backdrop-filter: blur(10px);
+  background: #F8FAFC;
+  box-shadow: -4px 0 24px rgba(115, 168, 185, 0.08);
   transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, transform 0.3s ease;
   overflow: hidden;
   opacity: 1;
+  position: relative;
+}
+
+/* 右侧面板左侧渐变边框 - 与左侧深色面板过渡 */
+.right-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  background: linear-gradient(
+    to bottom,
+    rgba(59, 130, 246, 0.5) 0%,
+    rgba(6, 182, 212, 0.4) 30%,
+    rgba(115, 168, 185, 0.3) 60%,
+    rgba(115, 168, 185, 0.2) 100%
+  );
+  z-index: 10;
 }
 
 .right-panel.hidden {
@@ -2016,407 +2178,334 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
+/* Step 3-5：右侧全屏 */
+.right-panel.full-screen-step {
+  flex: 1;
+  width: auto !important;
+}
+
+/* Step 导航条（旧实现已替换为“流程卡片”） */
+.step-nav-bar,
+.step-nav-item,
+.step-content {
+  display: none;
+}
+
 .right-panel .panel-header.dark-header {
-  background: rgba(10, 10, 26, 0.9);
+  background: #E6F2F7;
   backdrop-filter: blur(20px);
-  color: #fff;
-  border-bottom: none;
+  color: #3A5A6A;
+  border-bottom: 1px solid rgba(115, 168, 185, 0.2);
+  position: relative;
+}
+
+/* 右侧面板header顶部渐变 - 呼应左侧极光色调 */
+.right-panel .panel-header.dark-header::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(
+    to right,
+    rgba(59, 130, 246, 0.4) 0%,
+    rgba(6, 182, 212, 0.3) 30%,
+    rgba(115, 168, 185, 0.2) 60%,
+    rgba(115, 168, 185, 0.1) 100%
+  );
 }
 
 .right-panel .header-icon {
-  color: #FF6B35;
+  color: #73A8B9;
   margin-right: 8px;
 }
 
-/* 流程内容 */
-.process-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px;
-  background: transparent;
-}
-
-/* 流程阶段 */
-.process-phase {
-  margin-bottom: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(10px);
-  opacity: 0.5;
-  transition: all 0.3s;
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.process-phase.active,
-.process-phase.completed {
-  opacity: 1;
-}
-
-.process-phase.active {
-  border-color: rgba(59, 130, 246, 0.5);
-  box-shadow: 0 0 30px rgba(59, 130, 246, 0.2);
-}
-
-.process-phase.completed {
-  border-color: rgba(16, 185, 129, 0.5);
-  box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
-}
-
-.phase-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.process-phase.active .phase-header {
-  background: rgba(59, 130, 246, 0.1);
-}
-
-.process-phase.completed .phase-header {
-  background: rgba(16, 185, 129, 0.08);
-}
-
-.phase-num {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.2);
-  line-height: 1;
-}
-
-.process-phase.active .phase-num {
-  color: #3b82f6;
-  text-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
-}
-
-.process-phase.completed .phase-num {
-  color: #10b981;
-  text-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
-}
-
-.phase-info {
-  flex: 1;
-}
-
-.phase-title {
-  font-size: 1rem;
-  font-weight: 600;
-  margin-bottom: 4px;
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.phase-api {
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.4);
-  font-family: 'JetBrains Mono', monospace;
-}
-
-.phase-status {
-  font-size: 0.75rem;
-  padding: 4px 10px;
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.6);
-  border-radius: 4px;
-}
-
-.phase-status.active {
-  background: rgba(59, 130, 246, 0.3);
-  color: #60a5fa;
-  box-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
-}
-
-.phase-status.completed {
-  background: rgba(16, 185, 129, 0.3);
-  color: #34d399;
-  box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
-}
-
-/* 阶段详情 */
-.phase-detail {
-  padding: 16px;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-/* 实体标签 */
-.entity-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.entity-tag {
-  font-size: 0.75rem;
-  padding: 4px 10px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.8);
-  border-radius: 4px;
-}
-
-/* 关系列表 */
-.relation-list {
-  font-size: 0.8rem;
-}
-
-.relation-item {
+/* ── Step dot 指示器 ── */
+.step-dots {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 0;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.7);
+  gap: 0;
 }
 
-.relation-item:last-child {
-  border-bottom: none;
-}
-
-.rel-source,
-.rel-target {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.rel-arrow {
-  color: rgba(255, 255, 255, 0.3);
-}
-
-.rel-name {
-  color: #60a5fa;
-  font-weight: 500;
-}
-
-.relation-more {
-  padding-top: 8px;
-  color: rgba(255, 255, 255, 0.4);
-  font-size: 0.75rem;
-}
-
-/* 本体生成进度 */
-.ontology-progress {
+.step-dot-wrap {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
-  background: rgba(59, 130, 246, 0.1);
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  border-radius: 8px;
+  gap: 4px;
+  position: relative;
 }
 
-.progress-spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid rgba(59, 130, 246, 0.2);
-  border-top-color: #3b82f6;
+.step-dot-wrap:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 12px;
+  left: calc(50% + 12px);
+  width: calc(100% - 8px);
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.step-dot-wrap:last-child::before {
+  display: none;
+}
+
+.step-dot {
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-.progress-text {
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-/* 等待状态 */
-.waiting-state {
-  padding: 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px dashed rgba(255, 255, 255, 0.1);
-  text-align: center;
-  border-radius: 8px;
-}
-
-.waiting-hint {
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.4);
-}
-
-/* 进度条 */
-.progress-bar {
-  height: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  margin-bottom: 8px;
-  overflow: hidden;
-  border-radius: 3px;
-}
-
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #3b82f6, #06b6d4);
-  transition: width 0.3s;
-  box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
-}
-
-.progress-info {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.75rem;
-}
-
-.progress-message {
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.progress-percent {
-  color: #60a5fa;
-  font-weight: 600;
-}
-
-/* 构建结果 */
-.build-result {
-  display: flex;
-  gap: 16px;
-}
-
-.result-item {
-  flex: 1;
-  text-align: center;
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-}
-
-.result-value {
-  display: block;
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.95);
-  margin-bottom: 4px;
-}
-
-.result-label {
-  font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.4);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-/* 下一步按钮 */
-.next-step-section {
-  margin-top: 24px;
-  padding-top: 24px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.next-step-btn {
-  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 16px;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.9) 0%, rgba(6, 182, 212, 0.9) 100%);
+  font-size: 0.65rem;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  transition: all 0.25s ease;
+  border: 1.5px solid rgba(115, 168, 185, 0.3);
+  background: rgba(230, 242, 247, 0.6);
+  color: #73A8B9;
+}
+
+.step-dot.active {
+  background: linear-gradient(135deg, #73A8B9, #5C9EAF);
+  border-color: transparent;
   color: #fff;
-  border: none;
-  font-size: 1rem;
-  font-weight: 500;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-  transition: all 0.3s;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 0 14px rgba(115, 168, 185, 0.6), 0 0 28px rgba(115, 168, 185, 0.3);
+  transform: scale(1.1);
+  animation: dot-pulse 1.8s ease-in-out infinite;
 }
 
-.next-step-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 30px rgba(59, 130, 246, 0.5);
+.step-dot.completed {
+  background: rgba(92, 158, 175, 0.2);
+  border-color: rgba(92, 158, 175, 0.5);
+  color: #5C9EAF;
+  box-shadow: 0 0 8px rgba(92, 158, 175, 0.3);
 }
 
-.next-step-btn:disabled {
-  background: rgba(255, 255, 255, 0.1);
-  cursor: not-allowed;
-  box-shadow: none;
+.step-dot.pending {
+  opacity: 0.5;
 }
 
-.btn-arrow {
-  font-size: 1.2rem;
+.dot-check,
+.dot-num {
+  line-height: 1;
 }
 
-/* 项目信息面板 */
-.project-panel {
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.02);
-  backdrop-filter: blur(10px);
+.step-dot-label {
+  font-size: 0.6rem;
+  color: rgba(115, 168, 185, 0.6);
+  white-space: nowrap;
+  transition: color 0.2s;
+  letter-spacing: 0.02em;
 }
 
-.project-header {
+.step-dot-wrap:has(.step-dot.active) .step-dot-label,
+.step-dot-wrap:has(.step-dot.completed) .step-dot-label {
+  color: #3A5A6A;
+}
+
+@keyframes dot-pulse {
+  0%, 100% { box-shadow: 0 0 14px rgba(115, 168, 185, 0.6), 0 0 28px rgba(115, 168, 185, 0.3); }
+  50%       { box-shadow: 0 0 20px rgba(115, 168, 185, 0.9), 0 0 40px rgba(115, 168, 185, 0.5); }
+}
+
+/* ── 本体/图谱进度条 ── */
+.progress-strip {
+  padding: 10px 20px;
+  background: rgba(115, 168, 185, 0.1);
+  border-bottom: 1px solid rgba(115, 168, 185, 0.15);
+}
+
+.strip-ontology {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.project-icon {
-  color: #3b82f6;
-}
-
-.project-title {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.project-details {
-  padding: 16px 24px;
-}
-
-.project-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 8px 0;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
-  font-size: 0.8rem;
-}
-
-.project-item:last-child {
-  border-bottom: none;
-}
-
-.item-label {
-  color: rgba(255, 255, 255, 0.5);
+.strip-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(115, 168, 185, 0.2);
+  border-top-color: #73A8B9;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
   flex-shrink: 0;
 }
 
-.item-value {
-  color: rgba(255, 255, 255, 0.8);
-  text-align: right;
-  max-width: 60%;
-  word-break: break-all;
-}
-
-.item-value.code {
-  font-family: 'JetBrains Mono', monospace;
+.strip-text {
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: #3A5A6A;
+  font-family: 'JetBrains Mono', monospace;
 }
 
-/* 响应式 */
-@media (max-width: 1024px) {
-  .main-content {
-    flex-direction: column;
-  }
-  
-  .left-panel {
-    width: 100% !important;
-    border-right: none;
-    border-bottom: 1px solid #E0E0E0;
-    height: 50vh;
-  }
-  
-  .right-panel {
-    width: 100% !important;
-    height: 50vh;
-    opacity: 1 !important;
-    transform: none !important;
-  }
-  
-  .right-panel.hidden {
-      display: none;
-  }
+.strip-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: #3A5A6A;
+  opacity: 0.6;
+  margin-bottom: 5px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.strip-pct {
+  color: #73A8B9;
+  font-weight: 600;
+}
+
+.strip-bar {
+  height: 3px;
+  background: rgba(115, 168, 185, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.strip-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #73A8B9, #5C9EAF);
+  border-radius: 2px;
+  transition: width 0.5s ease;
+  box-shadow: 0 0 8px rgba(115, 168, 185, 0.5);
+}
+
+.strip-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+  color: #3A5A6A;
+}
+
+.strip-done-icon {
+  color: #5C9EAF;
+  font-size: 0.6rem;
+}
+
+.strip-done-text {
+  font-family: 'JetBrains Mono', monospace;
+  color: #3A5A6A;
+  opacity: 0.7;
+}
+
+/* Step 2 与 Step 1 共用外层包裹 */
+.workbench-wrapper {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  background: #F8FAFC;
+}
+
+.workbench-wrapper .scroll-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  scrollbar-width: thin;
+  scrollbar-color: #73a8b9 #e6f2f7;
+}
+
+.workbench-wrapper .scroll-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.workbench-wrapper .scroll-container::-webkit-scrollbar-track {
+  background: #e6f2f7;
+  border-radius: 999px;
+}
+
+.workbench-wrapper .scroll-container::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #8ebdcb, #73a8b9);
+  border: 2px solid #e6f2f7;
+  border-radius: 999px;
+}
+
+.workbench-wrapper .scroll-container::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #73a8b9, #5c9eaf);
+}
+
+/* ── Step 内容区 ── */
+.step-area {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.step-area-inner {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: #73a8b9 #e6f2f7;
+}
+
+.step-area-inner::-webkit-scrollbar {
+  width: 8px;
+}
+
+.step-area-inner::-webkit-scrollbar-track {
+  background: #e6f2f7;
+  border-radius: 999px;
+}
+
+.step-area-inner::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #8ebdcb, #73a8b9);
+  border: 2px solid #e6f2f7;
+  border-radius: 999px;
+}
+
+.step-area-inner::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #73a8b9, #5c9eaf);
+}
+
+/* Step 3-5 全屏时：内容占满，隐藏内部终端 */
+.right-panel.full-screen-step :deep(.system-logs) {
+  display: none !important;
+}
+
+/* Step 1-2 分屏时：隐藏各组件底部终端 */
+.step-area :deep(.system-logs) {
+  display: none !important;
+}
+
+/* Step 3-5 全屏时：Step 组件本身背景透明，全屏展示 */
+.right-panel.full-screen-step :deep(.simulation-panel),
+.right-panel.full-screen-step :deep(.report-panel),
+.right-panel.full-screen-step :deep(.interaction-panel) {
+  background: transparent;
+  height: 100%;
+}
+
+/* Step 切换动画：向左滑入 */
+.step-slide-enter-active,
+.step-slide-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.step-slide-enter-from {
+  opacity: 0;
+  transform: translateX(18px);
+}
+
+.step-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-18px);
+}
+
+/* 左侧面板滑入/出动画 */
+.panel-slide-enter-active,
+.panel-slide-leave-active {
+  transition: width 0.3s ease, opacity 0.3s ease;
+}
+
+.panel-slide-enter-from,
+.panel-slide-leave-to {
+  width: 0;
+  opacity: 0;
 }
 </style>
