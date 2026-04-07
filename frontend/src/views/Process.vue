@@ -45,6 +45,13 @@
       <!-- 左侧图谱：仅 Step 1-2 显示 -->
       <Transition name="panel-slide">
         <div v-if="currentStep <= 2" class="left-panel" :class="{ 'full-screen': isFullScreen }">
+        <div class="graph-left-atmosphere" aria-hidden="true">
+          <div class="gl-glow gl-glow-a"></div>
+          <div class="gl-glow gl-glow-b"></div>
+          <div class="gl-glow gl-glow-c"></div>
+          <div class="gl-ellipses"></div>
+          <div class="gl-symbol-pattern"></div>
+        </div>
         <div class="panel-header">
           <div class="header-left">
             <span class="header-deco">◆</span>
@@ -71,6 +78,21 @@
         <div class="graph-container" ref="graphContainer">
           <!-- 图谱可视化（只要有数据就显示） -->
           <div v-if="graphData" class="graph-view">
+            <div class="graph-symbol-decor" aria-hidden="true">
+              <span
+                v-for="(s, i) in GRAPH_DECOR_SYMBOLS"
+                :key="i"
+                class="sym-chip"
+                :class="'sym-drift-' + s.drift"
+                :style="{
+                  left: s.left,
+                  top: s.top,
+                  fontSize: s.size + 'px',
+                  animationDuration: s.f + 's, ' + s.d + 's',
+                  animationDelay: s.fd + 's, ' + s.dd + 's'
+                }"
+              >{{ s.kind === 'plus' ? '+' : '×' }}</span>
+            </div>
             <svg ref="graphSvg" class="graph-svg"></svg>
             <!-- 构建中提示 -->
             <div v-if="currentPhase === 1" class="graph-building-hint">
@@ -461,6 +483,44 @@ const systemLogs = ref([])
 // DOM引用
 const graphContainer = ref(null)
 const graphSvg = ref(null)
+
+/** 图谱画布背后 HTML 装饰：+/× 各自闪烁与漂移周期（勿放进 SVG：CSS transform 会覆盖 g 的 translate） */
+const GRAPH_DECOR_SYMBOLS = [
+  { kind: 'plus', left: '6%', top: '6%', f: 9.2, d: 14.5, fd: 0, dd: -2.1, drift: 'a', size: 28 },
+  { kind: 'cross', left: '14%', top: '3%', f: 15.8, d: 11.2, fd: -4, dd: -1.3, drift: 'b', size: 26 },
+  { kind: 'plus', left: '35%', top: '8%', f: 12.4, d: 17.6, fd: -7, dd: -5.2, drift: 'c', size: 30 },
+  { kind: 'cross', left: '52%', top: '11%', f: 17.1, d: 13.4, fd: -2, dd: -8.4, drift: 'a', size: 25 },
+  { kind: 'plus', left: '72%', top: '5%', f: 10.6, d: 19.2, fd: -5, dd: -3.7, drift: 'b', size: 28 },
+  { kind: 'cross', left: '88%', top: '9%', f: 14.3, d: 15.1, fd: -9, dd: -6.8, drift: 'c', size: 26 },
+  { kind: 'plus', left: '8%', top: '22%', f: 16.5, d: 10.8, fd: -3, dd: -0.9, drift: 'a', size: 26 },
+  { kind: 'cross', left: '28%', top: '19%', f: 11.7, d: 16.3, fd: -8, dd: -4.4, drift: 'b', size: 28 },
+  { kind: 'plus', left: '48%', top: '16%', f: 13.9, d: 12.6, fd: -1, dd: -7.1, drift: 'c', size: 25 },
+  { kind: 'cross', left: '66%', top: '21%', f: 18.2, d: 14.8, fd: -6, dd: -2.6, drift: 'a', size: 30 },
+  { kind: 'plus', left: '82%', top: '17%', f: 10.1, d: 18.4, fd: -11, dd: -9.2, drift: 'b', size: 26 },
+  { kind: 'cross', left: '20%', top: '34%', f: 15.4, d: 11.9, fd: -4, dd: -1.8, drift: 'c', size: 28 },
+  { kind: 'plus', left: '40%', top: '38%', f: 12.8, d: 16.7, fd: -8, dd: -5.5, drift: 'a', size: 26 },
+  { kind: 'cross', left: '60%', top: '36%', f: 9.8, d: 13.2, fd: -2, dd: -3.1, drift: 'b', size: 26 },
+  { kind: 'plus', left: '78%', top: '42%', f: 17.6, d: 10.4, fd: -5, dd: -6.9, drift: 'c', size: 28 },
+  { kind: 'cross', left: '92%', top: '45%', f: 14, d: 17.9, fd: -10, dd: -4.7, drift: 'a', size: 25 },
+  { kind: 'plus', left: '12%', top: '55%', f: 11.3, d: 15.6, fd: -1, dd: -8.1, drift: 'b', size: 26 },
+  { kind: 'cross', left: '34%', top: '52%', f: 16.1, d: 12.1, fd: -7, dd: -2.4, drift: 'c', size: 30 },
+  { kind: 'plus', left: '56%', top: '60%', f: 13.5, d: 18.8, fd: -9, dd: -5.9, drift: 'a', size: 25 },
+  { kind: 'cross', left: '76%', top: '58%', f: 10.4, d: 14.2, fd: -3, dd: -0.6, drift: 'b', size: 28 },
+  { kind: 'plus', left: '4%', top: '72%', f: 18.9, d: 11.5, fd: -6, dd: -7.3, drift: 'c', size: 26 },
+  { kind: 'cross', left: '24%', top: '78%', f: 12.2, d: 16, fd: -2, dd: -4.2, drift: 'a', size: 26 },
+  { kind: 'plus', left: '46%', top: '80%', f: 15.7, d: 13.7, fd: -12, dd: -1.5, drift: 'b', size: 28 },
+  { kind: 'cross', left: '68%', top: '84%', f: 9.6, d: 19.4, fd: -5, dd: -8.8, drift: 'c', size: 26 },
+  { kind: 'plus', left: '86%', top: '76%', f: 14.6, d: 10.2, fd: -4, dd: -3.4, drift: 'a', size: 25 },
+  { kind: 'cross', left: '14%', top: '92%', f: 11.1, d: 15.3, fd: -9, dd: -6.1, drift: 'b', size: 28 },
+  { kind: 'plus', left: '60%', top: '94%', f: 17.3, d: 12.8, fd: -1, dd: -2.9, drift: 'c', size: 26 },
+  { kind: 'cross', left: '38%', top: '88%', f: 13.1, d: 17.1, fd: -8, dd: -5, drift: 'a', size: 25 },
+  { kind: 'plus', left: '90%', top: '66%', f: 10.9, d: 14.6, fd: -7, dd: -4.5, drift: 'b', size: 30 },
+  { kind: 'cross', left: '50%', top: '26%', f: 16.8, d: 11.3, fd: -3, dd: -9.4, drift: 'c', size: 26 },
+  { kind: 'plus', left: '30%', top: '68%', f: 12.6, d: 18.2, fd: -5, dd: -1.1, drift: 'a', size: 26 },
+  { kind: 'cross', left: '70%', top: '30%', f: 15.2, d: 13.5, fd: -10, dd: -7.6, drift: 'b', size: 28 },
+  { kind: 'plus', left: '2%', top: '44%', f: 11.5, d: 16.4, fd: -2, dd: -3.8, drift: 'c', size: 24 },
+  { kind: 'cross', left: '96%', top: '62%', f: 13.8, d: 12.2, fd: -6, dd: -1.2, drift: 'a', size: 25 },
+]
 
 // 轮询定时器
 let pollTimer = null
@@ -1086,7 +1146,7 @@ const renderGraph = () => {
     .attr('viewBox', `0 0 ${width} ${height}`)
   
   svg.selectAll('*').remove()
-  
+
   // 处理节点数据
   const nodesData = graphData.value.nodes || []
   const edgesData = graphData.value.edges || []
@@ -1215,7 +1275,7 @@ const renderGraph = () => {
   node.append('circle')
     .attr('r', 10)
     .attr('fill', d => colorScale(d.type))
-    .attr('stroke', '#fff')
+    .attr('stroke', 'rgba(15, 23, 42, 0.14)')
     .attr('stroke-width', 2)
     .attr('class', 'node-circle')
   
@@ -1276,7 +1336,6 @@ watch(graphData, () => {
 // 生命周期
 onMounted(() => {
   initProject()
-  initStarCanvas()
 })
 
 onUnmounted(() => {
@@ -1439,49 +1498,111 @@ onUnmounted(() => {
   position: relative;
 }
 
-/* 左侧面板 - 50% default */
+/* 左侧面板 - 50% default（冰蓝浅色底，与右侧工作台协调） */
 .left-panel {
   width: 50%;
   flex: none; /* Fixed width initially */
   display: flex;
   flex-direction: column;
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  border-right: 1px solid rgba(173, 196, 214, 0.45);
   transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  background: transparent;
+  background: linear-gradient(165deg, #f4f9fb 0%, #eef5f8 45%, #e6f0f4 100%);
   z-index: 5;
   position: relative;
   overflow: hidden;
 }
 
-/* 左侧面板与右侧面板之间的渐变过渡 */
+/* 左侧面板与右侧面板之间的柔和分隔 */
 .left-panel::after {
   content: '';
   position: absolute;
   top: 0;
   right: -1px;
-  width: 120px;
+  width: 80px;
   height: 100%;
   background: linear-gradient(
     to right,
-    rgba(115, 168, 185, 0) 0%,
-    rgba(115, 168, 185, 0.03) 30%,
-    rgba(115, 168, 185, 0.08) 60%,
-    rgba(115, 168, 185, 0.12) 100%
+    rgba(180, 200, 218, 0) 0%,
+    rgba(180, 200, 218, 0.06) 50%,
+    rgba(180, 200, 218, 0.12) 100%
   );
   pointer-events: none;
   z-index: 2;
 }
 
-/* 图谱区域内部的渐变叠加，让内容与底部过渡更自然 */
+/* 图谱区：中心略亮的径向高光 + 浅青灰底；+/× 在 .graph-symbol-decor（HTML）避免与 SVG transform 冲突 */
 .graph-view {
   position: relative;
-  background: linear-gradient(
-    180deg,
-    rgba(10, 10, 26, 0.4) 0%,
-    rgba(10, 10, 26, 0.2) 50%,
-    rgba(115, 168, 185, 0.05) 100%
-  );
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  min-width: 240px;
+  background:
+    radial-gradient(ellipse 72% 58% at 50% 44%, rgba(255, 255, 255, 0.88) 0%, rgba(244, 249, 251, 0.35) 42%, transparent 68%),
+    linear-gradient(180deg, #f0f7f9 0%, #e8f2f5 55%, #e2edf1 100%);
   border-radius: 0 0 12px 0;
+}
+
+.graph-symbol-decor {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.graph-symbol-decor .sym-chip {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  font-family: 'JetBrains Mono', 'Noto Sans SC', ui-monospace, monospace;
+  font-weight: 500;
+  line-height: 1;
+  color: rgba(95, 125, 150, 0.52);
+  user-select: none;
+  will-change: opacity, transform;
+  animation-name: graph-decor-flicker, graph-decor-drift-a;
+  animation-timing-function: ease-in-out, ease-in-out;
+  animation-iteration-count: infinite, infinite;
+}
+
+.graph-symbol-decor .sym-chip.sym-drift-b {
+  animation-name: graph-decor-flicker, graph-decor-drift-b;
+}
+
+.graph-symbol-decor .sym-chip.sym-drift-c {
+  animation-name: graph-decor-flicker, graph-decor-drift-c;
+}
+
+@keyframes graph-decor-flicker {
+  0%, 100% { opacity: 0.58; }
+  18% { opacity: 0.14; }
+  33% { opacity: 0.52; }
+  52% { opacity: 0.82; }
+  71% { opacity: 0.1; }
+  88% { opacity: 0.46; }
+}
+
+@keyframes graph-decor-drift-a {
+  0%, 100% { transform: translate(-50%, -50%) translate(0, 0); }
+  28% { transform: translate(-50%, -50%) translate(3px, -2px); }
+  55% { transform: translate(-50%, -50%) translate(-2px, 2px); }
+  82% { transform: translate(-50%, -50%) translate(2px, 1px); }
+}
+
+@keyframes graph-decor-drift-b {
+  0%, 100% { transform: translate(-50%, -50%) translate(0, 0); }
+  32% { transform: translate(-50%, -50%) translate(-3px, 2px); }
+  58% { transform: translate(-50%, -50%) translate(2px, -2px); }
+  84% { transform: translate(-50%, -50%) translate(-1px, -1px); }
+}
+
+@keyframes graph-decor-drift-c {
+  0%, 100% { transform: translate(-50%, -50%) translate(0, 0); }
+  24% { transform: translate(-50%, -50%) translate(2px, 3px); }
+  48% { transform: translate(-50%, -50%) translate(-2px, -1px); }
+  74% { transform: translate(-50%, -50%) translate(1px, -2px); }
 }
 
 .left-panel.full-screen {
@@ -1493,16 +1614,94 @@ onUnmounted(() => {
   display: none;
 }
 
-/* 极光渐变背景 */
-.aurora-bg {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 50%;
-  height: 100vh;
+/* 左侧图谱：大面积柔光 + 椭圆轮廓 + +/× 符号铺底（参考浅色科技风） */
+.graph-left-atmosphere {
+  position: absolute;
+  inset: 0;
   pointer-events: none;
   z-index: 0;
   overflow: hidden;
+}
+
+.gl-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(36px);
+  opacity: 0.55;
+}
+
+.gl-glow-a {
+  top: 4%;
+  left: 8%;
+  width: 280px;
+  height: 220px;
+  background: radial-gradient(circle, rgba(186, 220, 240, 0.55) 0%, rgba(186, 220, 240, 0) 68%);
+}
+
+.gl-glow-b {
+  top: 18%;
+  right: 4%;
+  width: 340px;
+  height: 260px;
+  background: radial-gradient(circle, rgba(200, 228, 242, 0.5) 0%, rgba(200, 228, 242, 0) 65%);
+}
+
+.gl-glow-c {
+  bottom: 12%;
+  left: 28%;
+  width: 400px;
+  height: 240px;
+  background: radial-gradient(circle, rgba(176, 212, 232, 0.45) 0%, rgba(176, 212, 232, 0) 62%);
+}
+
+.gl-ellipses {
+  position: absolute;
+  inset: -5%;
+  opacity: 1;
+}
+
+.gl-ellipses::before,
+.gl-ellipses::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(100, 130, 155, 0.07);
+  pointer-events: none;
+}
+
+.gl-ellipses::before {
+  width: 118%;
+  height: 72%;
+  left: -9%;
+  top: 8%;
+  transform: rotate(-7deg);
+}
+
+.gl-ellipses::after {
+  width: 95%;
+  height: 88%;
+  left: 2%;
+  top: 2%;
+  border-color: rgba(120, 150, 175, 0.05);
+  transform: rotate(4deg);
+}
+
+.gl-symbol-pattern {
+  position: absolute;
+  inset: 0;
+  opacity: 0.42;
+  background-image:
+    radial-gradient(circle at 11% 21%, rgba(110, 140, 165, 0.14) 0 1.1px, transparent 1.4px),
+    radial-gradient(circle at 84% 36%, rgba(110, 140, 165, 0.11) 0 1px, transparent 1.3px),
+    radial-gradient(circle at 38% 79%, rgba(110, 140, 165, 0.12) 0 1px, transparent 1.35px),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Cg fill='none' stroke='%2394a8b8' stroke-linecap='round' stroke-width='1.25'%3E%3Cpath d='M30 38h11M35.5 33v11' opacity='0.42'/%3E%3Cpath d='M54 22l7.5 7.5m0-7.5L54 29.5' opacity='0.3'/%3E%3Cpath d='M138 52h10M143 47v10' opacity='0.36'/%3E%3Cpath d='M172 78l8 8m0-8l-8 8' opacity='0.28'/%3E%3Cpath d='M22 128h9M26.5 123v10' opacity='0.32'/%3E%3Cpath d='M92 98l6.5 6.5m0-6.5L92 104.5' opacity='0.38'/%3E%3Cpath d='M158 134h9M162.5 129v10' opacity='0.34'/%3E%3Cpath d='M48 170l7 7m0-7l-7 7' opacity='0.26'/%3E%3Cpath d='M124 174h10M129 169v10' opacity='0.33'/%3E%3Cpath d='M12 88h8M16 84v8' opacity='0.25'/%3E%3Cpath d='M180 24l6 6m0-6l-6 6' opacity='0.22'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: auto, auto, auto, 200px 200px;
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat;
+}
+
+/* 左侧已改用面板内浅色氛围层，极光层关闭以免叠色 */
+.aurora-bg {
+  display: none;
 }
 
 .aurora-orb {
@@ -1564,15 +1763,9 @@ onUnmounted(() => {
   }
 }
 
-/* 十字星点阵画布 */
+/* 十字星画布已改为面板内 CSS 图案，固定画布关闭 */
 .star-canvas {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 50%;
-  height: 100vh;
-  pointer-events: none;
-  z-index: 1;
+  display: none;
 }
 
 .panel-header {
@@ -1580,15 +1773,15 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 12px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(10, 10, 26, 0.8);
-  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(173, 192, 210, 0.55);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(14px);
   height: 50px;
   z-index: 10;
   position: relative;
 }
 
-/* 面板header底部渐变过渡，与内容区协调 */
+/* 左栏顶栏底边细线，与参考图一致 */
 .panel-header::after {
   content: '';
   position: absolute;
@@ -1598,10 +1791,9 @@ onUnmounted(() => {
   height: 1px;
   background: linear-gradient(
     to right,
-    rgba(59, 130, 246, 0.6) 0%,
-    rgba(6, 182, 212, 0.4) 30%,
-    rgba(115, 168, 185, 0.3) 60%,
-    rgba(115, 168, 185, 0.1) 100%
+    rgba(59, 130, 246, 0.25) 0%,
+    rgba(125, 170, 200, 0.2) 45%,
+    rgba(180, 200, 218, 0.12) 100%
   );
 }
 
@@ -1612,7 +1804,7 @@ onUnmounted(() => {
 }
 
 .header-deco {
-  color: #3b82f6;
+  color: #2563eb;
   font-size: 0.8rem;
 }
 
@@ -1620,7 +1812,7 @@ onUnmounted(() => {
   font-size: 0.85rem;
   font-weight: 600;
   letter-spacing: 0.05em;
-  color: rgba(255, 255, 255, 0.9);
+  color: #1e3a5f;
 }
 
 .header-right {
@@ -1628,7 +1820,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 16px;
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: #5c728a;
 }
 
 .stat-item {
@@ -1643,7 +1835,7 @@ onUnmounted(() => {
 }
 
 .stat-divider {
-  color: rgba(255, 255, 255, 0.2);
+  color: rgba(100, 125, 150, 0.35);
 }
 
 .action-buttons {
@@ -1662,13 +1854,13 @@ onUnmounted(() => {
   border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.2s;
-  color: #666;
-  border-radius: 2px;
+  color: #5c728a;
+  border-radius: 6px;
 }
 
 .action-btn:hover:not(:disabled) {
-  background: #F5F5F5;
-  color: #000;
+  background: rgba(59, 130, 246, 0.08);
+  color: #1e40af;
 }
 
 .action-btn:disabled {
@@ -1695,24 +1887,25 @@ onUnmounted(() => {
   position: relative;
   overflow: hidden;
   background: transparent;
+  z-index: 1;
 }
 
-/* 图谱容器底部渐变 - 与右侧底部色调协调 */
+/* 图谱容器底部与图例区的柔和过渡 */
 .graph-container::after {
   content: '';
   position: absolute;
   bottom: 0;
   left: 0;
   width: 100%;
-  height: 80px;
+  height: 64px;
   background: linear-gradient(
     to top,
-    rgba(248, 250, 252, 0.12) 0%,
-    rgba(230, 242, 247, 0.06) 40%,
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(244, 249, 251, 0.2) 50%,
     transparent 100%
   );
   pointer-events: none;
-  z-index: 1;
+  z-index: 2;
 }
 
 .graph-loading,
@@ -1808,10 +2001,20 @@ onUnmounted(() => {
   text-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
 }
 
+.graph-container .loading-text,
+.graph-container .waiting-text {
+  color: #1e3a5f;
+  text-shadow: none;
+}
+
 .waiting-hint {
   font-size: 0.85rem;
   color: rgba(255, 255, 255, 0.5);
   margin: 0;
+}
+
+.graph-container .waiting-hint {
+  color: #64748b;
 }
 
 .waiting-icon {
@@ -1824,20 +2027,18 @@ onUnmounted(() => {
   filter: drop-shadow(0 0 20px rgba(59, 130, 246, 0.5));
 }
 
-.graph-view {
-  width: 100%;
-  height: 100%;
-  position: relative;
-}
-
 .graph-svg {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   display: block;
+  background: transparent;
 }
 
 .graph-building-hint {
   position: absolute;
+  z-index: 2;
   bottom: 16px;
   left: 16px;
   display: flex;
@@ -2072,49 +2273,23 @@ onUnmounted(() => {
   margin-bottom: 10px;
 }
 
-/* 图谱图例 */
+/* 图谱图例（白底条，与参考图一致） */
 .graph-legend {
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
   padding: 12px 24px;
-  padding-top: 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(10, 10, 26, 0.6);
-  backdrop-filter: blur(10px);
+  padding-top: 16px;
+  border-top: 1px solid rgba(200, 215, 228, 0.85);
+  background: #ffffff;
+  backdrop-filter: none;
   position: relative;
+  z-index: 4;
 }
 
-/* 图例区域顶部渐变，与图谱内容过渡 */
-.graph-legend::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 20px;
-  background: linear-gradient(
-    to top,
-    rgba(115, 168, 185, 0.06) 0%,
-    transparent 100%
-  );
-  pointer-events: none;
-}
-
-/* 图例区域左侧渐变，与整体过渡协调 */
+.graph-legend::before,
 .graph-legend::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 1px;
-  height: 100%;
-  background: linear-gradient(
-    to bottom,
-    rgba(59, 130, 246, 0.3) 0%,
-    rgba(6, 182, 212, 0.2) 40%,
-    transparent 100%
-  );
+  display: none;
 }
 
 .legend-item {
@@ -2128,15 +2303,15 @@ onUnmounted(() => {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  box-shadow: 0 0 10px currentColor;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.06);
 }
 
 .legend-label {
-  color: rgba(255, 255, 255, 0.8);
+  color: #334155;
 }
 
 .legend-count {
-  color: rgba(255, 255, 255, 0.4);
+  color: #94a3b8;
 }
 
 /* 右侧面板 - 50% default */
