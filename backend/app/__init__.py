@@ -1,5 +1,5 @@
 """
-MiroFish Backend - Flask应用工厂
+NexusMind Backend - Flask应用工厂
 """
 
 import os
@@ -9,7 +9,7 @@ import warnings
 # 需要在所有其他导入之前设置
 warnings.filterwarnings("ignore", message=".*resource_tracker.*")
 
-from flask import Flask, request
+from flask import Flask, g, request
 from flask_cors import CORS
 
 from .config import Config
@@ -27,7 +27,7 @@ def create_app(config_class=Config):
         app.json.ensure_ascii = False
     
     # 设置日志
-    logger = setup_logger('mirofish')
+    logger = setup_logger('nexusmind')
     
     # 只在 reloader 子进程中打印启动信息（避免 debug 模式下打印两次）
     is_reloader_process = os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
@@ -36,7 +36,7 @@ def create_app(config_class=Config):
     
     if should_log_startup:
         logger.info("=" * 50)
-        logger.info("MiroFish Backend 启动中...")
+        logger.info("NexusMind Backend 启动中...")
         logger.info("=" * 50)
     
     # 启用CORS
@@ -51,14 +51,27 @@ def create_app(config_class=Config):
     # 请求日志中间件
     @app.before_request
     def log_request():
-        logger = get_logger('mirofish.request')
+        logger = get_logger('nexusmind.request')
+        path = request.path or ''
+        is_simulation_status_polling = (
+            request.method == 'GET'
+            and path.startswith('/api/simulation/')
+            and (path.endswith('/run-status') or path.endswith('/run-status/detail'))
+        )
+
+        g.skip_request_logging = is_simulation_status_polling
+        if is_simulation_status_polling:
+            return
+
         logger.debug(f"请求: {request.method} {request.path}")
         if request.content_type and 'json' in request.content_type:
             logger.debug(f"请求体: {request.get_json(silent=True)}")
     
     @app.after_request
     def log_response(response):
-        logger = get_logger('mirofish.request')
+        logger = get_logger('nexusmind.request')
+        if getattr(g, 'skip_request_logging', False):
+            return response
         logger.debug(f"响应: {response.status_code}")
         return response
     
@@ -71,10 +84,10 @@ def create_app(config_class=Config):
     # 健康检查
     @app.route('/health')
     def health():
-        return {'status': 'ok', 'service': 'MiroFish Backend'}
+        return {'status': 'ok', 'service': 'NexusMind Backend'}
     
     if should_log_startup:
-        logger.info("MiroFish Backend 启动完成")
+        logger.info("NexusMind Backend 启动完成")
     
     return app
 

@@ -1,21 +1,23 @@
 """
 图谱构建服务
-接口2：使用Zep API构建Standalone Graph
+使用 Graphiti + Neo4j 构建知识图谱
 """
 
 import os
 import uuid
 import time
+import asyncio
 import threading
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
-from zep_cloud.client import Zep
-from zep_cloud import EpisodeData, EntityEdgeSourceTarget
+from graphiti_core import Graphiti
+from graphiti_core.nodes import EpisodeType
 
 from ..config import Config
 from ..models.task import TaskManager, TaskStatus
-from ..utils.zep_paging import fetch_all_nodes, fetch_all_edges
+from ..utils.graphiti_client import get_graphiti, create_fresh_graphiti, run_async, run_async_batch, remove_instance, get_neo4j_async_driver
 from .text_processor import TextProcessor
 
 
@@ -39,22 +41,18 @@ class GraphInfo:
 class GraphBuilderService:
     """
     图谱构建服务
-    负责调用Zep API构建知识图谱
+    负责调用 Graphiti + FalkorDB 构建知识图谱
     """
     
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or Config.ZEP_API_KEY
-        if not self.api_key:
-            raise ValueError("ZEP_API_KEY 未配置")
-        
-        self.client = Zep(api_key=self.api_key)
+        # api_key 参数保留用于兼容，但 Graphiti 使用环境变量中的 OPENAI_API_KEY
         self.task_manager = TaskManager()
     
     def build_graph_async(
         self,
         text: str,
         ontology: Dict[str, Any],
-        graph_name: str = "MiroFish Graph",
+        graph_name: str = "NexusMind Graph",
         chunk_size: int = 500,
         chunk_overlap: int = 50,
         batch_size: int = 3
@@ -147,11 +145,11 @@ class GraphBuilderService:
                 )
             )
             
-            # 5. 等待Zep处理完成
+            # 5. 等待图谱处理完成
             self.task_manager.update_task(
                 task_id,
                 progress=60,
-                message="等待Zep处理数据..."
+                message="等待图谱处理数据..."
             )
             
             self._wait_for_episodes(
@@ -185,105 +183,71 @@ class GraphBuilderService:
             self.task_manager.fail_task(task_id, error_msg)
     
     def create_graph(self, name: str) -> str:
-        """创建Zep图谱（公开方法）"""
-        graph_id = f"mirofish_{uuid.uuid4().hex[:16]}"
+        """创建图谱（清理旧数据 → 初始化索引）"""
+        graph_id = f"nexusmind_{uuid.uuid4().hex[:16]}"
         
-        self.client.graph.create(
-            graph_id=graph_id,
-            name=name,
-            description="MiroFish Social Simulation Graph"
-        )
+        # 清理旧图谱数据，确保不同项目之间数据隔离
+        from neo4j import AsyncGraphDatabase
+        async def _clear():
+            driver = AsyncGraphDatabase.driver(
+                Config.NEO4J_URI,
+                auth=(Config.NEO4J_USERNAME, Config.NEO4J_PASSWORD),
+            )
+            try:
+                await driver.execute_query(
+                    "MATCH (n) DETACH DELETE n",
+                    database_=Config.NEO4J_DATABASE,
+                )
+            finally:
+                await driver.close()
+        
+        run_async(_clear())
+        
+        graphiti = get_graphiti(graph_id)
+        run_async(graphiti.build_indices_and_constraints())
         
         return graph_id
     
     def set_ontology(self, graph_id: str, ontology: Dict[str, Any]):
-        """设置图谱本体（公开方法）"""
-        import warnings
-        from typing import Optional
-        from pydantic import Field
-        from zep_cloud.external_clients.ontology import EntityModel, EntityText, EdgeModel
+        """
+        设置图谱本体。
         
-        # 抑制 Pydantic v2 关于 Field(default=None) 的警告
-        # 这是 Zep SDK 要求的用法，警告来自动态类创建，可以安全忽略
-        warnings.filterwarnings('ignore', category=UserWarning, module='pydantic')
+        Graphiti 支持 prescribed ontology（通过 Pydantic 模型）和 learned ontology。
+        这里将本体信息序列化为描述文本，作为首个 episode 注入，
+        让 Graphiti 自动学习本体结构。
+        """
+        # 构建本体描述文本
+        ontology_text_parts = ["=== 本体定义 (Ontology) ===\n"]
         
-        # Zep 保留名称，不能作为属性名
-        RESERVED_NAMES = {'uuid', 'name', 'group_id', 'name_embedding', 'summary', 'created_at'}
-        
-        def safe_attr_name(attr_name: str) -> str:
-            """将保留名称转换为安全名称"""
-            if attr_name.lower() in RESERVED_NAMES:
-                return f"entity_{attr_name}"
-            return attr_name
-        
-        # 动态创建实体类型
-        entity_types = {}
         for entity_def in ontology.get("entity_types", []):
             name = entity_def["name"]
-            description = entity_def.get("description", f"A {name} entity.")
-            
-            # 创建属性字典和类型注解（Pydantic v2 需要）
-            attrs = {"__doc__": description}
-            annotations = {}
-            
-            for attr_def in entity_def.get("attributes", []):
-                attr_name = safe_attr_name(attr_def["name"])  # 使用安全名称
-                attr_desc = attr_def.get("description", attr_name)
-                # Zep API 需要 Field 的 description，这是必需的
-                attrs[attr_name] = Field(description=attr_desc, default=None)
-                annotations[attr_name] = Optional[EntityText]  # 类型注解
-            
-            attrs["__annotations__"] = annotations
-            
-            # 动态创建类
-            entity_class = type(name, (EntityModel,), attrs)
-            entity_class.__doc__ = description
-            entity_types[name] = entity_class
+            desc = entity_def.get("description", "")
+            attrs = entity_def.get("attributes", [])
+            attr_str = ", ".join([a["name"] for a in attrs]) if attrs else "无"
+            ontology_text_parts.append(
+                f"实体类型 [{name}]: {desc}. 属性: {attr_str}"
+            )
         
-        # 动态创建边类型
-        edge_definitions = {}
         for edge_def in ontology.get("edge_types", []):
             name = edge_def["name"]
-            description = edge_def.get("description", f"A {name} relationship.")
-            
-            # 创建属性字典和类型注解
-            attrs = {"__doc__": description}
-            annotations = {}
-            
-            for attr_def in edge_def.get("attributes", []):
-                attr_name = safe_attr_name(attr_def["name"])  # 使用安全名称
-                attr_desc = attr_def.get("description", attr_name)
-                # Zep API 需要 Field 的 description，这是必需的
-                attrs[attr_name] = Field(description=attr_desc, default=None)
-                annotations[attr_name] = Optional[str]  # 边属性用str类型
-            
-            attrs["__annotations__"] = annotations
-            
-            # 动态创建类
-            class_name = ''.join(word.capitalize() for word in name.split('_'))
-            edge_class = type(class_name, (EdgeModel,), attrs)
-            edge_class.__doc__ = description
-            
-            # 构建source_targets
-            source_targets = []
-            for st in edge_def.get("source_targets", []):
-                source_targets.append(
-                    EntityEdgeSourceTarget(
-                        source=st.get("source", "Entity"),
-                        target=st.get("target", "Entity")
-                    )
-                )
-            
-            if source_targets:
-                edge_definitions[name] = (edge_class, source_targets)
-        
-        # 调用Zep API设置本体
-        if entity_types or edge_definitions:
-            self.client.graph.set_ontology(
-                graph_ids=[graph_id],
-                entities=entity_types if entity_types else None,
-                edges=edge_definitions if edge_definitions else None,
+            desc = edge_def.get("description", "")
+            source_targets = edge_def.get("source_targets", [])
+            st_str = ", ".join([f"{st.get('source', '?')}->{st.get('target', '?')}" for st in source_targets])
+            ontology_text_parts.append(
+                f"关系类型 [{name}]: {desc}. 连接: {st_str}"
             )
+        
+        ontology_text = "\n".join(ontology_text_parts)
+        
+        # 作为首个 episode 注入
+        graphiti = get_graphiti(graph_id)
+        run_async(graphiti.add_episode(
+            name="ontology_definition",
+            episode_body=ontology_text,
+            source=EpisodeType.text,
+            source_description="Knowledge graph ontology definition",
+            reference_time=datetime.now(timezone.utc),
+        ))
     
     def add_text_batches(
         self,
@@ -292,51 +256,56 @@ class GraphBuilderService:
         batch_size: int = 3,
         progress_callback: Optional[Callable] = None
     ) -> List[str]:
-        """分批添加文本到图谱，返回所有 episode 的 uuid 列表"""
-        episode_uuids = []
-        total_chunks = len(chunks)
+        """
+        并发添加文本块到图谱。
         
-        for i in range(0, total_chunks, batch_size):
-            batch_chunks = chunks[i:i + batch_size]
-            batch_num = i // batch_size + 1
-            total_batches = (total_chunks + batch_size - 1) // batch_size
+        每批 batch_size 个 chunk 并发处理（通过 asyncio.gather + semaphore），
+        显著减少总耗时。DashScope API 限流由 semaphore 控制。
+        
+        返回 episode 名称列表（用于跟踪）。
+        """
+        episode_names = []
+        total_chunks = len(chunks)
+        graphiti = get_graphiti(graph_id)
+        
+        # 按 batch_size 分组并发处理
+        for batch_start in range(0, total_chunks, batch_size):
+            batch_end = min(batch_start + batch_size, total_chunks)
+            batch_chunks = chunks[batch_start:batch_end]
             
             if progress_callback:
-                progress = (i + len(batch_chunks)) / total_chunks
+                progress = batch_start / total_chunks
                 progress_callback(
-                    f"发送第 {batch_num}/{total_batches} 批数据 ({len(batch_chunks)} 块)...",
+                    f"并发处理第 {batch_start + 1}-{batch_end}/{total_chunks} 个文本块...",
                     progress
                 )
             
-            # 构建episode数据
-            episodes = [
-                EpisodeData(data=chunk, type="text")
-                for chunk in batch_chunks
-            ]
+            # 构建本批次的所有协程
+            coros = []
+            batch_names = []
+            for i, chunk in enumerate(batch_chunks):
+                idx = batch_start + i
+                episode_name = f"chunk_{idx:04d}"
+                batch_names.append(episode_name)
+                coros.append(graphiti.add_episode(
+                    name=episode_name,
+                    episode_body=chunk,
+                    source=EpisodeType.text,
+                    source_description=f"Document chunk {idx + 1}/{total_chunks}",
+                    reference_time=datetime.now(timezone.utc),
+                ))
             
-            # 发送到Zep
             try:
-                batch_result = self.client.graph.add_batch(
-                    graph_id=graph_id,
-                    episodes=episodes
-                )
-                
-                # 收集返回的 episode uuid
-                if batch_result and isinstance(batch_result, list):
-                    for ep in batch_result:
-                        ep_uuid = getattr(ep, 'uuid_', None) or getattr(ep, 'uuid', None)
-                        if ep_uuid:
-                            episode_uuids.append(ep_uuid)
-                
-                # 避免请求过快
-                time.sleep(1)
-                
+                run_async_batch(coros, max_concurrency=batch_size)
+                episode_names.extend(batch_names)
             except Exception as e:
                 if progress_callback:
-                    progress_callback(f"批次 {batch_num} 发送失败: {str(e)}", 0)
+                    progress_callback(
+                        f"文本块 {batch_start + 1}-{batch_end} 处理失败: {str(e)}", 0
+                    )
                 raise
         
-        return episode_uuids
+        return episode_names
     
     def _wait_for_episodes(
         self,
@@ -344,147 +313,241 @@ class GraphBuilderService:
         progress_callback: Optional[Callable] = None,
         timeout: int = 600
     ):
-        """等待所有 episode 处理完成（通过查询每个 episode 的 processed 状态）"""
-        if not episode_uuids:
-            if progress_callback:
-                progress_callback("无需等待（没有 episode）", 1.0)
-            return
-        
-        start_time = time.time()
-        pending_episodes = set(episode_uuids)
-        completed_count = 0
-        total_episodes = len(episode_uuids)
-        
+        """
+        Graphiti 的 add_episode 是同步处理的（调用完成即处理完成），
+        不需要轮询等待。
+        此方法保留接口兼容性，直接报告完成。
+        """
+        total = len(episode_uuids) if episode_uuids else 0
         if progress_callback:
-            progress_callback(f"开始等待 {total_episodes} 个文本块处理...", 0)
+            progress_callback(f"所有 {total} 个文本块已处理完成", 1.0)
+    
+    def tag_graph_data(self, graph_id: str):
+        """构建完成后，给所有节点和边打上 group_id 标记，用于按项目隔离数据"""
+        async def _tag():
+            driver = get_neo4j_async_driver()
+            await driver.execute_query(
+                "MATCH (n:Entity) WHERE n.group_id IS NULL OR n.group_id = '' "
+                "SET n.group_id = $gid",
+                gid=graph_id,
+                database_=Config.NEO4J_DATABASE,
+            )
+            await driver.execute_query(
+                "MATCH ()-[r]->() WHERE r.group_id IS NULL OR r.group_id = '' "
+                "SET r.group_id = $gid",
+                gid=graph_id,
+                database_=Config.NEO4J_DATABASE,
+            )
         
-        while pending_episodes:
-            if time.time() - start_time > timeout:
-                if progress_callback:
-                    progress_callback(
-                        f"部分文本块超时，已完成 {completed_count}/{total_episodes}",
-                        completed_count / total_episodes
-                    )
-                break
-            
-            # 检查每个 episode 的处理状态
-            for ep_uuid in list(pending_episodes):
-                try:
-                    episode = self.client.graph.episode.get(uuid_=ep_uuid)
-                    is_processed = getattr(episode, 'processed', False)
-                    
-                    if is_processed:
-                        pending_episodes.remove(ep_uuid)
-                        completed_count += 1
-                        
-                except Exception as e:
-                    # 忽略单个查询错误，继续
-                    pass
-            
-            elapsed = int(time.time() - start_time)
-            if progress_callback:
-                progress_callback(
-                    f"Zep处理中... {completed_count}/{total_episodes} 完成, {len(pending_episodes)} 待处理 ({elapsed}秒)",
-                    completed_count / total_episodes if total_episodes > 0 else 0
-                )
-            
-            if pending_episodes:
-                time.sleep(3)  # 每3秒检查一次
-        
-        if progress_callback:
-            progress_callback(f"处理完成: {completed_count}/{total_episodes}", 1.0)
+        run_async(_tag())
     
     def _get_graph_info(self, graph_id: str) -> GraphInfo:
         """获取图谱信息"""
-        # 获取节点（分页）
-        nodes = fetch_all_nodes(self.client, graph_id)
-
-        # 获取边（分页）
-        edges = fetch_all_edges(self.client, graph_id)
-
-        # 统计实体类型
+        graph_data = self.get_graph_data(graph_id)
+        
         entity_types = set()
-        for node in nodes:
-            if node.labels:
-                for label in node.labels:
-                    if label not in ["Entity", "Node"]:
-                        entity_types.add(label)
+        for node in graph_data.get("nodes", []):
+            for label in node.get("labels", []):
+                if label not in ["Entity", "Node"]:
+                    entity_types.add(label)
 
         return GraphInfo(
             graph_id=graph_id,
-            node_count=len(nodes),
-            edge_count=len(edges),
+            node_count=graph_data.get("node_count", 0),
+            edge_count=graph_data.get("edge_count", 0),
             entity_types=list(entity_types)
         )
     
     def get_graph_data(self, graph_id: str) -> Dict[str, Any]:
         """
-        获取完整图谱数据（包含详细信息）
+        获取完整图谱数据（直接通过 Neo4j Cypher 查询）。
         
-        Args:
-            graph_id: 图谱ID
-            
-        Returns:
-            包含nodes和edges的字典，包括时间信息、属性等详细数据
+        1. 查询所有 Entity 节点和 RELATES_TO 边
+        2. 基于 ontology 类型名和边连接推断每个节点的 entity type
+        3. 将 entity type 写入 labels，供前端按类型着色
         """
-        nodes = fetch_all_nodes(self.client, graph_id)
-        edges = fetch_all_edges(self.client, graph_id)
-
-        # 创建节点映射用于获取节点名称
-        node_map = {}
-        for node in nodes:
-            node_map[node.uuid_] = node.name or ""
+        async def _fetch():
+            driver = get_neo4j_async_driver()
+            # 按 group_id 过滤（兼容未标记的旧数据）
+            gid_filter = "WHERE n.group_id = $gid OR n.group_id IS NULL" if graph_id else ""
+            node_result = await driver.execute_query(
+                f"MATCH (n:Entity) {gid_filter} "
+                "RETURN n.uuid AS uuid, n.name AS name, n.summary AS summary, "
+                "n.group_id AS group_id, n.created_at AS created_at",
+                gid=graph_id,
+                database_=Config.NEO4J_DATABASE,
+            )
+            edge_gid = "WHERE r.group_id = $gid OR r.group_id IS NULL" if graph_id else ""
+            edge_result = await driver.execute_query(
+                f"MATCH (a:Entity)-[r]->(b:Entity) {edge_gid} "
+                "RETURN r.uuid AS uuid, r.name AS name, r.fact AS fact, "
+                "type(r) AS rel_type, "
+                "r.source_node_uuid AS source_uuid, r.target_node_uuid AS target_uuid, "
+                "a.name AS source_name, b.name AS target_name, "
+                "a.uuid AS src_uuid, b.uuid AS tgt_uuid, "
+                "r.created_at AS created_at, r.valid_at AS valid_at, "
+                "r.episodes AS episodes",
+                gid=graph_id,
+                database_=Config.NEO4J_DATABASE,
+            )
+            # 共现边：同一 Episode 提到的实体对（至少共现2次，上限200条）
+            cooccur_result = await driver.execute_query(
+                "MATCH (ep)-[:MENTIONS]->(a:Entity), (ep)-[:MENTIONS]->(b:Entity) "
+                "WHERE elementId(a) < elementId(b) "
+                "WITH a, b, count(ep) AS weight "
+                "WHERE weight >= 2 "
+                "RETURN a.uuid AS src_uuid, a.name AS src_name, "
+                "b.uuid AS tgt_uuid, b.name AS tgt_name, weight "
+                "ORDER BY weight DESC LIMIT 200",
+                database_=Config.NEO4J_DATABASE,
+            )
+            return node_result.records, edge_result.records, cooccur_result.records
         
+        try:
+            node_records, edge_records, cooccur_records = run_async(_fetch())
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            node_records, edge_records, cooccur_records = [], [], []
+        
+        # --- 推断 entity type ---
+        # 收集所有节点名称
+        all_names = set()
+        node_summaries = {}
+        for rec in node_records:
+            name = rec["name"] or ""
+            all_names.add(name)
+            node_summaries[name] = rec["summary"] or ""
+        
+        # 识别 type 定义节点（summary 包含 "属性:" 模式，说明是 ontology 类型描述）
+        type_names = set()
+        for name, summary in node_summaries.items():
+            if summary and "属性:" in summary and len(summary) > 30:
+                type_names.add(name)
+        
+        # 通过边关系推断实例节点的类型（实例 → 类型定义节点 的边）
+        node_uuid_to_name = {}
+        for rec in node_records:
+            node_uuid_to_name[rec["uuid"]] = rec["name"] or ""
+        
+        # 正向 + 反向关系：如果一个实例节点连接到一个类型定义节点，就继承该类型
+        node_type_map = {}  # node_name -> entity_type
+        for rec in edge_records:
+            src = rec["source_name"] or ""
+            tgt = rec["target_name"] or ""
+            if src in type_names and tgt not in type_names:
+                if tgt not in node_type_map:
+                    node_type_map[tgt] = src
+            elif tgt in type_names and src not in type_names:
+                if src not in node_type_map:
+                    node_type_map[src] = tgt
+        
+        # 对未分类节点，尝试从 summary 中匹配类型关键词
+        for name in all_names:
+            if name in type_names or name in node_type_map:
+                continue
+            summary = node_summaries.get(name, "")
+            for tn in type_names:
+                if tn.lower() in summary.lower():
+                    node_type_map[name] = tn
+                    break
+        
+        def _get_labels(name: str) -> List[str]:
+            if name in type_names:
+                return ["Entity", name]
+            entity_type = node_type_map.get(name)
+            if entity_type:
+                return ["Entity", entity_type]
+            return ["Entity"]
+        
+        # --- 构建返回数据 ---
+        node_map = {}
         nodes_data = []
-        for node in nodes:
-            # 获取创建时间
-            created_at = getattr(node, 'created_at', None)
-            if created_at:
-                created_at = str(created_at)
+        for rec in node_records:
+            uuid = str(rec["uuid"] or "")
+            name = rec["name"] or ""
+            node_map[uuid] = name
             
+            created_at = rec["created_at"]
             nodes_data.append({
-                "uuid": node.uuid_,
-                "name": node.name,
-                "labels": node.labels or [],
-                "summary": node.summary or "",
-                "attributes": node.attributes or {},
-                "created_at": created_at,
+                "uuid": uuid,
+                "name": name,
+                "labels": _get_labels(name),
+                "summary": rec["summary"] or "",
+                "attributes": {},
+                "created_at": str(created_at) if created_at else None,
             })
         
         edges_data = []
-        for edge in edges:
-            # 获取时间信息
-            created_at = getattr(edge, 'created_at', None)
-            valid_at = getattr(edge, 'valid_at', None)
-            invalid_at = getattr(edge, 'invalid_at', None)
-            expired_at = getattr(edge, 'expired_at', None)
-            
-            # 获取 episodes
-            episodes = getattr(edge, 'episodes', None) or getattr(edge, 'episode_ids', None)
+        for rec in edge_records:
+            uuid = str(rec["uuid"] or "")
+            # source/target uuid: 优先用边上的属性，回退到匹配的节点 uuid
+            source_uuid = str(rec["source_uuid"] or rec["src_uuid"] or "")
+            target_uuid = str(rec["target_uuid"] or rec["tgt_uuid"] or "")
+            rel_type = rec["rel_type"] or ""
+            edge_name = rec["name"] or rel_type
+            created_at = rec["created_at"]
+            valid_at = rec["valid_at"]
+            episodes = rec["episodes"]
             if episodes and not isinstance(episodes, list):
                 episodes = [str(episodes)]
             elif episodes:
                 episodes = [str(e) for e in episodes]
             
-            # 获取 fact_type
-            fact_type = getattr(edge, 'fact_type', None) or edge.name or ""
-            
             edges_data.append({
-                "uuid": edge.uuid_,
-                "name": edge.name or "",
-                "fact": edge.fact or "",
-                "fact_type": fact_type,
-                "source_node_uuid": edge.source_node_uuid,
-                "target_node_uuid": edge.target_node_uuid,
-                "source_node_name": node_map.get(edge.source_node_uuid, ""),
-                "target_node_name": node_map.get(edge.target_node_uuid, ""),
-                "attributes": edge.attributes or {},
+                "uuid": uuid,
+                "name": edge_name,
+                "fact": rec["fact"] or "",
+                "fact_type": rel_type or edge_name,
+                "source_node_uuid": source_uuid,
+                "target_node_uuid": target_uuid,
+                "source_node_name": rec["source_name"] or node_map.get(source_uuid, ""),
+                "target_node_name": rec["target_name"] or node_map.get(target_uuid, ""),
+                "attributes": {},
                 "created_at": str(created_at) if created_at else None,
                 "valid_at": str(valid_at) if valid_at else None,
-                "invalid_at": str(invalid_at) if invalid_at else None,
-                "expired_at": str(expired_at) if expired_at else None,
+                "invalid_at": None,
+                "expired_at": None,
                 "episodes": episodes or [],
             })
+        
+        # --- 共现边：同一文本块提到的实体对 ---
+        existing_pairs = set()
+        for e in edges_data:
+            pair = tuple(sorted([e["source_node_uuid"], e["target_node_uuid"]]))
+            existing_pairs.add(pair)
+        
+        for rec in cooccur_records:
+            src_uuid = str(rec["src_uuid"] or "")
+            tgt_uuid = str(rec["tgt_uuid"] or "")
+            pair = tuple(sorted([src_uuid, tgt_uuid]))
+            if pair in existing_pairs or not src_uuid or not tgt_uuid:
+                continue
+            existing_pairs.add(pair)
+            weight = rec["weight"] or 1
+            edges_data.append({
+                "uuid": f"cooccur_{src_uuid[:8]}_{tgt_uuid[:8]}",
+                "name": f"共现({weight})",
+                "fact": f"在 {weight} 个文本块中共同出现",
+                "fact_type": "CO_OCCURRENCE",
+                "source_node_uuid": src_uuid,
+                "target_node_uuid": tgt_uuid,
+                "source_node_name": rec["src_name"] or node_map.get(src_uuid, ""),
+                "target_node_name": rec["tgt_name"] or node_map.get(tgt_uuid, ""),
+                "attributes": {"weight": weight},
+                "created_at": None,
+                "valid_at": None,
+                "invalid_at": None,
+                "expired_at": None,
+                "episodes": [],
+            })
+        
+        # --- 过滤孤立节点（无任何边的节点不显示）---
+        connected_uuids = set()
+        for e in edges_data:
+            connected_uuids.add(e["source_node_uuid"])
+            connected_uuids.add(e["target_node_uuid"])
+        nodes_data = [n for n in nodes_data if n["uuid"] in connected_uuids]
         
         return {
             "graph_id": graph_id,
@@ -495,6 +558,11 @@ class GraphBuilderService:
         }
     
     def delete_graph(self, graph_id: str):
-        """删除图谱"""
-        self.client.graph.delete(graph_id=graph_id)
+        """删除图谱（清空 Neo4j 中的所有节点和边）"""
+        remove_instance(graph_id)
+        try:
+            graphiti = get_graphiti(graph_id)
+            run_async(graphiti.driver.execute_query("MATCH (n) DETACH DELETE n"))
+        except Exception:
+            pass
 

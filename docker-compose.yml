@@ -1,14 +1,32 @@
 services:
-  mirofish:
-    image: ghcr.io/666ghj/mirofish:latest
+  # Neo4j 图数据库（可选，Windows 本地开发可直接安装 Neo4j Desktop）
+  neo4j:
+    image: neo4j:5-community
+    container_name: nexusmind-neo4j
+    ports:
+      - "7474:7474"   # Neo4j Browser
+      - "7687:7687"   # Bolt protocol
+    restart: unless-stopped
+    environment:
+      - NEO4J_AUTH=neo4j/nexusmind123
+    volumes:
+      - neo4j_data:/data
+
+  nexusmind:
+    image: ghcr.io/666ghj/nexusmind:latest
     # 加速镜像（如拉取缓慢可替换上方地址）
-    # image: ghcr.nju.edu.cn/666ghj/mirofish:latest
-    container_name: mirofish
+    # image: ghcr.nju.edu.cn/666ghj/nexusmind:latest
+    container_name: nexusmind
     env_file:
       - .env
     ports:
       - "3000:3000"
       - "5001:5001"
     restart: unless-stopped
+    depends_on:
+      - neo4j
     volumes:
       - ./backend/uploads:/app/backend/uploads
+
+volumes:
+  neo4j_data:

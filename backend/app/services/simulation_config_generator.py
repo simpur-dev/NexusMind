@@ -20,9 +20,9 @@ from openai import OpenAI
 
 from ..config import Config
 from ..utils.logger import get_logger
-from .zep_entity_reader import EntityNode, ZepEntityReader
+from .entity_reader import EntityNode, EntityReader
 
-logger = get_logger('mirofish.simulation_config')
+logger = get_logger('nexusmind.simulation_config')
 
 # 中国作息时间配置（北京时间）
 CHINA_TIMEZONE_CONFIG = {
@@ -212,7 +212,7 @@ class SimulationConfigGenerator:
     # 上下文最大字符数
     MAX_CONTEXT_LENGTH = 50000
     # 每批生成的Agent数量
-    AGENTS_PER_BATCH = 15
+    AGENTS_PER_BATCH = 30
     
     # 各步骤的上下文截断长度（字符数）
     TIME_CONFIG_CONTEXT_LENGTH = 10000   # 时间配置
@@ -291,38 +291,61 @@ class SimulationConfigGenerator:
         
         reasoning_parts = []
         
-        # ========== 步骤1: 生成时间配置 ==========
-        report_progress(1, "生成时间配置...")
-        num_entities = len(entities)
-        time_config_result = self._generate_time_config(context, num_entities)
-        time_config = self._parse_time_config(time_config_result, num_entities)
-        reasoning_parts.append(f"时间配置: {time_config_result.get('reasoning', '成功')}")
+        # ========== 步骤1+2: 并行生成时间配置和事件配置 ==========
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         
-        # ========== 步骤2: 生成事件配置 ==========
-        report_progress(2, "生成事件配置和热点话题...")
-        event_config_result = self._generate_event_config(context, simulation_requirement, entities)
+        report_progress(1, "并行生成时间配置和事件配置...")
+        num_entities = len(entities)
+        
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            ft_time = pool.submit(self._generate_time_config, context, num_entities)
+            ft_event = pool.submit(self._generate_event_config, context, simulation_requirement, entities)
+            time_config_result = ft_time.result()
+            event_config_result = ft_event.result()
+        
+        time_config = self._parse_time_config(time_config_result, num_entities)
         event_config = self._parse_event_config(event_config_result)
+        reasoning_parts.append(f"时间配置: {time_config_result.get('reasoning', '成功')}")
         reasoning_parts.append(f"事件配置: {event_config_result.get('reasoning', '成功')}")
         
-        # ========== 步骤3-N: 分批生成Agent配置 ==========
+        # ========== 步骤3-N: 并行生成Agent配置 ==========
+        report_progress(2, f"并行生成 {len(entities)} 个Agent配置...")
         all_agent_configs = []
-        for batch_idx in range(num_batches):
-            start_idx = batch_idx * self.AGENTS_PER_BATCH
-            end_idx = min(start_idx + self.AGENTS_PER_BATCH, len(entities))
-            batch_entities = entities[start_idx:end_idx]
-            
-            report_progress(
-                3 + batch_idx,
-                f"生成Agent配置 ({start_idx + 1}-{end_idx}/{len(entities)})..."
-            )
-            
+        
+        if num_batches <= 1:
+            # 只有1批，直接生成
             batch_configs = self._generate_agent_configs_batch(
                 context=context,
-                entities=batch_entities,
-                start_idx=start_idx,
+                entities=entities,
+                start_idx=0,
                 simulation_requirement=simulation_requirement
             )
             all_agent_configs.extend(batch_configs)
+        else:
+            # 多批并行生成
+            with ThreadPoolExecutor(max_workers=min(num_batches, 4)) as pool:
+                futures = {}
+                for batch_idx in range(num_batches):
+                    start_idx = batch_idx * self.AGENTS_PER_BATCH
+                    end_idx = min(start_idx + self.AGENTS_PER_BATCH, len(entities))
+                    batch_entities = entities[start_idx:end_idx]
+                    ft = pool.submit(
+                        self._generate_agent_configs_batch,
+                        context=context,
+                        entities=batch_entities,
+                        start_idx=start_idx,
+                        simulation_requirement=simulation_requirement
+                    )
+                    futures[ft] = batch_idx
+                
+                batch_results = [None] * num_batches
+                for ft in as_completed(futures):
+                    idx = futures[ft]
+                    batch_results[idx] = ft.result()
+                
+                for br in batch_results:
+                    if br:
+                        all_agent_configs.extend(br)
         
         reasoning_parts.append(f"Agent配置: 成功生成 {len(all_agent_configs)} 个")
         
