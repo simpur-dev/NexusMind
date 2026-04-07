@@ -380,22 +380,24 @@ const startSimulation = () => {
 
 <style scoped>
 .home-container {
-  /* ================= 你的基础变量 (保持不变) ================= */
+  /* ================= 青蓝主题变量（参考 Process.vue） ================= */
   --black: #000000;
   --white: #ffffff;
-  --orange: #ffb86a;
-  --gray-light: #f5f5f5;
-  --gray-text: #7a95ac;
-  --border: rgba(126, 236, 255, 0.18);
+  --teal-primary: #73A8B9;
+  --teal-secondary: #5C9EAF;
+  --teal-light: #8EBDCB;
+  --teal-deep: #3A5A6A;
+  --border: rgba(115, 168, 185, 0.3);
   --font-mono: 'JetBrains Mono', monospace;
   --font-sans: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
   --font-cn: 'Noto Sans SC', system-ui, sans-serif;
-  --bg-panel: rgba(9, 28, 54, 0.74);
-  --bg-panel-soft: rgba(8, 23, 44, 0.68);
-  --line-cyan: rgba(126, 236, 255, 0.72);
-  --text-primary: #9eefff;
-  --text-secondary: rgba(216, 241, 255, 0.82);
-  --text-muted: rgba(150, 191, 222, 0.62);
+  --bg-panel: rgba(230, 242, 247, 0.75);
+  --bg-panel-soft: rgba(218, 235, 240, 0.65);
+  --bg-card: rgba(255, 255, 255, 0.6);
+  --line-cyan: rgba(115, 168, 185, 0.4);
+  --text-primary: #3A5A6A;
+  --text-secondary: rgba(58, 90, 106, 0.78);
+  --text-muted: rgba(58, 90, 106, 0.52);
 
   /* ================= 容器基础设置 ================= */
   min-height: 100vh;
@@ -406,25 +408,19 @@ const startSimulation = () => {
   
   /* ================= 核心：高亮科技感背景 ================= */
   /* 1. 极深的基底色，用来反衬高光 */
-  background-color: #020813; 
+  background-color: #F0F5F7;
   
   background-image: 
     /* 层级1：全息坐标网格 (细锐的青色线，构建空间秩序感) */
-    linear-gradient(rgba(126, 236, 255, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(126, 236, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(115, 168, 185, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(115, 168, 185, 0.06) 1px, transparent 1px),
     
     /* 层级2：高亮核心光源 (大幅提升透明度，制造“发光”错觉) */
-    /* 左上：耀眼的青色主光源，照亮头部 */
-    radial-gradient(circle at 15% 0%, rgba(126, 236, 255, 0.35) 0%, transparent 45%),
-    /* 右中：深邃的科技蓝副光源，拉伸空间感 */
-    radial-gradient(circle at 85% 40%, rgba(65, 154, 255, 0.28) 0%, transparent 55%),
-    /* 左下：跳跃的橙色警示/点缀光，冷暖碰撞，极具高级感 */
-    radial-gradient(circle at 10% 90%, rgba(255, 184, 106, 0.22) 0%, transparent 35%),
-    /* 中心：微弱的蓝色泛光，防止页面中心过暗沉闷 */
-    radial-gradient(circle at 50% 50%, rgba(63, 190, 255, 0.06) 0%, transparent 65%),
-    
-    /* 层级3：底部的深邃宇宙渐变 */
-    linear-gradient(135deg, transparent 0%, rgba(7, 23, 46, 0.6) 50%, rgba(3, 10, 20, 0.9) 100%);
+    radial-gradient(ellipse 50% 35% at 20% 75%, rgba(89, 158, 175, 0.1) 0%, transparent 50%),
+    /* 右上科技蓝副光源 */
+    radial-gradient(ellipse 50% 40% at 85% 20%, rgba(6, 182, 212, 0.1) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 50% at 70% 70%, rgba(115, 168, 185, 0.14) 0%, transparent 55%),
+    linear-gradient(135deg, rgba(240, 245, 247, 0.9) 0%, rgba(218, 235, 240, 0.6) 50%, rgba(200, 225, 232, 0.8) 100%);
 
   /* 定义网格大小(40px)和光晕铺满 */
   background-size: 
@@ -436,43 +432,34 @@ const startSimulation = () => {
   z-index: 1;
 }
 
-/* ================= 极致加分项：增加电影级噪点 ================= */
-/* 这个伪元素会在背景上铺一层极微弱的磨砂质感，彻底消除渐变色带(Banding)，是高端 SaaS 网站的秘诀 */
+/* 浅色磨砂噪点层 */
 .home-container::before {
   content: "";
   position: absolute;
   top: 0; left: 0; width: 100%; height: 100%;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E");
-  pointer-events: none; /* 鼠标穿透，不影响点击 */
-  z-index: -1; /* 放在所有内容的底层 */
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: -1;
 }
 
-/* 确保你容器内的元素都在噪点层上方 */
+/* 确保内容在噪点层上方 */
 .home-container > * {
   position: relative;
   z-index: 1;
 }
 
-.home-container::before,
+/* 网格 + 渐变遮罩伪层 */
 .home-container::after {
   content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
-}
-
-.home-container::before {
   background:
-    linear-gradient(rgba(126, 236, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(126, 236, 255, 0.05) 1px, transparent 1px);
+    linear-gradient(rgba(115, 168, 185, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(115, 168, 185, 0.04) 1px, transparent 1px);
   background-size: 88px 88px;
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.56), transparent 82%);
-}
-
-.home-container::after {
-  background:
-    radial-gradient(circle at 50% 0%, rgba(139, 221, 255, 0.16), transparent 36%),
-    linear-gradient(180deg, transparent 0%, rgba(4, 12, 24, 0.08) 48%, rgba(4, 12, 24, 0.38) 100%);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.3), transparent 82%);
+  z-index: 0;
 }
 
 :global(html) {
@@ -514,7 +501,7 @@ const startSimulation = () => {
   justify-content: space-between;
   align-items: center;
   gap: 24px;
-  padding: 20px 30px 8px;
+  padding: 18px 28px 8px;
   position: relative;
   z-index: 1;
 }
@@ -530,11 +517,11 @@ const startSimulation = () => {
   height: 42px;
   border-radius: 50%;
   overflow: hidden;
-  border: 1px solid rgba(126, 236, 255, 0.48);
+  border: 1.5px solid rgba(115, 168, 185, 0.4);
   box-shadow:
-    0 0 0 1px rgba(126, 236, 255, 0.18),
-    0 0 20px rgba(75, 198, 255, 0.24);
-  background: rgba(8, 19, 38, 0.92);
+    0 0 0 1px rgba(115, 168, 185, 0.12),
+    0 0 20px rgba(115, 168, 185, 0.25);
+  background: rgba(230, 242, 247, 0.8);
 }
 
 .brand-mark-image {
@@ -549,7 +536,7 @@ const startSimulation = () => {
   font-weight: 800;
   letter-spacing: 1px;
   font-size: 1.2rem;
-  color: #87dcff;
+  color: var(--teal-primary);
 }
 
 .nav-links {
@@ -558,7 +545,7 @@ const startSimulation = () => {
 }
 
 .github-link {
-  color: #dff8ff;
+  color: var(--teal-deep);
   text-decoration: none;
   font-family: var(--font-mono);
   font-size: 0.92rem;
@@ -572,30 +559,31 @@ const startSimulation = () => {
 .github-link-ghost,
 .github-link-solid {
   padding: 13px 18px;
-  border: 1px solid rgba(126, 236, 255, 0.52);
-  background: linear-gradient(180deg, rgba(30, 72, 118, 0.42), rgba(10, 25, 46, 0.56));
+  border: 1px solid rgba(115, 168, 185, 0.4);
+  background: rgba(230, 242, 247, 0.7);
   box-shadow:
-    inset 0 0 0 1px rgba(165, 242, 255, 0.12),
-    0 0 24px rgba(73, 170, 255, 0.14);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.6),
+    0 0 16px rgba(115, 168, 185, 0.15);
   clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
 }
 
 .github-link-solid {
   padding: 14px 24px;
   font-size: 1rem;
-  background: linear-gradient(180deg, rgba(59, 116, 178, 0.3), rgba(12, 29, 54, 0.76));
+  background: rgba(255, 255, 255, 0.65);
   box-shadow:
-    inset 0 0 0 1px rgba(165, 242, 255, 0.18),
-    0 0 30px rgba(76, 189, 255, 0.24),
-    0 0 0 1px rgba(128, 221, 255, 0.12);
+    inset 0 0 0 1px rgba(115, 168, 185, 0.18),
+    0 0 20px rgba(115, 168, 185, 0.15),
+    0 0 0 1px rgba(115, 168, 185, 0.1);
 }
 
 .github-link:hover {
   transform: translateY(-2px);
-  border-color: rgba(175, 239, 255, 0.76);
+  border-color: rgba(115, 168, 185, 0.7);
   box-shadow:
-    inset 0 0 0 1px rgba(185, 244, 255, 0.18),
-    0 0 26px rgba(100, 202, 255, 0.24);
+    inset 0 0 0 1px rgba(115, 168, 185, 0.12),
+    0 0 22px rgba(115, 168, 185, 0.25);
+  color: var(--teal-secondary);
 }
 
 .arrow {
@@ -632,13 +620,13 @@ const startSimulation = () => {
   position: relative;
   padding: 34px 38px 24px;
   background:
-    linear-gradient(180deg, rgba(18, 44, 77, 0.18), transparent 12%),
-    linear-gradient(135deg, rgba(15, 36, 63, 0.88), rgba(6, 15, 31, 0.9));
-  border: 1px solid rgba(109, 213, 255, 0.42);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), transparent 12%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.65), rgba(230, 242, 247, 0.7));
+  border: 1px solid rgba(115, 168, 185, 0.42);
   clip-path: polygon(0 18px, 18px 0, calc(100% - 24px) 0, 100% 24px, 100% calc(100% - 24px), calc(100% - 24px) 100%, 18px 100%, 0 calc(100% - 18px));
   box-shadow:
-    inset 0 0 0 1px rgba(165, 242, 255, 0.08),
-    0 0 34px rgba(45, 139, 255, 0.16);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.8),
+    0 0 34px rgba(115, 168, 185, 0.16);
   overflow: hidden;
 }
 
@@ -651,7 +639,7 @@ const startSimulation = () => {
 
 .hero-panel::before {
   inset: 12px;
-  border: 1px solid rgba(143, 231, 255, 0.12);
+  border: 1px solid rgba(115, 168, 185, 0.2);
   clip-path: polygon(0 10px, 10px 0, calc(100% - 12px) 0, 100% 12px, 100% calc(100% - 12px), calc(100% - 12px) 100%, 12px 100%, 0 calc(100% - 10px));
 }
 
@@ -660,7 +648,7 @@ const startSimulation = () => {
   top: 90px;
   width: 340px;
   height: 340px;
-  background: radial-gradient(circle, rgba(114, 208, 255, 0.2), transparent 70%);
+  background: radial-gradient(circle, rgba(115, 168, 185, 0.2), transparent 70%);
   filter: blur(10px);
 }
 
@@ -681,14 +669,14 @@ const startSimulation = () => {
 }
 
 .orange-tag {
-  background: linear-gradient(180deg, rgba(137, 234, 255, 0.18), rgba(24, 88, 112, 0.28));
-  color: #c4f6ff;
+  background: linear-gradient(180deg, rgba(115, 168, 185, 0.18), rgba(92, 158, 175, 0.28));
+  color: var(--teal-deep);
   padding: 8px 14px;
   font-weight: 700;
   letter-spacing: 0.8px;
   font-size: 0.75rem;
-  border: 1px solid rgba(134, 235, 255, 0.34);
-  box-shadow: inset 0 0 0 1px rgba(185, 244, 255, 0.08);
+  border: 1px solid rgba(115, 168, 185, 0.34);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
 }
 
 .version-text {
@@ -714,13 +702,14 @@ const startSimulation = () => {
   font-weight: 700;
   margin: 0 0 30px 0;
   letter-spacing: -3px;
-  color: #8fefff;
-  text-shadow: 0 0 18px rgba(104, 224, 255, 0.18);
+  color: var(--teal-deep);
+  text-shadow: 0 0 18px rgba(115, 168, 185, 0.18);
 }
 
 .gradient-text {
-  background: linear-gradient(180deg, #c5fbff 0%, #74e0ff 48%, #8ce9ff 100%);
+  background: linear-gradient(180deg, var(--teal-secondary) 0%, var(--teal-primary) 48%, var(--teal-light) 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   display: inline-block;
 }
@@ -737,12 +726,12 @@ const startSimulation = () => {
   gap: 16px;
   align-items: center;
   padding: 20px 22px;
-  background: linear-gradient(90deg, rgba(20, 51, 85, 0.44), rgba(10, 25, 44, 0.5));
-  border: 1px solid rgba(126, 236, 255, 0.42);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(115, 168, 185, 0.4);
   border-radius: 8px;
   box-shadow:
-    inset 0 0 0 1px rgba(183, 245, 255, 0.05),
-    0 0 18px rgba(74, 174, 255, 0.12);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 0 18px rgba(115, 168, 185, 0.12);
 }
 
 .feature-card p {
@@ -758,31 +747,31 @@ const startSimulation = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(126, 236, 255, 0.42);
-  background: linear-gradient(180deg, rgba(19, 52, 81, 0.58), rgba(8, 18, 33, 0.72));
-  box-shadow: inset 0 0 12px rgba(108, 208, 255, 0.08);
+  border: 1px solid rgba(115, 168, 185, 0.4);
+  background: rgba(255, 255, 255, 0.6);
+  box-shadow: inset 0 0 12px rgba(115, 168, 185, 0.08);
 }
 
 .feature-glyph {
   font-family: var(--font-mono);
   font-size: 1.35rem;
-  color: #79e7ff;
+  color: var(--teal-primary);
 }
 
 .highlight-bold {
-  color: #baf6ff;
+  color: var(--teal-deep);
   font-weight: 700;
 }
 
 .highlight-code {
-  background: rgba(82, 177, 255, 0.12);
+  background: rgba(115, 168, 185, 0.12);
   padding: 3px 8px;
   border-radius: 4px;
   font-family: var(--font-mono);
   font-size: 0.9em;
-  color: #b7f7ff;
+  color: var(--teal-secondary);
   font-weight: 600;
-  border: 1px solid rgba(126, 236, 255, 0.18);
+  border: 1px solid rgba(115, 168, 185, 0.18);
 }
 
 .hero-cta-banner {
@@ -793,13 +782,13 @@ const startSimulation = () => {
   font-size: 1.15rem;
   font-weight: 600;
   letter-spacing: 0.4px;
-  color: #bff7ff;
-  background: linear-gradient(90deg, rgba(18, 42, 70, 0.88), rgba(20, 56, 86, 0.76), rgba(13, 31, 53, 0.86));
-  border: 1px solid rgba(255, 201, 128, 0.72);
+  color: var(--teal-deep);
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(115, 168, 185, 0.5);
   border-radius: 8px;
   box-shadow:
-    inset 0 0 0 1px rgba(255, 223, 167, 0.18),
-    0 0 22px rgba(255, 195, 109, 0.16);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 0 22px rgba(115, 168, 185, 0.16);
 }
 
 .hero-footer {
@@ -843,14 +832,15 @@ const startSimulation = () => {
   position: relative;
   min-height: 560px;
   padding: 22px 18px 96px;
-  border: 1px solid rgba(126, 236, 255, 0.12);
+  border: 1px solid rgba(115, 168, 185, 0.2);
   border-radius: 24px;
   background:
-    radial-gradient(circle at 50% 42%, rgba(98, 196, 255, 0.12), transparent 32%),
-    linear-gradient(180deg, rgba(12, 33, 58, 0.34), rgba(7, 18, 31, 0.06));
+    rgba(255, 255, 255, 0.55),
+    radial-gradient(circle at 50% 42%, rgba(115, 168, 185, 0.12), transparent 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(230, 242, 247, 0.4));
   box-shadow:
-    inset 0 0 0 1px rgba(182, 244, 255, 0.05),
-    inset 0 -30px 60px rgba(3, 11, 21, 0.28);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.8),
+    inset 0 -30px 60px rgba(200, 225, 232, 0.3);
   overflow: hidden;
 }
 
@@ -870,9 +860,9 @@ const startSimulation = () => {
 
 .hero-visual::before {
   inset: 16px 18px 22px;
-  border: 1px solid rgba(126, 236, 255, 0.08);
+  border: 1px solid rgba(115, 168, 185, 0.15);
   border-radius: 20px;
-  mask-image: linear-gradient(135deg, rgba(0, 0, 0, 0.95), rgba(0, 0, 0, 0.45));
+  mask-image: linear-gradient(135deg, rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.45));
 }
 
 .hero-visual::after {
@@ -880,7 +870,7 @@ const startSimulation = () => {
   right: 10%;
   bottom: 24px;
   height: 1px;
-  background: linear-gradient(90deg, rgba(126, 236, 255, 0), rgba(126, 236, 255, 0.38), rgba(126, 236, 255, 0));
+  background: linear-gradient(90deg, rgba(115, 168, 185, 0), rgba(115, 168, 185, 0.38), rgba(115, 168, 185, 0));
 }
 
 .visual-hud {
@@ -893,23 +883,23 @@ const startSimulation = () => {
 
 .hud-pill {
   padding: 7px 12px;
-  border: 1px solid rgba(126, 236, 255, 0.24);
+  border: 1px solid rgba(115, 168, 185, 0.24);
   border-radius: 999px;
-  background: rgba(9, 28, 54, 0.42);
-  color: #b6f6ff;
+  background: rgba(255, 255, 255, 0.65);
+  color: var(--teal-deep);
   font-family: var(--font-mono);
   font-size: 0.72rem;
   letter-spacing: 0.8px;
   text-transform: uppercase;
-  box-shadow: inset 0 0 0 1px rgba(176, 245, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
 }
 
 .hud-pill-accent {
-  border-color: rgba(255, 206, 135, 0.42);
-  color: #ffd8a1;
+  border-color: rgba(115, 168, 185, 0.5);
+  color: var(--teal-secondary);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 225, 170, 0.06),
-    0 0 18px rgba(255, 193, 94, 0.08);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.6),
+    0 0 18px rgba(115, 168, 185, 0.12);
 }
 
 .visual-dots {
@@ -925,8 +915,8 @@ const startSimulation = () => {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: rgba(136, 232, 255, 0.62);
-  box-shadow: 0 0 10px rgba(136, 232, 255, 0.28);
+  background: rgba(115, 168, 185, 0.62);
+  box-shadow: 0 0 10px rgba(115, 168, 185, 0.28);
 }
 
 .hex-cluster {
@@ -943,9 +933,9 @@ const startSimulation = () => {
   width: 58px;
   height: 66px;
   clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0 50%);
-  background: linear-gradient(180deg, rgba(72, 142, 255, 0.08), rgba(72, 142, 255, 0.02));
-  border: 1px solid rgba(126, 236, 255, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(126, 236, 255, 0.04);
+  background: linear-gradient(180deg, rgba(115, 168, 185, 0.12), rgba(115, 168, 185, 0.04));
+  border: 1px solid rgba(115, 168, 185, 0.25);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
 }
 
 .hex-1 { top: 0; left: 68px; }
@@ -960,8 +950,8 @@ const startSimulation = () => {
   border-radius: 999px;
   filter: blur(0.2px);
   box-shadow:
-    0 0 20px rgba(108, 220, 255, 0.3),
-    0 0 36px rgba(108, 220, 255, 0.14);
+    0 0 20px rgba(115, 168, 185, 0.3),
+    0 0 36px rgba(115, 168, 185, 0.14);
 }
 
 .data-ribbon-one {
@@ -969,7 +959,7 @@ const startSimulation = () => {
   left: 30px;
   width: 88%;
   transform: rotate(8deg);
-  background: linear-gradient(90deg, rgba(111, 223, 255, 0), rgba(126, 236, 255, 0.74) 36%, rgba(255, 205, 143, 0.2) 70%, rgba(255, 205, 143, 0));
+  background: linear-gradient(90deg, rgba(115, 168, 185, 0), rgba(115, 168, 185, 0.74) 36%, rgba(115, 168, 185, 0.2) 70%, rgba(115, 168, 185, 0));
 }
 
 .data-ribbon-two {
@@ -977,7 +967,7 @@ const startSimulation = () => {
   left: -6px;
   width: 92%;
   transform: rotate(-9deg);
-  background: linear-gradient(90deg, rgba(111, 223, 255, 0), rgba(126, 236, 255, 0.48) 28%, rgba(126, 236, 255, 0.92) 56%, rgba(111, 223, 255, 0));
+  background: linear-gradient(90deg, rgba(115, 168, 185, 0), rgba(115, 168, 185, 0.48) 28%, rgba(115, 168, 185, 0.92) 56%, rgba(115, 168, 185, 0));
 }
 
 .visual-text {
@@ -1003,7 +993,7 @@ const startSimulation = () => {
   left: 86px;
   bottom: 138px;
   font-size: 0.88rem;
-  color: #9fdbff;
+  color: var(--teal-deep);
   letter-spacing: 0.8px;
 }
 
@@ -1020,17 +1010,17 @@ const startSimulation = () => {
 .logo-aura {
   position: absolute;
   inset: 12% 16%;
-  background: radial-gradient(circle, rgba(110, 221, 255, 0.3), rgba(68, 147, 255, 0.14) 34%, transparent 70%);
+  background: radial-gradient(circle, rgba(115, 168, 185, 0.3), rgba(115, 168, 185, 0.14) 34%, transparent 70%);
   filter: blur(16px);
 }
 
 .orbit-ring {
   position: absolute;
   border-radius: 50%;
-  border: 1px solid rgba(126, 236, 255, 0.16);
+  border: 1px solid rgba(115, 168, 185, 0.2);
   box-shadow:
-    inset 0 0 30px rgba(89, 203, 255, 0.04),
-    0 0 24px rgba(89, 203, 255, 0.06);
+    inset 0 0 30px rgba(115, 168, 185, 0.06),
+    0 0 24px rgba(115, 168, 185, 0.08);
 }
 
 .orbit-ring-one {
@@ -1056,7 +1046,7 @@ const startSimulation = () => {
   width: min(100%, 590px);
   position: relative;
   z-index: 1;
-  filter: drop-shadow(0 0 40px rgba(83, 212, 255, 0.25)) drop-shadow(0 0 70px rgba(46, 129, 255, 0.22));
+  filter: drop-shadow(0 0 40px rgba(115, 168, 185, 0.25)) drop-shadow(0 0 70px rgba(115, 168, 185, 0.22));
   animation: logo-float 7s ease-in-out infinite;
 }
 
@@ -1077,18 +1067,18 @@ const startSimulation = () => {
   width: 278px;
   padding: 15px 18px 18px;
   transform: translateX(-50%);
-  background: linear-gradient(180deg, rgba(15, 35, 61, 0.76), rgba(8, 19, 34, 0.84));
-  border: 1px solid rgba(126, 236, 255, 0.34);
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(115, 168, 185, 0.34);
   border-radius: 14px;
   box-shadow:
-    inset 0 0 0 1px rgba(175, 242, 255, 0.06),
-    0 0 22px rgba(67, 166, 255, 0.14);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 0 22px rgba(115, 168, 185, 0.14);
 }
 
 
 .visual-card-title {
   font-size: 0.9rem;
-  color: #9eefff;
+  color: var(--teal-deep);
   margin-bottom: 14px;
   text-align: center;
   letter-spacing: 0.8px;
@@ -1098,15 +1088,15 @@ const startSimulation = () => {
   position: relative;
   height: 116px;
   background:
-    radial-gradient(circle at center, rgba(66, 144, 255, 0.18), transparent 62%),
-    linear-gradient(180deg, rgba(156, 233, 255, 0.06), rgba(156, 233, 255, 0)),
-    linear-gradient(135deg, rgba(15, 42, 72, 0.38), rgba(7, 17, 30, 0.22));
-  border: 1px solid rgba(126, 236, 255, 0.1);
+    radial-gradient(circle at center, rgba(115, 168, 185, 0.18), transparent 62%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.1)),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.2));
+  border: 1px solid rgba(115, 168, 185, 0.2);
   border-radius: 10px;
   overflow: hidden;
   box-shadow:
-    inset 0 0 0 1px rgba(177, 244, 255, 0.04),
-    inset 0 -16px 28px rgba(4, 12, 23, 0.22);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    inset 0 -16px 28px rgba(200, 225, 232, 0.3);
 }
 
 .network-line,
@@ -1117,11 +1107,11 @@ const startSimulation = () => {
 .network-line {
   height: 2px;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(126, 236, 255, 0.08), rgba(170, 241, 255, 0.82), rgba(126, 236, 255, 0.08));
+  background: linear-gradient(90deg, rgba(115, 168, 185, 0.1), rgba(115, 168, 185, 0.82), rgba(115, 168, 185, 0.1));
   transform-origin: left center;
   box-shadow:
-    0 0 10px rgba(117, 223, 255, 0.12),
-    0 0 18px rgba(117, 223, 255, 0.08);
+    0 0 10px rgba(115, 168, 185, 0.12),
+    0 0 18px rgba(115, 168, 185, 0.08);
 }
 
 .line-1 { left: 32px; top: 82px; width: 118px; transform: rotate(-26deg); }
@@ -1135,12 +1125,12 @@ const startSimulation = () => {
   height: 14px;
   border-radius: 50%;
   background:
-    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.98), rgba(196, 247, 255, 0.88) 18%, rgba(89, 202, 255, 0.92) 42%, rgba(18, 103, 218, 0.96) 72%, rgba(6, 27, 64, 0.98) 100%);
-  border: 1px solid rgba(197, 245, 255, 0.3);
+    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.98), rgba(115, 168, 185, 0.88) 18%, rgba(115, 168, 185, 0.92) 42%, rgba(58, 90, 106, 0.96) 72%, rgba(58, 90, 106, 0.98) 100%);
+  border: 1px solid rgba(115, 168, 185, 0.3);
   box-shadow:
-    inset -2px -3px 6px rgba(7, 24, 55, 0.45),
-    inset 2px 2px 5px rgba(255, 255, 255, 0.18),
-    0 0 14px rgba(126, 236, 255, 0.42);
+    inset -2px -3px 6px rgba(200, 225, 232, 0.5),
+    inset 2px 2px 5px rgba(255, 255, 255, 0.3),
+    0 0 14px rgba(115, 168, 185, 0.42);
 }
 
 .network-node::before {
@@ -1148,7 +1138,7 @@ const startSimulation = () => {
   position: absolute;
   inset: 2px;
   border-radius: 50%;
-  background: radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0) 55%);
+  background: radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 55%);
   opacity: 0.95;
 }
 
@@ -1157,29 +1147,29 @@ const startSimulation = () => {
   position: absolute;
   inset: -4px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(126, 236, 255, 0.22), rgba(126, 236, 255, 0) 72%);
+  background: radial-gradient(circle, rgba(115, 168, 185, 0.22), rgba(115, 168, 185, 0) 72%);
   z-index: -1;
 }
 
 .network-node-core {
   background:
-    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 1), rgba(229, 252, 255, 0.95) 22%, rgba(143, 236, 255, 0.98) 44%, rgba(65, 195, 255, 0.95) 70%, rgba(8, 40, 92, 0.98) 100%);
+    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 1), rgba(230, 242, 247, 0.95) 22%, rgba(115, 168, 185, 0.98) 44%, rgba(92, 158, 175, 0.95) 70%, rgba(58, 90, 106, 0.98) 100%);
   box-shadow:
-    inset -2px -3px 6px rgba(6, 21, 50, 0.4),
-    inset 2px 2px 6px rgba(255, 255, 255, 0.22),
-    0 0 18px rgba(147, 240, 255, 0.7),
-    0 0 32px rgba(72, 202, 255, 0.28);
+    inset -2px -3px 6px rgba(200, 225, 232, 0.5),
+    inset 2px 2px 6px rgba(255, 255, 255, 0.3),
+    0 0 18px rgba(115, 168, 185, 0.7),
+    0 0 32px rgba(115, 168, 185, 0.28);
 }
 
 .network-node-hub {
   background:
-    radial-gradient(circle at 30% 26%, rgba(255, 255, 255, 1), rgba(255, 247, 219, 0.95) 18%, rgba(255, 219, 123, 0.98) 42%, rgba(255, 176, 61, 0.96) 66%, rgba(116, 60, 4, 0.98) 100%);
-  border-color: rgba(255, 230, 173, 0.38);
+    radial-gradient(circle at 30% 26%, rgba(255, 255, 255, 1), rgba(255, 247, 219, 0.95) 18%, rgba(115, 168, 185, 0.98) 42%, rgba(92, 158, 175, 0.96) 66%, rgba(58, 90, 106, 0.98) 100%);
+  border-color: rgba(115, 168, 185, 0.38);
   box-shadow:
-    inset -2px -3px 6px rgba(74, 36, 3, 0.38),
-    inset 2px 2px 6px rgba(255, 255, 255, 0.24),
-    0 0 18px rgba(255, 214, 129, 0.82),
-    0 0 34px rgba(255, 185, 73, 0.3);
+    inset -2px -3px 6px rgba(200, 225, 232, 0.4),
+    inset 2px 2px 6px rgba(255, 255, 255, 0.3),
+    0 0 18px rgba(115, 168, 185, 0.82),
+    0 0 34px rgba(115, 168, 185, 0.3);
 }
 
 .node-1 { left: 30px; top: 76px; }
@@ -1193,22 +1183,23 @@ const startSimulation = () => {
   width: 100%;
   margin-top: 0;
   padding: 14px 18px;
-  border: 1px solid rgba(126, 236, 255, 0.24);
+  border: 1px solid rgba(115, 168, 185, 0.24);
   border-radius: 18px;
   background:
-    linear-gradient(90deg, rgba(10, 27, 47, 0.9), rgba(14, 38, 63, 0.7), rgba(8, 22, 39, 0.88));
+    rgba(255, 255, 255, 0.6),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.5), rgba(230, 242, 247, 0.5));
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   cursor: pointer;
-  color: #a5eeff;
+  color: var(--teal-deep);
   font-family: var(--font-mono);
   font-size: 0.95rem;
   letter-spacing: 0.4px;
   box-shadow:
-    inset 0 0 0 1px rgba(181, 244, 255, 0.04),
-    0 0 22px rgba(49, 138, 255, 0.12);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 0 22px rgba(115, 168, 185, 0.12);
   transition: color 0.25s ease, transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
@@ -1223,16 +1214,15 @@ const startSimulation = () => {
 .scroll-kicker {
   font-size: 0.68rem;
   letter-spacing: 1.8px;
-  color: rgba(157, 225, 255, 0.68);
+  color: var(--text-muted);
 }
 
 .scroll-label {
   font-size: 0.96rem;
-  color: #cef9ff;
+  color: var(--teal-deep);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  
 }
 
 .scroll-arrow-wrap {
@@ -1243,32 +1233,32 @@ const startSimulation = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(180deg, rgba(20, 54, 88, 0.8), rgba(10, 23, 38, 0.9));
-  border: 1px solid rgba(126, 236, 255, 0.28);
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(115, 168, 185, 0.28);
   box-shadow:
-    inset 0 0 0 1px rgba(184, 245, 255, 0.05),
-    0 0 18px rgba(75, 184, 255, 0.12);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 0 18px rgba(115, 168, 185, 0.12);
 }
 
 .scroll-down-btn:hover {
-  color: #d4fbff;
+  color: var(--teal-secondary);
   transform: translateY(2px);
-  border-color: rgba(167, 239, 255, 0.42);
+  border-color: rgba(115, 168, 185, 0.5);
   box-shadow:
-    inset 0 0 0 1px rgba(181, 244, 255, 0.08),
-    0 0 28px rgba(66, 176, 255, 0.18);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.6),
+    0 0 28px rgba(115, 168, 185, 0.18);
 }
 
 .scroll-arrow {
   font-size: 1.7rem;
   line-height: 1;
-  text-shadow: 0 0 18px rgba(126, 236, 255, 0.36);
+  text-shadow: 0 0 18px rgba(115, 168, 185, 0.36);
 }
 
 .dashboard-section {
   display: flex;
   gap: 60px;
-  border-top: 1px solid rgba(126, 236, 255, 0.18);
+  border-top: 1px solid rgba(115, 168, 185, 0.2);
   padding-top: 52px;
   align-items: flex-start;
 }
@@ -1294,7 +1284,7 @@ const startSimulation = () => {
 }
 
 .status-dot {
-  color: #8beeff;
+  color: var(--teal-primary);
   font-size: 0.8rem;
 }
 
@@ -1318,11 +1308,11 @@ const startSimulation = () => {
 }
 
 .metric-card {
-  border: 1px solid rgba(126, 236, 255, 0.18);
-  background: linear-gradient(180deg, rgba(16, 35, 58, 0.7), rgba(7, 17, 31, 0.76));
+  border: 1px solid rgba(115, 168, 185, 0.25);
+  background: rgba(255, 255, 255, 0.55);
   padding: 20px 30px;
   min-width: 150px;
-  box-shadow: inset 0 0 0 1px rgba(185, 244, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
 }
 
 .metric-value {
@@ -1330,7 +1320,7 @@ const startSimulation = () => {
   font-size: 1.8rem;
   font-weight: 520;
   margin-bottom: 5px;
-  color: #9eefff;
+  color: var(--teal-deep);
 }
 
 .metric-label {
@@ -1339,11 +1329,11 @@ const startSimulation = () => {
 }
 
 .steps-container {
-  border: 1px solid rgba(126, 236, 255, 0.18);
-  background: linear-gradient(180deg, rgba(13, 32, 55, 0.68), rgba(7, 18, 31, 0.76));
+  border: 1px solid rgba(115, 168, 185, 0.25);
+  background: rgba(255, 255, 255, 0.55);
   padding: 30px;
   position: relative;
-  box-shadow: inset 0 0 0 1px rgba(185, 244, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
 }
 
 .steps-header {
@@ -1376,7 +1366,7 @@ const startSimulation = () => {
 .step-num {
   font-family: var(--font-mono);
   font-weight: 700;
-  color: #7ddfff;
+  color: var(--teal-primary);
   opacity: 0.5;
 }
 
@@ -1401,12 +1391,12 @@ const startSimulation = () => {
 }
 
 .console-box {
-  border: 1px solid rgba(126, 236, 255, 0.24);
-  background: linear-gradient(180deg, rgba(11, 26, 47, 0.78), rgba(6, 15, 28, 0.84));
+  border: 1px solid rgba(115, 168, 185, 0.3);
+  background: rgba(255, 255, 255, 0.55);
   padding: 8px;
   box-shadow:
-    inset 0 0 0 1px rgba(185, 244, 255, 0.04),
-    0 0 22px rgba(49, 138, 255, 0.12);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 0 22px rgba(115, 168, 185, 0.12);
 }
 
 .console-section {
@@ -1428,7 +1418,7 @@ const startSimulation = () => {
 }
 
 .upload-zone {
-  border: 1px dashed rgba(126, 236, 255, 0.24);
+  border: 1px dashed rgba(115, 168, 185, 0.3);
   height: 200px;
   overflow-y: auto;
   display: flex;
@@ -1436,7 +1426,7 @@ const startSimulation = () => {
   justify-content: center;
   cursor: pointer;
   transition: all 0.3s;
-  background: rgba(8, 20, 36, 0.74);
+  background: rgba(255, 255, 255, 0.4);
 }
 
 .upload-zone.has-files {
@@ -1445,8 +1435,8 @@ const startSimulation = () => {
 
 .upload-zone.drag-over,
 .upload-zone:hover {
-  background: rgba(11, 29, 49, 0.88);
-  border-color: rgba(146, 235, 255, 0.48);
+  background: rgba(255, 255, 255, 0.7);
+  border-color: rgba(115, 168, 185, 0.6);
 }
 
 .upload-placeholder {
@@ -1456,12 +1446,12 @@ const startSimulation = () => {
 .upload-icon {
   width: 40px;
   height: 40px;
-  border: 1px solid rgba(126, 236, 255, 0.24);
+  border: 1px solid rgba(115, 168, 185, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
   margin: 0 auto 15px;
-  color: #8beeff;
+  color: var(--teal-primary);
 }
 
 .upload-title {
@@ -1489,9 +1479,9 @@ const startSimulation = () => {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: rgba(13, 31, 53, 0.84);
+  background: rgba(255, 255, 255, 0.5);
   padding: 8px 12px;
-  border: 1px solid rgba(126, 236, 255, 0.14);
+  border: 1px solid rgba(115, 168, 185, 0.2);
   font-family: var(--font-mono);
   font-size: 0.85rem;
   color: var(--text-secondary);
@@ -1500,7 +1490,7 @@ const startSimulation = () => {
 .file-icon {
   font-size: 0.7rem;
   letter-spacing: 1px;
-  color: #8beeff;
+  color: var(--teal-primary);
 }
 
 .file-name {
@@ -1513,7 +1503,7 @@ const startSimulation = () => {
   border: none;
   cursor: pointer;
   font-size: 1rem;
-  color: #9edfff;
+  color: var(--teal-secondary);
 }
 
 .console-divider {
@@ -1527,7 +1517,7 @@ const startSimulation = () => {
   content: '';
   flex: 1;
   height: 1px;
-  background: rgba(126, 236, 255, 0.12);
+  background: rgba(115, 168, 185, 0.15);
 }
 
 .console-divider span {
@@ -1540,8 +1530,8 @@ const startSimulation = () => {
 
 .input-wrapper {
   position: relative;
-  border: 1px solid rgba(126, 236, 255, 0.18);
-  background: rgba(8, 20, 36, 0.74);
+  border: 1px solid rgba(115, 168, 185, 0.25);
+  background: rgba(255, 255, 255, 0.4);
 }
 
 .code-input {
@@ -1559,7 +1549,7 @@ const startSimulation = () => {
 }
 
 .code-input::placeholder {
-  color: rgba(150, 191, 222, 0.46);
+  color: rgba(58, 90, 106, 0.4);
 }
 
 .model-badge {
@@ -1573,9 +1563,9 @@ const startSimulation = () => {
 
 .start-engine-btn {
   width: 100%;
-  background: linear-gradient(90deg, rgba(24, 74, 120, 0.92), rgba(8, 28, 52, 0.94));
-  color: #e3fbff;
-  border: 1px solid rgba(126, 236, 255, 0.34);
+  background: linear-gradient(90deg, rgba(115, 168, 185, 0.2), rgba(92, 158, 175, 0.15));
+  color: var(--teal-deep);
+  border: 1px solid rgba(115, 168, 185, 0.4);
   padding: 20px;
   font-family: var(--font-mono);
   font-weight: 700;
@@ -1595,8 +1585,8 @@ const startSimulation = () => {
 }
 
 .start-engine-btn:hover:not(:disabled) {
-  background: linear-gradient(90deg, rgba(42, 112, 176, 0.98), rgba(13, 48, 87, 0.98));
-  border-color: rgba(177, 244, 255, 0.66);
+  background: linear-gradient(90deg, rgba(115, 168, 185, 0.3), rgba(92, 158, 175, 0.25));
+  border-color: rgba(115, 168, 185, 0.7);
   transform: translateY(-2px);
 }
 
@@ -1605,17 +1595,17 @@ const startSimulation = () => {
 }
 
 .start-engine-btn:disabled {
-  background: rgba(41, 57, 78, 0.62);
-  color: rgba(170, 190, 208, 0.62);
+  background: rgba(200, 225, 232, 0.5);
+  color: rgba(58, 90, 106, 0.5);
   cursor: not-allowed;
   transform: none;
-  border: 1px solid rgba(126, 236, 255, 0.08);
+  border: 1px solid rgba(115, 168, 185, 0.12);
 }
 
 @keyframes pulse-border {
-  0% { box-shadow: 0 0 0 0 rgba(126, 236, 255, 0.18); }
-  70% { box-shadow: 0 0 0 8px rgba(126, 236, 255, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(126, 236, 255, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(115, 168, 185, 0.2); }
+  70% { box-shadow: 0 0 0 8px rgba(115, 168, 185, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(115, 168, 185, 0); }
 }
 
 @media (max-width: 1180px) {
