@@ -440,7 +440,7 @@
             <div class="rounds-header">
               <div class="header-left">
                 <span class="section-title">模拟轮数设定</span>
-                <span class="section-desc">NexusMind 自动规划推演现实 <span class="desc-highlight">{{ simulationConfig?.time_config?.total_simulation_hours || '-' }}</span> 小时，每轮代表现实 <span class="desc-highlight">{{ simulationConfig?.time_config?.minutes_per_round || '-' }}</span> 分钟时间流逝</span>
+                <span class="section-desc">NexusMind自动规划推演现实 <span class="desc-highlight">{{ simulationConfig?.time_config?.total_simulation_hours || '-' }}</span> 小时，每轮代表现实 <span class="desc-highlight">{{ simulationConfig?.time_config?.minutes_per_round || '-' }}</span> 分钟时间流逝</span>
               </div>
               <label class="switch-control">
                 <input type="checkbox" v-model="useCustomRounds">
@@ -800,7 +800,7 @@ const startPrepareSimulation = async () => {
       // 立即设置预期Agent总数（从prepare接口返回值获取）
       if (res.data.expected_entities_count) {
         expectedTotal.value = res.data.expected_entities_count
-        addLog(`从Zep图谱读取到 ${res.data.expected_entities_count} 个实体`)
+        addLog(`从Graphiti +Neo4j图谱读取到 ${res.data.expected_entities_count} 个实体`)
         if (res.data.entity_types && res.data.entity_types.length > 0) {
           addLog(`  └─ 实体类型: ${res.data.entity_types.join(', ')}`)
         }

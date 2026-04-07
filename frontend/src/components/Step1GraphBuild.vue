@@ -122,7 +122,7 @@
         <div class="card-content">
           <p class="api-note">POST /api/graph/build</p>
           <p class="description">
-            基于生成的本体，将文档自动分块后调用 Zep 构建知识图谱，提取实体和关系，并形成时序记忆与社区摘要
+            基于生成的本体，将文档自动分块后调用 Graphiti +Neo4j 构建知识图谱，提取实体和关系，并形成时序记忆与社区摘要
           </p>
           
           <!-- Stats Cards -->
