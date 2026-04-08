@@ -51,7 +51,7 @@ def create_app(config_class=Config):
     # 请求日志中间件
     @app.before_request
     def log_request():
-        logger = get_logger('nexusmind.request')
+
         path = request.path or ''
         is_simulation_status_polling = (
             request.method == 'GET'
@@ -69,7 +69,7 @@ def create_app(config_class=Config):
     
     @app.after_request
     def log_response(response):
-        logger = get_logger('nexusmind.request')
+
         if getattr(g, 'skip_request_logging', False):
             return response
         logger.debug(f"响应: {response.status_code}")
@@ -90,4 +90,3 @@ def create_app(config_class=Config):
         logger.info("NexusMind Backend 启动完成")
     
     return app
-

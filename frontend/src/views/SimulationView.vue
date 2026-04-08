@@ -1,9 +1,20 @@
 <template>
   <div class="main-view">
+    <!-- 极光渐变背景层 -->
+    <div class="aurora-bg">
+      <div class="aurora-orb aurora-orb-1"></div>
+      <div class="aurora-orb aurora-orb-2"></div>
+      <div class="aurora-orb aurora-orb-3"></div>
+      <div class="aurora-orb aurora-orb-4"></div>
+    </div>
+    
+    <!-- 十字星点阵背景层 -->
+    <canvas ref="starCanvas" class="star-canvas"></canvas>
+    
     <!-- Header -->
     <header class="app-header">
       <div class="header-left">
-        <div class="brand" @click="router.push('/')">MIROFISH</div>
+        <div class="brand" @click="router.push('/')">NexusMind</div>
       </div>
       
       <div class="header-center">
@@ -73,6 +84,10 @@ import { getSimulation, stopSimulation, getEnvStatus, closeSimulationEnv } from 
 
 const route = useRoute()
 const router = useRouter()
+
+// 十字星点阵画布引用
+const starCanvas = ref(null)
+let starAnimationId = null
 
 // Props
 const props = defineProps({
@@ -286,14 +301,126 @@ const refreshGraph = () => {
   }
 }
 
+// 初始化十字星点阵动画
+const initStarCanvas = () => {
+  const canvas = starCanvas.value
+  if (!canvas) return
+  
+  const ctx = canvas.getContext('2d')
+  
+  // 设置画布尺寸
+  const resizeCanvas = () => {
+    const rect = canvas.getBoundingClientRect()
+    canvas.width = rect.width
+    canvas.height = rect.height
+  }
+  
+  resizeCanvas()
+  window.addEventListener('resize', resizeCanvas)
+  
+  // 十字星配置
+  const stars = []
+  const starCount = 60 // 十字星数量
+  
+  for (let i = 0; i < starCount; i++) {
+    stars.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      size: Math.random() * 2 + 1,
+      opacity: Math.random() * 0.5 + 0.1,
+      speed: Math.random() * 0.02 + 0.01,
+      angle: Math.random() * Math.PI / 2,
+      twinkleSpeed: Math.random() * 0.02 + 0.01,
+      twinkleOffset: Math.random() * Math.PI * 2
+    })
+  }
+  
+  // 绘制十字星
+  const drawStar = (star, time) => {
+    const twinkle = Math.sin(time * star.twinkleSpeed + star.twinkleOffset) * 0.3 + 0.7
+    const alpha = star.opacity * twinkle
+    
+    ctx.save()
+    ctx.translate(star.x, star.y)
+    ctx.rotate(star.angle)
+    
+    // 发光效果
+    ctx.shadowBlur = 10
+    ctx.shadowColor = `rgba(16, 185, 129, ${alpha})`
+    
+    ctx.strokeStyle = `rgba(110, 231, 183, ${alpha})`
+    ctx.lineWidth = star.size * 0.5
+    
+    // 横线
+    ctx.beginPath()
+    ctx.moveTo(-star.size * 3, 0)
+    ctx.lineTo(star.size * 3, 0)
+    ctx.stroke()
+    
+    // 竖线
+    ctx.beginPath()
+    ctx.moveTo(0, -star.size * 3)
+    ctx.lineTo(0, star.size * 3)
+    ctx.stroke()
+    
+    // 中心点
+    ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.8})`
+    ctx.beginPath()
+    ctx.arc(0, 0, star.size * 0.5, 0, Math.PI * 2)
+    ctx.fill()
+    
+    ctx.restore()
+  }
+  
+  // 动画循环
+  let animationTime = 0
+  const animate = () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    animationTime += 16
+    
+    stars.forEach(star => {
+      star.x += Math.sin(animationTime * 0.0001 + star.twinkleOffset) * 0.3
+      star.y += Math.cos(animationTime * 0.0001 + star.twinkleOffset) * 0.3
+      
+      if (star.x < -20) star.x = canvas.width + 20
+      if (star.x > canvas.width + 20) star.x = -20
+      if (star.y < -20) star.y = canvas.height + 20
+      if (star.y > canvas.height + 20) star.y = -20
+      
+      star.angle += star.speed * 0.01
+    })
+    
+    stars.forEach(star => drawStar(star, animationTime))
+    
+    starAnimationId = requestAnimationFrame(animate)
+  }
+  
+  animate()
+}
+
+// 停止十字星动画
+const stopStarAnimation = () => {
+  if (starAnimationId) {
+    cancelAnimationFrame(starAnimationId)
+    starAnimationId = null
+  }
+}
+
 onMounted(async () => {
   addLog('SimulationView 初始化')
+  
+  // 初始化十字星画布
+  initStarCanvas()
   
   // 检查并关闭正在运行的模拟（用户从 Step 3 返回时）
   await checkAndStopRunningSimulation()
   
   // 加载模拟数据
   loadSimulationData()
+})
+
+onUnmounted(() => {
+  stopStarAnimation()
 })
 </script>
 
@@ -302,20 +429,104 @@ onMounted(async () => {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #FFF;
+  background: linear-gradient(135deg, #0a0f1a 0%, #0d1a25 50%, #0a1220 100%);
   overflow: hidden;
   font-family: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
+  position: relative;
+}
+
+/* 极光渐变背景 */
+.aurora-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.aurora-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.35;
+  animation: aurora-float 25s ease-in-out infinite;
+}
+
+.aurora-orb-1 {
+  width: 700px;
+  height: 700px;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.5) 0%, rgba(16, 185, 129, 0) 70%);
+  top: -15%;
+  left: -10%;
+  animation-delay: 0s;
+}
+
+.aurora-orb-2 {
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.5) 0%, rgba(6, 182, 212, 0) 70%);
+  bottom: -15%;
+  right: -10%;
+  animation-delay: -7s;
+}
+
+.aurora-orb-3 {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.4) 0%, rgba(59, 130, 246, 0) 70%);
+  top: 30%;
+  left: 40%;
+  animation-delay: -14s;
+}
+
+.aurora-orb-4 {
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.35) 0%, rgba(139, 92, 246, 0) 70%);
+  bottom: 30%;
+  left: 10%;
+  animation-delay: -21s;
+}
+
+@keyframes aurora-float {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(40px, -40px) scale(1.05);
+  }
+  50% {
+    transform: translate(-30px, 30px) scale(0.95);
+  }
+  75% {
+    transform: translate(25px, 15px) scale(1.02);
+  }
+}
+
+/* 十字星点阵画布 */
+.star-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* Header */
 .app-header {
   height: 60px;
-  border-bottom: 1px solid #EAEAEA;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  background: #FFF;
+  background: rgba(10, 15, 26, 0.85);
+  backdrop-filter: blur(20px);
   z-index: 100;
   position: relative;
 }
@@ -326,6 +537,15 @@ onMounted(async () => {
   font-size: 18px;
   letter-spacing: 1px;
   cursor: pointer;
+  background: linear-gradient(135deg, #10b981, #06b6d4);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  transition: transform 0.2s;
+}
+
+.brand:hover {
+  transform: translateX(2px);
 }
 
 .header-center {
@@ -336,10 +556,11 @@ onMounted(async () => {
 
 .view-switcher {
   display: flex;
-  background: #F5F5F5;
+  background: rgba(255, 255, 255, 0.05);
   padding: 4px;
-  border-radius: 6px;
+  border-radius: 8px;
   gap: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .switch-btn {
@@ -348,16 +569,16 @@ onMounted(async () => {
   padding: 6px 16px;
   font-size: 12px;
   font-weight: 600;
-  color: #666;
-  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.6);
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .switch-btn.active {
-  background: #FFF;
-  color: #000;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  background: rgba(16, 185, 129, 0.3);
+  color: #34d399;
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
 }
 
 .header-right {
@@ -376,18 +597,18 @@ onMounted(async () => {
 .step-num {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
-  color: #999;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .step-name {
   font-weight: 700;
-  color: #000;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .step-divider {
   width: 1px;
   height: 14px;
-  background-color: #E0E0E0;
+  background-color: rgba(255, 255, 255, 0.2);
 }
 
 .status-indicator {
@@ -395,7 +616,7 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #666;
+  color: rgba(255, 255, 255, 0.6);
   font-weight: 500;
 }
 
@@ -403,12 +624,22 @@ onMounted(async () => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #CCC;
+  background: rgba(255, 255, 255, 0.3);
 }
 
-.status-indicator.processing .dot { background: #FF5722; animation: pulse 1s infinite; }
-.status-indicator.completed .dot { background: #4CAF50; }
-.status-indicator.error .dot { background: #F44336; }
+.status-indicator.processing .dot { 
+  background: #10b981; 
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.8);
+  animation: pulse 1s infinite; 
+}
+.status-indicator.completed .dot { 
+  background: #06b6d4; 
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.8);
+}
+.status-indicator.error .dot { 
+  background: #ef4444; 
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.8);
+}
 
 @keyframes pulse { 50% { opacity: 0.5; } }
 
@@ -418,6 +649,7 @@ onMounted(async () => {
   display: flex;
   position: relative;
   overflow: hidden;
+  z-index: 10;
 }
 
 .panel-wrapper {
@@ -425,10 +657,12 @@ onMounted(async () => {
   overflow: hidden;
   transition: width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.3s ease, transform 0.3s ease;
   will-change: width, opacity, transform;
+  background: rgba(10, 15, 26, 0.6);
+  backdrop-filter: blur(10px);
 }
 
 .panel-wrapper.left {
-  border-right: 1px solid #EAEAEA;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
 }
 </style>
 

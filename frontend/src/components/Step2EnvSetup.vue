@@ -50,7 +50,7 @@
           </div>
           <div class="step-status">
             <span v-if="phase > 1" class="badge success">已完成</span>
-            <span v-else-if="phase === 1" class="badge processing">{{ prepareProgress }}%</span>
+            <span v-else-if="phase === 1" class="badge processing">进行中</span>
             <span v-else class="badge pending">等待</span>
           </div>
         </div>
@@ -440,7 +440,7 @@
             <div class="rounds-header">
               <div class="header-left">
                 <span class="section-title">模拟轮数设定</span>
-                <span class="section-desc">MiroFish 自动规划推演现实 <span class="desc-highlight">{{ simulationConfig?.time_config?.total_simulation_hours || '-' }}</span> 小时，每轮代表现实 <span class="desc-highlight">{{ simulationConfig?.time_config?.minutes_per_round || '-' }}</span> 分钟时间流逝</span>
+                <span class="section-desc">NexusMind自动规划推演现实 <span class="desc-highlight">{{ simulationConfig?.time_config?.total_simulation_hours || '-' }}</span> 小时，每轮代表现实 <span class="desc-highlight">{{ simulationConfig?.time_config?.minutes_per_round || '-' }}</span> 分钟时间流逝</span>
               </div>
               <label class="switch-control">
                 <input type="checkbox" v-model="useCustomRounds">
@@ -800,7 +800,7 @@ const startPrepareSimulation = async () => {
       // 立即设置预期Agent总数（从prepare接口返回值获取）
       if (res.data.expected_entities_count) {
         expectedTotal.value = res.data.expected_entities_count
-        addLog(`从Zep图谱读取到 ${res.data.expected_entities_count} 个实体`)
+        addLog(`从Graphiti +Neo4j图谱读取到 ${res.data.expected_entities_count} 个实体`)
         if (res.data.entity_types && res.data.entity_types.length > 0) {
           addLog(`  └─ 实体类型: ${res.data.entity_types.join(', ')}`)
         }
@@ -854,6 +854,14 @@ const pollPrepareStatus = async () => {
     
     if (res.success && res.data) {
       const data = res.data
+
+      if (data.status === 'failed') {
+        stopConfigPolling()
+        const message = data.error || '环境搭建失败，请检查图谱构建结果'
+        addLog(`环境搭建失败: ${message}`)
+        emit('update-status', 'error')
+        return
+      }
       
       // 更新进度
       prepareProgress.value = data.progress || 0
@@ -1029,6 +1037,13 @@ const loadPreparedData = async () => {
   try {
     const res = await getSimulationConfigRealtime(props.simulationId)
     if (res.success && res.data) {
+      if (res.data.status === 'failed') {
+        const message = res.data.error || '环境搭建失败，请检查图谱构建结果'
+        addLog(`加载配置失败: ${message}`)
+        emit('update-status', 'error')
+        return
+      }
+
       if (res.data.config_generated && res.data.config) {
         simulationConfig.value = res.data.config
         addLog('✓ 模拟配置加载成功')
@@ -1082,12 +1097,14 @@ onUnmounted(() => {
 
 <style scoped>
 .env-setup-panel {
-  height: 100%;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  background: #FAFAFA;
+  overflow: hidden;
+  background: transparent;
   font-family: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
 }
+
 
 .scroll-container {
   flex: 1;
@@ -1110,8 +1127,8 @@ onUnmounted(() => {
 }
 
 .step-card.active {
-  border-color: #FF5722;
-  box-shadow: 0 4px 12px rgba(255, 87, 34, 0.08);
+  border-color: #73A8B9;
+  box-shadow: 0 4px 12px rgba(115, 168, 185, 0.12);
 }
 
 .card-header {
@@ -1153,10 +1170,10 @@ onUnmounted(() => {
   text-transform: uppercase;
 }
 
-.badge.success { background: #E8F5E9; color: #2E7D32; }
-.badge.processing { background: #FF5722; color: #FFF; }
-.badge.pending { background: #F5F5F5; color: #999; }
-.badge.accent { background: #E3F2FD; color: #1565C0; }
+.badge.success { background: rgba(115, 168, 185, 0.15); color: #3A5A6A; border: 1px solid rgba(115, 168, 185, 0.3); }
+.badge.processing { background: #73A8B9; color: #fff; }
+.badge.pending { background: rgba(115, 168, 185, 0.1); color: #73A8B9; }
+.badge.accent { background: rgba(115, 168, 185, 0.15); color: #3A5A6A; }
 
 .card-content {
   /* No extra padding - uses step-card's padding */
@@ -1326,19 +1343,26 @@ onUnmounted(() => {
   max-height: 320px;
   overflow-y: auto;
   padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: #73a8b9 #e6f2f7;
 }
 
 .profiles-list::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
+}
+
+.profiles-list::-webkit-scrollbar-track {
+  background: #e6f2f7;
+  border-radius: 3px;
 }
 
 .profiles-list::-webkit-scrollbar-thumb {
-  background: #DDD;
-  border-radius: 2px;
+  background: #73a8b9;
+  border-radius: 3px;
 }
 
 .profiles-list::-webkit-scrollbar-thumb:hover {
-  background: #CCC;
+  background: #5c9eaf;
 }
 
 .profile-card {
@@ -1536,19 +1560,26 @@ onUnmounted(() => {
   max-height: 400px;
   overflow-y: auto;
   padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: #73a8b9 #e6f2f7;
 }
 
 .agents-cards::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
+}
+
+.agents-cards::-webkit-scrollbar-track {
+  background: #e6f2f7;
+  border-radius: 3px;
 }
 
 .agents-cards::-webkit-scrollbar-thumb {
-  background: #DDD;
-  border-radius: 2px;
+  background: #73a8b9;
+  border-radius: 3px;
 }
 
 .agents-cards::-webkit-scrollbar-thumb:hover {
-  background: #CCC;
+  background: #5c9eaf;
 }
 
 .agent-card {
@@ -2031,13 +2062,27 @@ onUnmounted(() => {
   border-radius: 0;
 }
 
+.persona-content {
+  scrollbar-width: thin;
+  scrollbar-color: #73a8b9 #e6f2f7;
+}
+
 .persona-content::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
+}
+
+.persona-content::-webkit-scrollbar-track {
+  background: #e6f2f7;
+  border-radius: 3px;
 }
 
 .persona-content::-webkit-scrollbar-thumb {
-  background: #DDD;
-  border-radius: 2px;
+  background: #73a8b9;
+  border-radius: 3px;
+}
+
+.persona-content::-webkit-scrollbar-thumb:hover {
+  background: #5c9eaf;
 }
 
 .section-persona {

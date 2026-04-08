@@ -15,6 +15,12 @@
     </div>
     
     <div class="graph-container" ref="graphContainer">
+      <div class="graph-atmosphere" aria-hidden="true">
+        <div class="atmosphere-glow glow-a"></div>
+        <div class="atmosphere-glow glow-b"></div>
+        <div class="atmosphere-glow glow-c"></div>
+        <div class="atmosphere-grid"></div>
+      </div>
       <!-- 图谱可视化 -->
       <div v-if="graphData" class="graph-view">
         <svg ref="graphSvg" class="graph-svg"></svg>
@@ -571,18 +577,19 @@ const renderGraph = () => {
   const link = linkGroup.selectAll('path')
     .data(edges)
     .enter().append('path')
-    .attr('stroke', '#C0C0C0')
-    .attr('stroke-width', 1.5)
+    .attr('stroke', 'rgba(93, 119, 145, 0.42)')
+    .attr('stroke-width', 1.35)
     .attr('fill', 'none')
+    .attr('stroke-linecap', 'round')
     .style('cursor', 'pointer')
     .on('click', (event, d) => {
       event.stopPropagation()
       // 重置之前选中边的样式
-      linkGroup.selectAll('path').attr('stroke', '#C0C0C0').attr('stroke-width', 1.5)
-      linkLabelBg.attr('fill', 'rgba(255,255,255,0.95)')
-      linkLabels.attr('fill', '#666')
+      linkGroup.selectAll('path').attr('stroke', 'rgba(93, 119, 145, 0.42)').attr('stroke-width', 1.35)
+      linkLabelBg.attr('fill', 'rgba(255,255,255,0.82)')
+      linkLabels.attr('fill', '#5d7288')
       // 高亮当前选中的边
-      d3.select(event.target).attr('stroke', '#3498db').attr('stroke-width', 3)
+      d3.select(event.target).attr('stroke', '#5f88b5').attr('stroke-width', 2.6)
       
       selectedItem.value = {
         type: 'edge',
@@ -594,20 +601,20 @@ const renderGraph = () => {
   const linkLabelBg = linkGroup.selectAll('rect')
     .data(edges)
     .enter().append('rect')
-    .attr('fill', 'rgba(255,255,255,0.95)')
-    .attr('rx', 3)
-    .attr('ry', 3)
+    .attr('fill', 'rgba(255,255,255,0.82)')
+    .attr('rx', 8)
+    .attr('ry', 8)
     .style('cursor', 'pointer')
     .style('pointer-events', 'all')
     .style('display', showEdgeLabels.value ? 'block' : 'none')
     .on('click', (event, d) => {
       event.stopPropagation()
-      linkGroup.selectAll('path').attr('stroke', '#C0C0C0').attr('stroke-width', 1.5)
-      linkLabelBg.attr('fill', 'rgba(255,255,255,0.95)')
-      linkLabels.attr('fill', '#666')
+      linkGroup.selectAll('path').attr('stroke', 'rgba(93, 119, 145, 0.42)').attr('stroke-width', 1.35)
+      linkLabelBg.attr('fill', 'rgba(255,255,255,0.82)')
+      linkLabels.attr('fill', '#5d7288')
       // 高亮对应的边
-      link.filter(l => l === d).attr('stroke', '#3498db').attr('stroke-width', 3)
-      d3.select(event.target).attr('fill', 'rgba(52, 152, 219, 0.1)')
+      link.filter(l => l === d).attr('stroke', '#5f88b5').attr('stroke-width', 2.6)
+      d3.select(event.target).attr('fill', 'rgba(199, 218, 237, 0.9)')
       
       selectedItem.value = {
         type: 'edge',
@@ -621,7 +628,7 @@ const renderGraph = () => {
     .enter().append('text')
     .text(d => d.name)
     .attr('font-size', '9px')
-    .attr('fill', '#666')
+    .attr('fill', '#5d7288')
     .attr('text-anchor', 'middle')
     .attr('dominant-baseline', 'middle')
     .style('cursor', 'pointer')
@@ -630,12 +637,12 @@ const renderGraph = () => {
     .style('display', showEdgeLabels.value ? 'block' : 'none')
     .on('click', (event, d) => {
       event.stopPropagation()
-      linkGroup.selectAll('path').attr('stroke', '#C0C0C0').attr('stroke-width', 1.5)
-      linkLabelBg.attr('fill', 'rgba(255,255,255,0.95)')
-      linkLabels.attr('fill', '#666')
+      linkGroup.selectAll('path').attr('stroke', 'rgba(93, 119, 145, 0.42)').attr('stroke-width', 1.35)
+      linkLabelBg.attr('fill', 'rgba(255,255,255,0.82)')
+      linkLabels.attr('fill', '#5d7288')
       // 高亮对应的边
-      link.filter(l => l === d).attr('stroke', '#3498db').attr('stroke-width', 3)
-      d3.select(event.target).attr('fill', '#3498db')
+      link.filter(l => l === d).attr('stroke', '#5f88b5').attr('stroke-width', 2.6)
+      d3.select(event.target).attr('fill', '#4f7397')
       
       selectedItem.value = {
         type: 'edge',
@@ -658,6 +665,7 @@ const renderGraph = () => {
     .attr('fill', d => getColor(d.type))
     .attr('stroke', '#fff')
     .attr('stroke-width', 2.5)
+    .style('filter', 'drop-shadow(0 6px 14px rgba(111, 136, 164, 0.22))')
     .style('cursor', 'pointer')
     .call(d3.drag()
       .on('start', (event, d) => {
@@ -699,13 +707,13 @@ const renderGraph = () => {
       event.stopPropagation()
       // 重置所有节点样式
       node.attr('stroke', '#fff').attr('stroke-width', 2.5)
-      linkGroup.selectAll('path').attr('stroke', '#C0C0C0').attr('stroke-width', 1.5)
+      linkGroup.selectAll('path').attr('stroke', 'rgba(93, 119, 145, 0.42)').attr('stroke-width', 1.35)
       // 高亮选中节点
-      d3.select(event.target).attr('stroke', '#E91E63').attr('stroke-width', 4)
+      d3.select(event.target).attr('stroke', '#f7fbff').attr('stroke-width', 4)
       // 高亮与此节点相连的边
       link.filter(l => l.source.id === d.id || l.target.id === d.id)
-        .attr('stroke', '#E91E63')
-        .attr('stroke-width', 2.5)
+        .attr('stroke', '#88a6c6')
+        .attr('stroke-width', 2.2)
       
       selectedItem.value = {
         type: 'node',
@@ -818,9 +826,20 @@ onUnmounted(() => {
   position: relative;
   width: 100%;
   height: 100%;
-  background-color: #FAFAFA;
-  background-image: radial-gradient(#D0D0D0 1.5px, transparent 1.5px);
-  background-size: 24px 24px;
+  --graph-bg: #f7fbff;
+  --graph-bg-soft: #eef5fb;
+  --graph-ink: #1f314a;
+  --graph-card: rgba(255, 255, 255, 0.76);
+  --graph-card-border: rgba(173, 192, 214, 0.55);
+  --graph-shadow: 0 16px 40px rgba(121, 146, 176, 0.16);
+  border-radius: 24px;
+  border: 1px solid rgba(191, 207, 224, 0.72);
+  background:
+    radial-gradient(circle at 20% 18%, rgba(197, 220, 241, 0.46) 0, rgba(197, 220, 241, 0) 28%),
+    radial-gradient(circle at 82% 24%, rgba(216, 229, 241, 0.42) 0, rgba(216, 229, 241, 0) 30%),
+    radial-gradient(circle at 56% 72%, rgba(201, 218, 234, 0.34) 0, rgba(201, 218, 234, 0) 36%),
+    linear-gradient(180deg, #fbfdff 0%, #f3f8fc 58%, #edf4fa 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85), 0 18px 50px rgba(121, 146, 176, 0.12);
   overflow: hidden;
 }
 
@@ -834,14 +853,15 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: linear-gradient(to bottom, rgba(255,255,255,0.95), rgba(255,255,255,0));
+  background: linear-gradient(to bottom, rgba(251, 253, 255, 0.92), rgba(251, 253, 255, 0));
   pointer-events: none;
 }
 
 .panel-title {
   font-size: 14px;
   font-weight: 600;
-  color: #333;
+  color: var(--graph-ink);
+  letter-spacing: 0.02em;
   pointer-events: auto;
 }
 
@@ -855,24 +875,26 @@ onUnmounted(() => {
 .tool-btn {
   height: 32px;
   padding: 0 12px;
-  border: 1px solid #E0E0E0;
-  background: #FFF;
-  border-radius: 6px;
+  border: 1px solid rgba(173, 192, 214, 0.55);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(10px);
+  border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   cursor: pointer;
-  color: #666;
+  color: #5f7188;
   transition: all 0.2s;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  box-shadow: 0 10px 24px rgba(128, 151, 177, 0.12);
   font-size: 13px;
 }
 
 .tool-btn:hover {
-  background: #F5F5F5;
-  color: #000;
-  border-color: #CCC;
+  background: rgba(255, 255, 255, 0.88);
+  color: #314760;
+  border-color: rgba(141, 169, 198, 0.7);
+  transform: translateY(-1px);
 }
 
 .tool-btn .btn-text {
@@ -886,8 +908,60 @@ onUnmounted(() => {
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 .graph-container {
+  position: relative;
   width: 100%;
   height: 100%;
+}
+
+.graph-atmosphere {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.atmosphere-glow {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(28px);
+  opacity: 0.8;
+}
+
+.glow-a {
+  top: 6%;
+  left: 12%;
+  width: 260px;
+  height: 200px;
+  background: radial-gradient(circle, rgba(216, 231, 244, 0.7) 0%, rgba(216, 231, 244, 0.08) 62%, transparent 100%);
+}
+
+.glow-b {
+  top: 24%;
+  right: 8%;
+  width: 320px;
+  height: 240px;
+  background: radial-gradient(circle, rgba(226, 236, 245, 0.76) 0%, rgba(226, 236, 245, 0.08) 60%, transparent 100%);
+}
+
+.glow-c {
+  bottom: 6%;
+  left: 34%;
+  width: 360px;
+  height: 220px;
+  background: radial-gradient(circle, rgba(211, 225, 238, 0.64) 0%, rgba(211, 225, 238, 0.08) 58%, transparent 100%);
+}
+
+.atmosphere-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.55;
+  background-image:
+    radial-gradient(circle at 10% 22%, rgba(107, 130, 156, 0.22) 0 1.2px, transparent 1.4px),
+    radial-gradient(circle at 82% 34%, rgba(107, 130, 156, 0.18) 0 1.3px, transparent 1.6px),
+    radial-gradient(circle at 22% 78%, rgba(107, 130, 156, 0.18) 0 1.1px, transparent 1.4px),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cg fill='none' stroke='%2392a4b8' stroke-linecap='round' stroke-width='1.5' opacity='0.7'%3E%3Cpath d='M24 16 L36 28 M36 16 L24 28'/%3E%3Cpath d='M118 44 L130 56 M130 44 L118 56' opacity='0.55'/%3E%3Cpath d='M78 106 L94 122 M94 106 L78 122'/%3E%3Cpath d='M146 132 L160 146 M160 132 L146 146' opacity='0.52'/%3E%3Cpath d='M34 140 L48 154 M48 140 L34 154' opacity='0.6'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: auto, auto, auto, 180px 180px;
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat;
 }
 
 .graph-view, .graph-svg {
@@ -896,13 +970,24 @@ onUnmounted(() => {
   display: block;
 }
 
+.graph-view {
+  position: relative;
+  z-index: 1;
+}
+
+.graph-svg {
+  position: relative;
+  z-index: 1;
+}
+
 .graph-state {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   text-align: center;
-  color: #999;
+  color: #71839a;
+  z-index: 2;
 }
 
 .empty-icon {
@@ -916,11 +1001,12 @@ onUnmounted(() => {
   position: absolute;
   bottom: 24px;
   left: 24px;
-  background: rgba(255,255,255,0.95);
-  padding: 12px 16px;
-  border-radius: 8px;
-  border: 1px solid #EAEAEA;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+  background: var(--graph-card);
+  backdrop-filter: blur(14px);
+  padding: 14px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--graph-card-border);
+  box-shadow: var(--graph-shadow);
   z-index: 10;
 }
 
@@ -928,10 +1014,10 @@ onUnmounted(() => {
   display: block;
   font-size: 11px;
   font-weight: 600;
-  color: #E91E63;
+  color: #5f7691;
   margin-bottom: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.12em;
 }
 
 .legend-items {
@@ -946,7 +1032,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #555;
+  color: #4d617a;
 }
 
 .legend-dot {
@@ -954,6 +1040,7 @@ onUnmounted(() => {
   height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.72), 0 4px 10px rgba(113, 140, 170, 0.2);
 }
 
 .legend-label {
@@ -968,11 +1055,12 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #FFF;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(12px);
   padding: 8px 14px;
-  border-radius: 20px;
-  border: 1px solid #E0E0E0;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  border-radius: 999px;
+  border: 1px solid rgba(173, 192, 214, 0.58);
+  box-shadow: 0 10px 24px rgba(128, 151, 177, 0.12);
   z-index: 10;
 }
 
@@ -996,7 +1084,7 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: #E0E0E0;
+  background-color: #d6e0ea;
   border-radius: 22px;
   transition: 0.3s;
 }
@@ -1014,7 +1102,7 @@ onUnmounted(() => {
 }
 
 input:checked + .slider {
-  background-color: #7B2D8E;
+  background-color: #7f9fc0;
 }
 
 input:checked + .slider:before {
@@ -1023,7 +1111,7 @@ input:checked + .slider:before {
 
 .toggle-label {
   font-size: 12px;
-  color: #666;
+  color: #5f7188;
 }
 
 /* Detail Panel - Right Side */
@@ -1033,10 +1121,11 @@ input:checked + .slider:before {
   right: 20px;
   width: 320px;
   max-height: calc(100% - 100px);
-  background: #FFF;
-  border: 1px solid #EAEAEA;
-  border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+  background: rgba(255, 255, 255, 0.84);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(173, 192, 214, 0.58);
+  border-radius: 20px;
+  box-shadow: 0 22px 48px rgba(122, 145, 173, 0.2);
   overflow: hidden;
   font-family: 'Noto Sans SC', system-ui, sans-serif;
   font-size: 13px;
@@ -1050,14 +1139,14 @@ input:checked + .slider:before {
   justify-content: space-between;
   align-items: center;
   padding: 14px 16px;
-  background: #FAFAFA;
-  border-bottom: 1px solid #EEE;
+  background: linear-gradient(180deg, rgba(247, 250, 253, 0.95) 0%, rgba(241, 246, 251, 0.9) 100%);
+  border-bottom: 1px solid rgba(214, 226, 238, 0.9);
   flex-shrink: 0;
 }
 
 .detail-title {
   font-weight: 600;
-  color: #333;
+  color: #2e445d;
   font-size: 14px;
 }
 
@@ -1075,14 +1164,14 @@ input:checked + .slider:before {
   border: none;
   font-size: 20px;
   cursor: pointer;
-  color: #999;
+  color: #7f91a8;
   line-height: 1;
   padding: 0;
   transition: color 0.2s;
 }
 
 .detail-close:hover {
-  color: #333;
+  color: #324960;
 }
 
 .detail-content {
@@ -1099,14 +1188,14 @@ input:checked + .slider:before {
 }
 
 .detail-label {
-  color: #888;
+  color: #7a8ba0;
   font-size: 12px;
   font-weight: 500;
   min-width: 80px;
 }
 
 .detail-value {
-  color: #333;
+  color: #334861;
   flex: 1;
   word-break: break-word;
 }
@@ -1114,24 +1203,24 @@ input:checked + .slider:before {
 .detail-value.uuid-text {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  color: #666;
+  color: #667a91;
 }
 
 .detail-value.fact-text {
   line-height: 1.5;
-  color: #444;
+  color: #43576f;
 }
 
 .detail-section {
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid #F0F0F0;
+  border-top: 1px solid rgba(222, 231, 240, 0.9);
 }
 
 .section-title {
   font-size: 12px;
   font-weight: 600;
-  color: #666;
+  color: #60748d;
   margin-bottom: 10px;
 }
 
@@ -1147,19 +1236,19 @@ input:checked + .slider:before {
 }
 
 .property-key {
-  color: #888;
+  color: #74879c;
   font-weight: 500;
   min-width: 90px;
 }
 
 .property-value {
-  color: #333;
+  color: #334861;
   flex: 1;
 }
 
 .summary-text {
   line-height: 1.6;
-  color: #444;
+  color: #43576f;
   font-size: 12px;
 }
 
@@ -1172,11 +1261,11 @@ input:checked + .slider:before {
 .label-tag {
   display: inline-block;
   padding: 4px 12px;
-  background: #F5F5F5;
-  border: 1px solid #E0E0E0;
+  background: rgba(241, 246, 250, 0.9);
+  border: 1px solid rgba(211, 224, 236, 0.95);
   border-radius: 16px;
   font-size: 11px;
-  color: #555;
+  color: #50647c;
 }
 
 .episodes-list {
@@ -1188,26 +1277,27 @@ input:checked + .slider:before {
 .episode-tag {
   display: inline-block;
   padding: 6px 10px;
-  background: #F8F8F8;
-  border: 1px solid #E8E8E8;
+  background: rgba(244, 248, 252, 0.95);
+  border: 1px solid rgba(214, 226, 238, 0.95);
   border-radius: 6px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
-  color: #666;
+  color: #667a91;
   word-break: break-all;
 }
 
 /* Edge relation header */
 .edge-relation-header {
-  background: #F8F8F8;
+  background: linear-gradient(180deg, rgba(244, 248, 252, 0.95) 0%, rgba(238, 244, 249, 0.92) 100%);
   padding: 12px;
-  border-radius: 8px;
+  border-radius: 14px;
   margin-bottom: 16px;
   font-size: 13px;
   font-weight: 500;
-  color: #333;
+  color: #334861;
   line-height: 1.5;
   word-break: break-word;
+  border: 1px solid rgba(214, 226, 238, 0.95);
 }
 
 /* Building hint */
@@ -1216,17 +1306,17 @@ input:checked + .slider:before {
   bottom: 160px; /* Moved up from 80px */
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(8px);
-  color: #fff;
+  background: rgba(54, 76, 101, 0.72);
+  backdrop-filter: blur(12px);
+  color: #f6fbff;
   padding: 10px 20px;
   border-radius: 30px;
   font-size: 13px;
   display: flex;
   align-items: center;
   gap: 10px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 16px 32px rgba(93, 119, 145, 0.24);
+  border: 1px solid rgba(214, 228, 241, 0.18);
   font-weight: 500;
   letter-spacing: 0.5px;
   z-index: 100;
@@ -1252,8 +1342,8 @@ input:checked + .slider:before {
 
 /* 模拟结束后的提示样式 */
 .graph-building-hint.finished-hint {
-  background: rgba(0, 0, 0, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(73, 91, 113, 0.72);
+  border: 1px solid rgba(214, 228, 241, 0.18);
 }
 
 .finished-hint .hint-icon-wrapper {
@@ -1279,7 +1369,7 @@ input:checked + .slider:before {
   justify-content: center;
   width: 22px;
   height: 22px;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.16);
   border: none;
   border-radius: 50%;
   cursor: pointer;
@@ -1290,7 +1380,7 @@ input:checked + .slider:before {
 }
 
 .hint-close-btn:hover {
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.28);
   transform: scale(1.1);
 }
 
@@ -1298,8 +1388,8 @@ input:checked + .slider:before {
 .loading-spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid #E0E0E0;
-  border-top-color: #7B2D8E;
+  border: 3px solid rgba(181, 198, 216, 0.48);
+  border-top-color: #7f9fc0;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: 0 auto 16px;

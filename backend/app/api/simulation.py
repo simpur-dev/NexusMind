@@ -1175,11 +1175,14 @@ def get_simulation_config_realtime(simulation_id: str):
         config_generated = False
         
         state_file = os.path.join(sim_dir, "state.json")
+        status = ""
+        state_error = None
         if os.path.exists(state_file):
             try:
                 with open(state_file, 'r', encoding='utf-8') as f:
                     state_data = json.load(f)
                     status = state_data.get("status", "")
+                    state_error = state_data.get("error")
                     is_generating = status == "preparing"
                     config_generated = state_data.get("config_generated", False)
                     
@@ -1191,6 +1194,8 @@ def get_simulation_config_realtime(simulation_id: str):
                             generation_stage = "generating_profiles"
                     elif status == "ready":
                         generation_stage = "completed"
+                    elif status == "failed":
+                        generation_stage = "failed"
             except Exception:
                 pass
         
@@ -1199,6 +1204,8 @@ def get_simulation_config_realtime(simulation_id: str):
             "simulation_id": simulation_id,
             "file_exists": file_exists,
             "file_modified_at": file_modified_at,
+            "status": status,
+            "error": state_error,
             "is_generating": is_generating,
             "generation_stage": generation_stage,
             "config_generated": config_generated,
