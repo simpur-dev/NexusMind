@@ -1,5 +1,5 @@
 """
-Zep检索工具服务
+图谱检索工具服务（使用 Graphiti + Neo4j）
 封装图谱搜索、节点读取、边查询等工具，供Report Agent使用
 
 核心检索工具（优化后）：
@@ -13,14 +13,14 @@ import json
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 
-from zep_cloud.client import Zep
+from graphiti_core.search.search_config_recipes import NODE_HYBRID_SEARCH_RRF
 
 from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.llm_client import LLMClient
-from ..utils.zep_paging import fetch_all_nodes, fetch_all_edges
+from ..utils.graphiti_client import get_graphiti, run_async, get_neo4j_async_driver
 
-logger = get_logger('mirofish.zep_tools')
+logger = get_logger('nexusmind.graph_tools')
 
 
 @dataclass
@@ -397,9 +397,9 @@ class InterviewResult:
         return "\n".join(text_parts)
 
 
-class ZepToolsService:
+class GraphToolsService:
     """
-    Zep检索工具服务
+    图谱检索工具服务（使用 Graphiti + FalkorDB）
     
     【核心检索工具 - 优化后】
     1. insight_forge - 深度洞察检索（最强大，自动生成子问题，多维度检索）
@@ -422,14 +422,10 @@ class ZepToolsService:
     RETRY_DELAY = 2.0
     
     def __init__(self, api_key: Optional[str] = None, llm_client: Optional[LLMClient] = None):
-        self.api_key = api_key or Config.ZEP_API_KEY
-        if not self.api_key:
-            raise ValueError("ZEP_API_KEY 未配置")
-        
-        self.client = Zep(api_key=self.api_key)
+        # api_key 参数保留用于接口兼容，Graphiti 使用 FalkorDB 本地连接
         # LLM客户端用于InsightForge生成子问题
         self._llm_client = llm_client
-        logger.info("ZepToolsService 初始化完成")
+        logger.info("GraphToolsService 初始化完成 (Graphiti 后端)")
     
     @property
     def llm(self) -> LLMClient:
@@ -451,13 +447,13 @@ class ZepToolsService:
                 last_exception = e
                 if attempt < max_retries - 1:
                     logger.warning(
-                        f"Zep {operation_name} 第 {attempt + 1} 次尝试失败: {str(e)[:100]}, "
+                        f"{operation_name} 第 {attempt + 1} 次尝试失败: {str(e)[:100]}, "
                         f"{delay:.1f}秒后重试..."
                     )
                     time.sleep(delay)
                     delay *= 2
                 else:
-                    logger.error(f"Zep {operation_name} 在 {max_retries} 次尝试后仍失败: {str(e)}")
+                    logger.error(f"{operation_name} 在 {max_retries} 次尝试后仍失败: {str(e)}")
         
         raise last_exception
     
@@ -469,13 +465,12 @@ class ZepToolsService:
         scope: str = "edges"
     ) -> SearchResult:
         """
-        图谱语义搜索
+        图谱语义搜索（使用 Graphiti 混合检索）
         
-        使用混合搜索（语义+BM25）在图谱中搜索相关信息。
-        如果Zep Cloud的search API不可用，则降级为本地关键词匹配。
+        使用混合搜索（语义+BM25+图遍历）在图谱中搜索相关信息。
         
         Args:
-            graph_id: 图谱ID (Standalone Graph)
+            graph_id: 图谱ID
             query: 搜索查询
             limit: 返回结果数量
             scope: 搜索范围，"edges" 或 "nodes"
@@ -485,48 +480,57 @@ class ZepToolsService:
         """
         logger.info(f"图谱搜索: graph_id={graph_id}, query={query[:50]}...")
         
-        # 尝试使用Zep Cloud Search API
+        graphiti = get_graphiti(graph_id)
+        facts = []
+        edges = []
+        nodes = []
+        
         try:
-            search_results = self._call_with_retry(
-                func=lambda: self.client.graph.search(
-                    graph_id=graph_id,
-                    query=query,
-                    limit=limit,
-                    scope=scope,
-                    reranker="cross_encoder"
-                ),
-                operation_name=f"图谱搜索(graph={graph_id})"
-            )
+            # 搜索边（Graphiti.search 默认返回边/关系）
+            if scope in ["edges", "both"]:
+                edge_results = self._call_with_retry(
+                    func=lambda: run_async(graphiti.search(query, num_results=limit)),
+                    operation_name=f"图谱搜索(graph={graph_id})"
+                )
+                
+                if edge_results:
+                    for edge in edge_results:
+                        fact = getattr(edge, 'fact', '') or ""
+                        if fact:
+                            facts.append(fact)
+                        edges.append({
+                            "uuid": str(getattr(edge, 'uuid', '')),
+                            "name": getattr(edge, 'name', '') or "",
+                            "fact": fact,
+                            "source_node_uuid": str(getattr(edge, 'source_node_uuid', '')),
+                            "target_node_uuid": str(getattr(edge, 'target_node_uuid', '')),
+                        })
             
-            facts = []
-            edges = []
-            nodes = []
-            
-            # 解析边搜索结果
-            if hasattr(search_results, 'edges') and search_results.edges:
-                for edge in search_results.edges:
-                    if hasattr(edge, 'fact') and edge.fact:
-                        facts.append(edge.fact)
-                    edges.append({
-                        "uuid": getattr(edge, 'uuid_', None) or getattr(edge, 'uuid', ''),
-                        "name": getattr(edge, 'name', ''),
-                        "fact": getattr(edge, 'fact', ''),
-                        "source_node_uuid": getattr(edge, 'source_node_uuid', ''),
-                        "target_node_uuid": getattr(edge, 'target_node_uuid', ''),
-                    })
-            
-            # 解析节点搜索结果
-            if hasattr(search_results, 'nodes') and search_results.nodes:
-                for node in search_results.nodes:
-                    nodes.append({
-                        "uuid": getattr(node, 'uuid_', None) or getattr(node, 'uuid', ''),
-                        "name": getattr(node, 'name', ''),
-                        "labels": getattr(node, 'labels', []),
-                        "summary": getattr(node, 'summary', ''),
-                    })
-                    # 节点摘要也算作事实
-                    if hasattr(node, 'summary') and node.summary:
-                        facts.append(f"[{node.name}]: {node.summary}")
+            # 搜索节点
+            if scope in ["nodes", "both"]:
+                node_config = NODE_HYBRID_SEARCH_RRF.model_copy(deep=True)
+                node_config.limit = limit
+                
+                try:
+                    node_results = run_async(graphiti._search(
+                        query=query,
+                        config=node_config,
+                    ))
+                    
+                    if hasattr(node_results, 'nodes') and node_results.nodes:
+                        for node in node_results.nodes:
+                            node_name = getattr(node, 'name', '') or ""
+                            node_summary = getattr(node, 'summary', '') or ""
+                            nodes.append({
+                                "uuid": str(getattr(node, 'uuid', '')),
+                                "name": node_name,
+                                "labels": getattr(node, 'labels', []) or [],
+                                "summary": node_summary,
+                            })
+                            if node_summary:
+                                facts.append(f"[{node_name}]: {node_summary}")
+                except Exception as e:
+                    logger.debug(f"节点搜索失败: {e}")
             
             logger.info(f"搜索完成: 找到 {len(facts)} 条相关事实")
             
@@ -539,8 +543,7 @@ class ZepToolsService:
             )
             
         except Exception as e:
-            logger.warning(f"Zep Search API失败，降级为本地搜索: {str(e)}")
-            # 降级：使用本地关键词匹配搜索
+            logger.warning(f"Graphiti 搜索失败，降级为本地搜索: {str(e)}")
             return self._local_search(graph_id, query, limit, scope)
     
     def _local_search(
@@ -551,7 +554,7 @@ class ZepToolsService:
         scope: str = "edges"
     ) -> SearchResult:
         """
-        本地关键词匹配搜索（作为Zep Search API的降级方案）
+        本地关键词匹配搜索（作为语义搜索的降级方案）
         
         获取所有边/节点，然后在本地进行关键词匹配
         
@@ -647,29 +650,98 @@ class ZepToolsService:
             total_count=len(facts)
         )
     
+    def _fetch_from_neo4j(self, graph_id: str = ""):
+        """直接通过 Neo4j Cypher 获取所有节点和边，按 group_id 过滤"""
+        async def _query():
+            driver = get_neo4j_async_driver()
+            gid_filter = "WHERE n.group_id = $gid OR n.group_id IS NULL" if graph_id else ""
+            node_result = await driver.execute_query(
+                f"MATCH (n:Entity) {gid_filter} "
+                "RETURN n.uuid AS uuid, n.name AS name, n.summary AS summary, "
+                "n.created_at AS created_at",
+                gid=graph_id,
+                database_=Config.NEO4J_DATABASE,
+            )
+            edge_gid = "WHERE r.group_id = $gid OR r.group_id IS NULL" if graph_id else ""
+            edge_result = await driver.execute_query(
+                f"MATCH (a:Entity)-[r]->(b:Entity) {edge_gid} "
+                "RETURN r.uuid AS uuid, r.name AS name, r.fact AS fact, "
+                "type(r) AS rel_type, "
+                "r.source_node_uuid AS source_uuid, r.target_node_uuid AS target_uuid, "
+                "a.name AS source_name, b.name AS target_name, "
+                "a.uuid AS src_uuid, b.uuid AS tgt_uuid, "
+                "r.created_at AS created_at, r.valid_at AS valid_at",
+                gid=graph_id,
+                database_=Config.NEO4J_DATABASE,
+            )
+            return node_result.records, edge_result.records
+
+        return run_async(_query())
+
+    def _infer_entity_types(self, node_records, edge_records) -> dict:
+        """推断每个节点的 entity type（识别 ontology 类型节点 → 边传播 → summary 匹配）"""
+        node_summaries = {}
+        for rec in node_records:
+            name = rec["name"] or ""
+            node_summaries[name] = rec["summary"] or ""
+
+        type_names = set()
+        for name, summary in node_summaries.items():
+            if summary and "属性:" in summary and len(summary) > 30:
+                type_names.add(name)
+
+        node_type_map = {}
+        for rec in edge_records:
+            src = rec["source_name"] or ""
+            tgt = rec["target_name"] or ""
+            if src in type_names and tgt not in type_names:
+                if tgt not in node_type_map:
+                    node_type_map[tgt] = src
+            elif tgt in type_names and src not in type_names:
+                if src not in node_type_map:
+                    node_type_map[src] = tgt
+
+        for name, summary in node_summaries.items():
+            if name in type_names or name in node_type_map:
+                continue
+            for tn in type_names:
+                if tn.lower() in summary.lower():
+                    node_type_map[name] = tn
+                    break
+
+        return {"type_names": type_names, "node_type_map": node_type_map}
+
+    def _get_labels(self, name: str, type_info: dict) -> List[str]:
+        """根据推断结果返回节点 labels"""
+        if name in type_info["type_names"]:
+            return ["Entity", name]
+        entity_type = type_info["node_type_map"].get(name)
+        if entity_type:
+            return ["Entity", entity_type]
+        return ["Entity"]
+
     def get_all_nodes(self, graph_id: str) -> List[NodeInfo]:
         """
-        获取图谱的所有节点（分页获取）
-
-        Args:
-            graph_id: 图谱ID
-
-        Returns:
-            节点列表
+        获取图谱的所有节点（直接 Neo4j Cypher 查询 + entity type 推断）
         """
         logger.info(f"获取图谱 {graph_id} 的所有节点...")
+        try:
+            node_records, edge_records = self._fetch_from_neo4j(graph_id)
+        except Exception as e:
+            logger.warning(f"获取节点失败: {e}")
+            return []
 
-        nodes = fetch_all_nodes(self.client, graph_id)
+        type_info = self._infer_entity_types(node_records, edge_records)
 
         result = []
-        for node in nodes:
-            node_uuid = getattr(node, 'uuid_', None) or getattr(node, 'uuid', None) or ""
+        for rec in node_records:
+            name = rec["name"] or ""
             result.append(NodeInfo(
-                uuid=str(node_uuid) if node_uuid else "",
-                name=node.name or "",
-                labels=node.labels or [],
-                summary=node.summary or "",
-                attributes=node.attributes or {}
+                uuid=str(rec["uuid"] or ""),
+                name=name,
+                labels=self._get_labels(name, type_info),
+                summary=rec["summary"] or "",
+                attributes={}
             ))
 
         logger.info(f"获取到 {len(result)} 个节点")
@@ -677,70 +749,57 @@ class ZepToolsService:
 
     def get_all_edges(self, graph_id: str, include_temporal: bool = True) -> List[EdgeInfo]:
         """
-        获取图谱的所有边（分页获取，包含时间信息）
-
-        Args:
-            graph_id: 图谱ID
-            include_temporal: 是否包含时间信息（默认True）
-
-        Returns:
-            边列表（包含created_at, valid_at, invalid_at, expired_at）
+        获取图谱的所有边（直接 Neo4j Cypher 查询）
         """
         logger.info(f"获取图谱 {graph_id} 的所有边...")
-
-        edges = fetch_all_edges(self.client, graph_id)
+        try:
+            _, edge_records = self._fetch_from_neo4j(graph_id)
+        except Exception as e:
+            logger.warning(f"获取边失败: {e}")
+            return []
 
         result = []
-        for edge in edges:
-            edge_uuid = getattr(edge, 'uuid_', None) or getattr(edge, 'uuid', None) or ""
+        for rec in edge_records:
             edge_info = EdgeInfo(
-                uuid=str(edge_uuid) if edge_uuid else "",
-                name=edge.name or "",
-                fact=edge.fact or "",
-                source_node_uuid=edge.source_node_uuid or "",
-                target_node_uuid=edge.target_node_uuid or ""
+                uuid=str(rec["uuid"] or ""),
+                name=rec["name"] or rec["rel_type"] or "",
+                fact=rec["fact"] or "",
+                source_node_uuid=str(rec["source_uuid"] or rec["src_uuid"] or ""),
+                target_node_uuid=str(rec["target_uuid"] or rec["tgt_uuid"] or ""),
+                source_node_name=rec["source_name"] or "",
+                target_node_name=rec["target_name"] or "",
             )
-
-            # 添加时间信息
             if include_temporal:
-                edge_info.created_at = getattr(edge, 'created_at', None)
-                edge_info.valid_at = getattr(edge, 'valid_at', None)
-                edge_info.invalid_at = getattr(edge, 'invalid_at', None)
-                edge_info.expired_at = getattr(edge, 'expired_at', None)
-
+                edge_info.created_at = rec.get("created_at")
+                edge_info.valid_at = rec.get("valid_at")
             result.append(edge_info)
 
         logger.info(f"获取到 {len(result)} 条边")
         return result
     
-    def get_node_detail(self, node_uuid: str) -> Optional[NodeInfo]:
+    def get_node_detail(self, node_uuid: str, graph_id: str = "") -> Optional[NodeInfo]:
         """
         获取单个节点的详细信息
         
         Args:
             node_uuid: 节点UUID
+            graph_id: 图谱ID（Graphiti 需要通过 graph_id 获取实例）
             
         Returns:
             节点信息或None
         """
         logger.info(f"获取节点详情: {node_uuid[:8]}...")
         
+        if not graph_id:
+            logger.warning("get_node_detail: 未提供 graph_id")
+            return None
+        
         try:
-            node = self._call_with_retry(
-                func=lambda: self.client.graph.node.get(uuid_=node_uuid),
-                operation_name=f"获取节点详情(uuid={node_uuid[:8]}...)"
-            )
-            
-            if not node:
-                return None
-            
-            return NodeInfo(
-                uuid=getattr(node, 'uuid_', None) or getattr(node, 'uuid', ''),
-                name=node.name or "",
-                labels=node.labels or [],
-                summary=node.summary or "",
-                attributes=node.attributes or {}
-            )
+            all_nodes = self.get_all_nodes(graph_id)
+            for node in all_nodes:
+                if node.uuid == node_uuid:
+                    return node
+            return None
         except Exception as e:
             logger.error(f"获取节点详情失败: {str(e)}")
             return None
@@ -1034,6 +1093,10 @@ class ZepToolsService:
                 if target_uuid:
                     entity_uuids.add(target_uuid)
         
+        # 一次性获取所有节点，避免 N+1 查询
+        all_nodes_list = self.get_all_nodes(graph_id)
+        all_nodes_map = {n.uuid: n for n in all_nodes_list}
+        
         # 获取所有相关实体的详情（不限制数量，完整输出）
         entity_insights = []
         node_map = {}  # 用于后续关系链构建
@@ -1042,8 +1105,7 @@ class ZepToolsService:
             if not uuid:
                 continue
             try:
-                # 单独获取每个相关节点的信息
-                node = self.get_node_detail(uuid)
+                node = all_nodes_map.get(uuid)
                 if node:
                     node_map[uuid] = node
                     entity_type = next((l for l in node.labels if l not in ["Entity", "Node"]), "实体")
@@ -1244,7 +1306,7 @@ class ZepToolsService:
         【QuickSearch - 简单搜索】
         
         快速、轻量级的检索工具：
-        1. 直接调用Zep语义搜索
+        1. 直接调用语义搜索
         2. 返回最相关的结果
         3. 适用于简单、直接的检索需求
         

@@ -1,9 +1,9 @@
 """
 Report Agent服务
-使用LangChain + Zep实现ReACT模式的模拟报告生成
+使用LLM实现ReACT模式的模拟报告生成
 
 功能：
-1. 根据模拟需求和Zep图谱信息生成报告
+1. 根据模拟需求和图谱信息生成报告
 2. 先规划目录结构，然后分段生成
 3. 每段采用ReACT多轮思考与反思模式
 4. 支持与用户对话，在对话中自主调用检索工具
@@ -13,6 +13,8 @@ import os
 import json
 import time
 import re
+import threading
+import concurrent.futures
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -21,15 +23,15 @@ from enum import Enum
 from ..config import Config
 from ..utils.llm_client import LLMClient
 from ..utils.logger import get_logger
-from .zep_tools import (
-    ZepToolsService, 
+from .graph_tools import (
+    GraphToolsService, 
     SearchResult, 
     InsightForgeResult, 
     PanoramaResult,
     InterviewResult
 )
 
-logger = get_logger('mirofish.report_agent')
+logger = get_logger('nexusmind.report_agent')
 
 
 class ReportLogger:
@@ -352,8 +354,8 @@ class ReportConsoleLogger:
         
         # 添加到 report_agent 相关的 logger
         loggers_to_attach = [
-            'mirofish.report_agent',
-            'mirofish.zep_tools',
+            'nexusmind.report_agent',
+            'nexusmind.graph_tools',
         ]
         
         for logger_name in loggers_to_attach:
@@ -368,8 +370,8 @@ class ReportConsoleLogger:
         
         if self._file_handler:
             loggers_to_detach = [
-                'mirofish.report_agent',
-                'mirofish.zep_tools',
+                'nexusmind.report_agent',
+                'nexusmind.graph_tools',
             ]
             
             for logger_name in loggers_to_detach:
@@ -886,7 +888,7 @@ class ReportAgent:
         simulation_id: str,
         simulation_requirement: str,
         llm_client: Optional[LLMClient] = None,
-        zep_tools: Optional[ZepToolsService] = None
+        graph_tools: Optional[GraphToolsService] = None
     ):
         """
         初始化Report Agent
@@ -896,14 +898,14 @@ class ReportAgent:
             simulation_id: 模拟ID
             simulation_requirement: 模拟需求描述
             llm_client: LLM客户端（可选）
-            zep_tools: Zep工具服务（可选）
+            graph_tools: 图谱工具服务（可选）
         """
         self.graph_id = graph_id
         self.simulation_id = simulation_id
         self.simulation_requirement = simulation_requirement
         
         self.llm = llm_client or LLMClient()
-        self.zep_tools = zep_tools or ZepToolsService()
+        self.graph_tools = graph_tools or GraphToolsService()
         
         # 工具定义
         self.tools = self._define_tools()
@@ -970,7 +972,7 @@ class ReportAgent:
             if tool_name == "insight_forge":
                 query = parameters.get("query", "")
                 ctx = parameters.get("report_context", "") or report_context
-                result = self.zep_tools.insight_forge(
+                result = self.graph_tools.insight_forge(
                     graph_id=self.graph_id,
                     query=query,
                     simulation_requirement=self.simulation_requirement,
@@ -984,7 +986,7 @@ class ReportAgent:
                 include_expired = parameters.get("include_expired", True)
                 if isinstance(include_expired, str):
                     include_expired = include_expired.lower() in ['true', '1', 'yes']
-                result = self.zep_tools.panorama_search(
+                result = self.graph_tools.panorama_search(
                     graph_id=self.graph_id,
                     query=query,
                     include_expired=include_expired
@@ -997,7 +999,7 @@ class ReportAgent:
                 limit = parameters.get("limit", 10)
                 if isinstance(limit, str):
                     limit = int(limit)
-                result = self.zep_tools.quick_search(
+                result = self.graph_tools.quick_search(
                     graph_id=self.graph_id,
                     query=query,
                     limit=limit
@@ -1011,7 +1013,7 @@ class ReportAgent:
                 if isinstance(max_agents, str):
                     max_agents = int(max_agents)
                 max_agents = min(max_agents, 10)
-                result = self.zep_tools.interview_agents(
+                result = self.graph_tools.interview_agents(
                     simulation_id=self.simulation_id,
                     interview_requirement=interview_topic,
                     simulation_requirement=self.simulation_requirement,
@@ -1027,12 +1029,12 @@ class ReportAgent:
                 return self._execute_tool("quick_search", parameters, report_context)
             
             elif tool_name == "get_graph_statistics":
-                result = self.zep_tools.get_graph_statistics(self.graph_id)
+                result = self.graph_tools.get_graph_statistics(self.graph_id)
                 return json.dumps(result, ensure_ascii=False, indent=2)
             
             elif tool_name == "get_entity_summary":
                 entity_name = parameters.get("entity_name", "")
-                result = self.zep_tools.get_entity_summary(
+                result = self.graph_tools.get_entity_summary(
                     graph_id=self.graph_id,
                     entity_name=entity_name
                 )
@@ -1046,7 +1048,7 @@ class ReportAgent:
             
             elif tool_name == "get_entities_by_type":
                 entity_type = parameters.get("entity_type", "")
-                nodes = self.zep_tools.get_entities_by_type(
+                nodes = self.graph_tools.get_entities_by_type(
                     graph_id=self.graph_id,
                     entity_type=entity_type
                 )
@@ -1154,7 +1156,7 @@ class ReportAgent:
             progress_callback("planning", 0, "正在分析模拟需求...")
         
         # 首先获取模拟上下文
-        context = self.zep_tools.get_simulation_context(
+        context = self.graph_tools.get_simulation_context(
             graph_id=self.graph_id,
             simulation_requirement=self.simulation_requirement
         )
@@ -1627,72 +1629,109 @@ class ReportAgent:
             
             logger.info(f"大纲已保存到文件: {report_id}/outline.json")
             
-            # 阶段2: 逐章节生成（分章节保存）
+            # 阶段2: 分批并行生成章节
             report.status = ReportStatus.GENERATING
             
             total_sections = len(outline.sections)
             generated_sections = []  # 保存内容用于上下文
+            progress_lock = threading.Lock()  # 保护进度更新的并发安全
             
-            for i, section in enumerate(outline.sections):
+            PARALLEL_BATCH_SIZE = 3  # 每批并行生成的章节数
+            
+            def _generate_one_section(i: int, section, snapshot_previous: List[str]):
+                """并行任务：生成单个章节并返回结果"""
                 section_num = i + 1
                 base_progress = 20 + int((i / total_sections) * 70)
                 
-                # 更新进度
-                ReportManager.update_progress(
-                    report_id, "generating", base_progress,
-                    f"正在生成章节: {section.title} ({section_num}/{total_sections})",
-                    current_section=section.title,
-                    completed_sections=completed_section_titles
-                )
-                
-                if progress_callback:
-                    progress_callback(
-                        "generating", 
-                        base_progress, 
-                        f"正在生成章节: {section.title} ({section_num}/{total_sections})"
+                with progress_lock:
+                    ReportManager.update_progress(
+                        report_id, "generating", base_progress,
+                        f"正在生成章节: {section.title} ({section_num}/{total_sections})",
+                        current_section=section.title,
+                        completed_sections=list(completed_section_titles)
                     )
+                    if progress_callback:
+                        progress_callback(
+                            "generating", base_progress,
+                            f"正在生成章节: {section.title} ({section_num}/{total_sections})"
+                        )
                 
-                # 生成主章节内容
                 section_content = self._generate_section_react(
                     section=section,
                     outline=outline,
-                    previous_sections=generated_sections,
+                    previous_sections=snapshot_previous,
                     progress_callback=lambda stage, prog, msg:
                         progress_callback(
-                            stage, 
+                            stage,
                             base_progress + int(prog * 0.7 / total_sections),
                             msg
                         ) if progress_callback else None,
                     section_index=section_num
                 )
+                return i, section, section_content
+            
+            # 将章节分成多个批次，每批内并行，批间串行
+            for batch_start in range(0, total_sections, PARALLEL_BATCH_SIZE):
+                batch_end = min(batch_start + PARALLEL_BATCH_SIZE, total_sections)
+                batch_items = list(range(batch_start, batch_end))
                 
-                section.content = section_content
-                generated_sections.append(f"## {section.title}\n\n{section_content}")
-
-                # 保存章节
-                ReportManager.save_section(report_id, section_num, section)
-                completed_section_titles.append(section.title)
-
-                # 记录章节完成日志
-                full_section_content = f"## {section.title}\n\n{section_content}"
-
-                if self.report_logger:
-                    self.report_logger.log_section_full_complete(
-                        section_title=section.title,
-                        section_index=section_num,
-                        full_content=full_section_content.strip()
-                    )
-
-                logger.info(f"章节已保存: {report_id}/section_{section_num:02d}.md")
+                # 快照当前已完成的章节内容，同批内共享相同上下文
+                snapshot = list(generated_sections)
                 
-                # 更新进度
-                ReportManager.update_progress(
-                    report_id, "generating", 
-                    base_progress + int(70 / total_sections),
-                    f"章节 {section.title} 已完成",
-                    current_section=None,
-                    completed_sections=completed_section_titles
+                logger.info(
+                    f"开始并行生成第 {batch_start+1}-{batch_end} 章节 "
+                    f"(共 {total_sections} 章节, 批大小 {len(batch_items)})"
                 )
+                
+                if len(batch_items) == 1:
+                    # 单章节直接生成，无需线程池
+                    _, section, content = _generate_one_section(
+                        batch_items[0], outline.sections[batch_items[0]], snapshot
+                    )
+                    batch_results = [(batch_items[0], section, content)]
+                else:
+                    # 多章节并行生成
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=len(batch_items)) as executor:
+                        futures = {
+                            executor.submit(
+                                _generate_one_section, idx, outline.sections[idx], snapshot
+                            ): idx
+                            for idx in batch_items
+                        }
+                        batch_results = []
+                        for future in concurrent.futures.as_completed(futures):
+                            batch_results.append(future.result())
+                    
+                    # 按章节顺序排列结果
+                    batch_results.sort(key=lambda x: x[0])
+                
+                # 收集本批结果（按顺序）
+                for idx, section, section_content in batch_results:
+                    section_num = idx + 1
+                    section.content = section_content
+                    generated_sections.append(f"## {section.title}\n\n{section_content}")
+                    
+                    ReportManager.save_section(report_id, section_num, section)
+                    completed_section_titles.append(section.title)
+                    
+                    full_section_content = f"## {section.title}\n\n{section_content}"
+                    if self.report_logger:
+                        self.report_logger.log_section_full_complete(
+                            section_title=section.title,
+                            section_index=section_num,
+                            full_content=full_section_content.strip()
+                        )
+                    
+                    logger.info(f"章节已保存: {report_id}/section_{section_num:02d}.md")
+                    
+                    base_progress = 20 + int((idx / total_sections) * 70)
+                    ReportManager.update_progress(
+                        report_id, "generating",
+                        base_progress + int(70 / total_sections),
+                        f"章节 {section.title} 已完成",
+                        current_section=None,
+                        completed_sections=completed_section_titles
+                    )
             
             # 阶段3: 组装完整报告
             if progress_callback:

@@ -286,7 +286,7 @@ class OntologyGenerator:
         # 记录原始名称到 PascalCase 的映射，用于后续修正 edge 的 source_targets 引用
         entity_name_map = {}
         for entity in result["entity_types"]:
-            # 强制将 entity name 转为 PascalCase（Zep API 要求）
+            # 强制将 entity name 转为 PascalCase
             if "name" in entity:
                 original_name = entity["name"]
                 entity["name"] = _to_pascal_case(original_name)
@@ -303,7 +303,7 @@ class OntologyGenerator:
         
         # 验证关系类型
         for edge in result["edge_types"]:
-            # 强制将 edge name 转为 SCREAMING_SNAKE_CASE（Zep API 要求）
+            # 强制将 edge name 转为 SCREAMING_SNAKE_CASE
             if "name" in edge:
                 original_name = edge["name"]
                 edge["name"] = original_name.upper()
@@ -322,7 +322,7 @@ class OntologyGenerator:
             if len(edge.get("description", "")) > 100:
                 edge["description"] = edge["description"][:97] + "..."
         
-        # Zep API 限制：最多 10 个自定义实体类型，最多 10 个自定义边类型
+        # 限制：最多 10 个自定义实体类型，最多 10 个自定义边类型
         MAX_ENTITY_TYPES = 10
         MAX_EDGE_TYPES = 10
 
@@ -407,11 +407,16 @@ class OntologyGenerator:
         code_lines = [
             '"""',
             '自定义实体类型定义',
-            '由MiroFish自动生成，用于社会舆论模拟',
+            '由NexusMind自动生成，用于社会舆论模拟',
             '"""',
             '',
-            'from pydantic import Field',
-            'from zep_cloud.external_clients.ontology import EntityModel, EntityText, EdgeModel',
+            'from pydantic import BaseModel, Field',
+            'from typing import Optional',
+            '',
+            '# Base models for ontology',
+            'EntityModel = BaseModel',
+            'EdgeModel = BaseModel',
+            'EntityText = Optional[str]',
             '',
             '',
             '# ============== 实体类型定义 ==============',
