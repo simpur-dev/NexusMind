@@ -404,7 +404,7 @@
         </div>
 
         <!-- Bottom Console Logs -->
-        <div class="console-logs">
+        <!-- <div class="console-logs">
       <div class="log-header">
         <span class="log-title">控制台输出</span>
         <span class="log-id">{{ reportId || '无报告' }}</span>
@@ -414,7 +414,7 @@
           <span class="log-msg" :class="getLogLevelClass(log)">{{ log }}</span>
         </div>
       </div>
-        </div>
+        </div> -->
       </div>
     </div>
   </div>
