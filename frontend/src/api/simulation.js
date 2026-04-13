@@ -105,7 +105,49 @@ export const getRunStatus = (simulationId) => {
  * @param {string} simulationId
  */
 export const getRunStatusDetail = (simulationId) => {
-  return service.get(`/api/simulation/${simulationId}/run-status/detail`)
+  return request({
+    url: `/api/simulation/${simulationId}/run-status/detail`,
+    method: 'get'
+  })
+}
+
+/**
+ * 获取世界状态历史
+ * @param {string} simulationId
+ * @param {Object} params
+ */
+export const getWorldState = (simulationId, params = {}) => {
+  return request({
+    url: `/api/simulation/${simulationId}/world-state`,
+    method: 'get',
+    params
+  })
+}
+
+/**
+ * 获取世界事件时间线
+ * @param {string} simulationId
+ * @param {Object} params
+ */
+export const getWorldEvents = (simulationId, params = {}) => {
+  return request({
+    url: `/api/simulation/${simulationId}/events`,
+    method: 'get',
+    params
+  })
+}
+
+/**
+ * 获取因果图谱
+ * @param {string} simulationId
+ * @param {Object} params
+ */
+export const getCausalGraph = (simulationId, params = {}) => {
+  return request({
+    url: `/api/simulation/${simulationId}/causal-graph`,
+    method: 'get',
+    params
+  })
 }
 
 /**

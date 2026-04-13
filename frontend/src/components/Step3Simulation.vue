@@ -103,10 +103,12 @@
       </div>
     </div>
 
-    <!-- Main Content: Dual Timeline -->
-    <div class="main-content-area" ref="scrollContainer">
-      <!-- Timeline Header -->
-      <div class="timeline-header" v-if="allActions.length > 0">
+    <!-- Main Content: Layout with World State Panel -->
+    <div class="main-content-area">
+      <!-- Left: Dual Timeline -->
+      <div class="timeline-container" ref="scrollContainer">
+        <!-- Timeline Header -->
+        <div class="timeline-header" v-if="allActions.length > 0">
         <div class="timeline-stats">
           <span class="total-count">TOTAL EVENTS: <span class="mono">{{ allActions.length }}</span></span>
           <span class="platform-breakdown">
@@ -267,6 +269,18 @@
           <span>Waiting for agent actions...</span>
         </div>
       </div>
+      </div>
+
+      <!-- Right: World State Panel -->
+      <div class="world-state-container">
+        <WorldStatePanel 
+          :current-state="worldState"
+          :state-history="worldStateHistory"
+          :state-summary="worldStateSummary"
+          :events="worldEvents"
+          :causal-graph="causalGraph"
+        />
+      </div>
     </div>
 
     <!-- Bottom Info / Logs -->
@@ -291,9 +305,13 @@ import {
   startSimulation, 
   stopSimulation,
   getRunStatus, 
-  getRunStatusDetail
+  getRunStatusDetail,
+  getWorldState,
+  getWorldEvents,
+  getCausalGraph
 } from '../api/simulation'
 import { generateReport } from '../api/report'
+import WorldStatePanel from './WorldStatePanel.vue'
 
 const props = defineProps({
   simulationId: String,
@@ -319,6 +337,13 @@ const runStatus = ref({})
 const allActions = ref([]) // 所有动作（增量累积）
 const actionIds = ref(new Set()) // 用于去重的动作ID集合
 const scrollContainer = ref(null)
+
+// World State Data
+const worldState = ref(null)
+const worldStateHistory = ref([])
+const worldStateSummary = ref('')
+const worldEvents = ref([])
+const causalGraph = ref({})
 
 // Computed
 // 按时间顺序显示动作（最新的在最后面，即底部）
@@ -370,6 +395,11 @@ const resetAllState = () => {
   startError.value = null
   isStarting.value = false
   isStopping.value = false
+  worldState.value = null
+  worldStateHistory.value = []
+  worldStateSummary.value = ''
+  worldEvents.value = []
+  causalGraph.value = {}
   stopPolling()  // 停止之前可能存在的轮询
 }
 
@@ -554,6 +584,8 @@ const fetchRunStatus = async () => {
         addLog('✓ 模拟已完成')
         phase.value = 2
         stopPolling()
+        // 模拟完成时拉取一次完整的世界模型数据
+        fetchWorldModelData()
         emit('update-status', 'completed')
       }
     }
@@ -596,6 +628,18 @@ const fetchRunStatusDetail = async () => {
       // 使用 all_actions 获取完整的动作列表
       const serverActions = res.data.all_actions || []
       
+      // 更新世界状态
+      if (res.data.world_state) {
+        // Only fetch full graph if world state round changed or initialized
+        const oldRound = worldState.value?.round_num || -1
+        const newRound = res.data.world_state.round_num
+        
+        if (newRound > oldRound) {
+          worldState.value = res.data.world_state
+          fetchWorldModelData()
+        }
+      }
+      
       // 增量添加新动作（去重）
       let newActionsAdded = 0
       serverActions.forEach(action => {
@@ -617,6 +661,30 @@ const fetchRunStatusDetail = async () => {
     }
   } catch (err) {
     console.warn('获取详细状态失败:', err)
+  }
+}
+
+// 获取世界模型全量数据
+const fetchWorldModelData = async () => {
+  if (!props.simulationId) return
+  try {
+    const wsRes = await getWorldState(props.simulationId)
+    if (wsRes.success && wsRes.data) {
+      worldStateHistory.value = wsRes.data.state_history || []
+      worldStateSummary.value = wsRes.data.state_summary || ''
+    }
+    
+    const evtRes = await getWorldEvents(props.simulationId)
+    if (evtRes.success && evtRes.data) {
+      worldEvents.value = evtRes.data.events || []
+    }
+    
+    const cgRes = await getCausalGraph(props.simulationId)
+    if (cgRes.success && cgRes.data) {
+      causalGraph.value = cgRes.data
+    }
+  } catch (err) {
+    console.warn('获取世界模型数据失败:', err)
   }
 }
 
@@ -720,6 +788,8 @@ onMounted(() => {
   addLog('Step3 模拟运行初始化')
   if (props.simulationId) {
     doStartSimulation()
+    // 尝试立即拉取世界模型数据（处理模拟已完成的场景）
+    fetchWorldModelData()
   }
 })
 
@@ -933,9 +1003,24 @@ onUnmounted(() => {
 /* --- Main Content Area --- */
 .main-content-area {
   flex: 1;
-  overflow-y: auto;
+  display: flex;
+  overflow: hidden; /* handled by children */
   position: relative;
   background: #FFF;
+}
+
+.timeline-container {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+}
+
+.world-state-container {
+  width: 320px;
+  flex-shrink: 0;
+  border-left: 1px solid #EAEAEA;
+  overflow-y: auto;
+  background: #1e1e24; /* dark mode for panel */
 }
 
 /* Timeline Header */

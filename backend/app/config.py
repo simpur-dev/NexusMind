@@ -35,7 +35,7 @@ class Config:
     # Graphiti + Neo4j 配置
     NEO4J_URI = os.environ.get('NEO4J_URI', 'bolt://localhost:7687')
     NEO4J_USERNAME = os.environ.get('NEO4J_USERNAME', 'neo4j')
-    NEO4J_PASSWORD = os.environ.get('NEO4J_PASSWORD', 'neo4j')
+    NEO4J_PASSWORD = os.environ.get('NEO4J_PASSWORD', 'neo4jneo4j')
     NEO4J_DATABASE = os.environ.get('NEO4J_DATABASE', 'neo4j')
     # OpenAI API key for Graphiti LLM inference (defaults to LLM_API_KEY)
     GRAPHITI_OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY') or os.environ.get('LLM_API_KEY')

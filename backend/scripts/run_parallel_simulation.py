@@ -206,6 +206,117 @@ REDDIT_ACTIONS = [
 IPC_COMMANDS_DIR = "ipc_commands"
 IPC_RESPONSES_DIR = "ipc_responses"
 ENV_STATUS_FILE = "env_status.json"
+WORLD_STATE_FILE = "world_state_current.json"
+
+
+# ============================================================
+# 世界状态注入（论文 §4.1.1 Environment State 反馈闭环）
+# ============================================================
+
+def read_world_state(simulation_dir: str) -> Optional[Dict[str, Any]]:
+    """
+    从共享文件读取后端主进程写入的世界状态。
+    
+    对应论文 §4.1.1:
+    "environment states record instant information from the environment
+     during the scenario. They directly influence the agents' decision-making."
+    
+    Returns:
+        世界状态字典，包含 state_summary_text 和 recent_events；读取失败返回 None
+    """
+    ws_path = os.path.join(simulation_dir, WORLD_STATE_FILE)
+    if not os.path.exists(ws_path):
+        return None
+    try:
+        with open(ws_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def build_world_state_prompt(ws_data: Dict[str, Any]) -> str:
+    """
+    将世界状态数据转换为可注入 Agent prompt 的文本段落。
+    
+    设计原则（防止正反馈失控）：
+    1. 只在状态显著偏离基线时注入（阻尼）
+    2. 使用客观观察语气，不用指令语气（避免过度引导）
+    3. 只呈现事实，让 Agent 人设决定如何反应（保持多样性）
+    """
+    # 阻尼：状态接近中立时不注入，避免噪声干扰
+    attention = ws_data.get("attention_level", 0.1)
+    panic = ws_data.get("panic_level", 0.1)
+    trust = ws_data.get("trust_level", 0.6)
+    polarization = ws_data.get("polarization_level", 0.1)
+    
+    # 计算偏离度：与"平静基线"的距离
+    deviation = (
+        abs(attention - 0.1) +
+        abs(panic - 0.1) +
+        abs(trust - 0.6) +
+        abs(polarization - 0.1)
+    ) / 4.0
+    
+    # 偏离度 < 0.15 时不注入（环境基本平静，无需额外信息）
+    if deviation < 0.15:
+        return ""
+    
+    parts = []
+    
+    # 用客观观察语气，不用指令语气
+    summary = ws_data.get("state_summary_text", "")
+    if summary:
+        parts.append(f"[Background: The current social environment you are in]\n{summary}")
+    
+    # 只展示高严重度事件（>= 0.5）
+    events = ws_data.get("recent_events", [])
+    if events:
+        event_lines = []
+        for evt in events:
+            severity = evt.get("severity", 0)
+            if severity >= 0.5:
+                event_lines.append(f"- {evt.get('description', '')}")
+        if event_lines:
+            parts.append("近期动态:\n" + "\n".join(event_lines))
+    
+    if not parts:
+        return ""
+    
+    return "\n".join(parts) + "\n"
+
+
+# 全局世界状态 prompt（每轮更新，所有 Agent 共享）
+_current_world_state_prompt: str = ""
+_world_model_enabled: bool = True  # 可通过 --no-world-model 禁用
+
+
+def patch_oasis_environment():
+    """
+    Monkey-patch OASIS SocialEnvironment.to_text_prompt，
+    在 Agent 观察环境时自动注入世界状态。
+    
+    论文 §4.1.1: "observation involves changes in the environment
+    and the current state of surrounding entities"
+    """
+    from oasis.social_agent.agent_environment import SocialEnvironment
+    
+    _original_to_text_prompt = SocialEnvironment.to_text_prompt
+    
+    async def _patched_to_text_prompt(self, include_posts=True, include_followers=True, include_follows=True):
+        original = await _original_to_text_prompt(
+            self,
+            include_posts=include_posts,
+            include_followers=include_followers,
+            include_follows=include_follows,
+        )
+        # 注入世界状态（全局变量，每轮由主循环更新）
+        if _current_world_state_prompt:
+            return original + "\n" + _current_world_state_prompt
+        return original
+    
+    SocialEnvironment.to_text_prompt = _patched_to_text_prompt
+    print("[WorldState] 已安装环境状态注入补丁 (论文 §4.1.1)")
+
 
 class CommandType:
     """命令类型常量"""
@@ -1232,6 +1343,13 @@ async def run_twitter_simulation(
                 main_logger.info(f"收到退出信号，在第 {round_num + 1} 轮停止模拟")
             break
         
+        # 读取世界状态并注入到全局环境 prompt（论文 §4.1.1 反馈闭环）
+        if _world_model_enabled:
+            global _current_world_state_prompt
+            ws_data = read_world_state(simulation_dir)
+            if ws_data:
+                _current_world_state_prompt = build_world_state_prompt(ws_data)
+        
         simulated_minutes = round_num * minutes_per_round
         simulated_hour = (simulated_minutes // 60) % 24
         simulated_day = simulated_minutes // (60 * 24) + 1
@@ -1431,6 +1549,13 @@ async def run_reddit_simulation(
                 main_logger.info(f"收到退出信号，在第 {round_num + 1} 轮停止模拟")
             break
         
+        # 读取世界状态并注入到全局环境 prompt（论文 §4.1.1 反馈闭环）
+        if _world_model_enabled:
+            global _current_world_state_prompt
+            ws_data = read_world_state(simulation_dir)
+            if ws_data:
+                _current_world_state_prompt = build_world_state_prompt(ws_data)
+        
         simulated_minutes = round_num * minutes_per_round
         simulated_hour = (simulated_minutes // 60) % 24
         simulated_day = simulated_minutes // (60 * 24) + 1
@@ -1519,6 +1644,12 @@ async def main():
         default=False,
         help='模拟完成后立即关闭环境，不进入等待命令模式'
     )
+    parser.add_argument(
+        '--no-world-model',
+        action='store_true',
+        default=False,
+        help='A/B测试用：禁用世界模型反馈闭环，Agent不感知环境状态'
+    )
     
     args = parser.parse_args()
     
@@ -1569,6 +1700,14 @@ async def main():
     log_manager.info(f"  - Twitter动作: twitter/actions.jsonl")
     log_manager.info(f"  - Reddit动作: reddit/actions.jsonl")
     log_manager.info("=" * 60)
+    
+    # 安装世界状态注入补丁（论文 §4.1.1 Environment State 反馈闭环）
+    global _world_model_enabled
+    if not args.no_world_model:
+        patch_oasis_environment()
+    else:
+        _world_model_enabled = False
+        log_manager.info("[A/B测试] 世界模型反馈已禁用 (--no-world-model)")
     
     start_time = datetime.now()
     

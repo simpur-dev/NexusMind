@@ -51,6 +51,23 @@ class OasisAgentProfile:
     profession: Optional[str] = None
     interested_topics: List[str] = field(default_factory=list)
     
+    # 认知字段（基于论文 §3.1 Profile + §3.3 Planning）
+    # 内部目标：Agent 的行为驱动力
+    internal_goals: List[str] = field(default_factory=list)
+    # 效用权重：Agent 对不同维度的重视程度 [0,1]
+    utility_weights: Dict[str, float] = field(default_factory=lambda: {
+        "self_interest": 0.5,      # 自身利益
+        "social_conformity": 0.3,  # 从众倾向
+        "truth_seeking": 0.5,      # 求真倾向
+        "emotional_expression": 0.5, # 情绪表达
+    })
+    # 初始立场倾向 [-1.0 强烈反对, 0 中立, 1.0 强烈支持]
+    initial_stance: float = 0.0
+    # 情绪倾向 [-1.0 极度悲观, 0 中性, 1.0 极度乐观]
+    emotional_tendency: float = 0.0
+    # 受影响敏感度 [0.0 不受影响, 1.0 极易受影响]
+    susceptibility: float = 0.5
+    
     # 来源实体信息
     source_entity_uuid: Optional[str] = None
     source_entity_type: Optional[str] = None
@@ -82,6 +99,12 @@ class OasisAgentProfile:
             profile["profession"] = self.profession
         if self.interested_topics:
             profile["interested_topics"] = self.interested_topics
+        if self.internal_goals:
+            profile["internal_goals"] = self.internal_goals
+        profile["utility_weights"] = self.utility_weights
+        profile["initial_stance"] = self.initial_stance
+        profile["emotional_tendency"] = self.emotional_tendency
+        profile["susceptibility"] = self.susceptibility
         
         return profile
     
@@ -112,6 +135,12 @@ class OasisAgentProfile:
             profile["profession"] = self.profession
         if self.interested_topics:
             profile["interested_topics"] = self.interested_topics
+        if self.internal_goals:
+            profile["internal_goals"] = self.internal_goals
+        profile["utility_weights"] = self.utility_weights
+        profile["initial_stance"] = self.initial_stance
+        profile["emotional_tendency"] = self.emotional_tendency
+        profile["susceptibility"] = self.susceptibility
         
         return profile
     
@@ -135,6 +164,11 @@ class OasisAgentProfile:
             "interested_topics": self.interested_topics,
             "source_entity_uuid": self.source_entity_uuid,
             "source_entity_type": self.source_entity_type,
+            "internal_goals": self.internal_goals,
+            "utility_weights": self.utility_weights,
+            "initial_stance": self.initial_stance,
+            "emotional_tendency": self.emotional_tendency,
+            "susceptibility": self.susceptibility,
             "created_at": self.created_at,
         }
 
@@ -244,6 +278,23 @@ class OasisProfileGenerator:
                 entity_attributes=entity.attributes
             )
         
+        # 解析认知字段（带容错）
+        raw_weights = profile_data.get("utility_weights", {})
+        default_weights = {"self_interest": 0.5, "social_conformity": 0.3, "truth_seeking": 0.5, "emotional_expression": 0.5}
+        utility_weights = {}
+        for k, dv in default_weights.items():
+            try:
+                v = float(raw_weights.get(k, dv))
+                utility_weights[k] = max(0.0, min(1.0, v))
+            except (TypeError, ValueError):
+                utility_weights[k] = dv
+        
+        def _clamp(val, lo, hi, default):
+            try:
+                return max(lo, min(hi, float(val)))
+            except (TypeError, ValueError):
+                return default
+        
         return OasisAgentProfile(
             user_id=user_id,
             user_name=user_name,
@@ -258,12 +309,45 @@ class OasisProfileGenerator:
             gender=profile_data.get("gender"),
             mbti=profile_data.get("mbti"),
             country=profile_data.get("country"),
-            profession=profile_data.get("profession"),
+            profession=profile_data.get("profession") or self._derive_profession(entity_type),
             interested_topics=profile_data.get("interested_topics", []),
+            internal_goals=profile_data.get("internal_goals", []),
+            utility_weights=utility_weights,
+            initial_stance=_clamp(profile_data.get("initial_stance", 0.0), -1.0, 1.0, 0.0),
+            emotional_tendency=_clamp(profile_data.get("emotional_tendency", 0.0), -1.0, 1.0, 0.0),
+            susceptibility=_clamp(profile_data.get("susceptibility", 0.5), 0.0, 1.0, 0.5),
             source_entity_uuid=entity.uuid,
             source_entity_type=entity_type,
         )
     
+    # 实体类型 → 职业/角色 映射
+    ENTITY_TYPE_PROFESSION_MAP = {
+        "Student": "学生",
+        "Professor": "大学教授",
+        "University": "高等院校",
+        "GovernmentAgency": "政府机构",
+        "MediaOutlet": "媒体机构",
+        "Alumni": "校友",
+        "Parent": "学生家长",
+        "Ngo": "非政府组织",
+        "Organization": "社会组织",
+        "Person": "公民",
+        "Company": "企业",
+        "Celebrity": "公众人物",
+        "Journalist": "记者",
+        "Lawyer": "律师",
+        "Doctor": "医生",
+        "Official": "政府官员",
+        "Executive": "企业高管",
+        "School": "学校",
+        "Hospital": "医疗机构",
+        "EducationPractitioner": "教育工作者",
+    }
+
+    def _derive_profession(self, entity_type: str) -> str:
+        """根据实体类型推导职业/角色描述"""
+        return self.ENTITY_TYPE_PROFESSION_MAP.get(entity_type, entity_type)
+
     def _generate_username(self, name: str) -> str:
         """生成用户名"""
         # 移除特殊字符，转换为小写
@@ -654,6 +738,15 @@ class OasisProfileGenerator:
 6. country: 国家（使用中文，如"中国"）
 7. profession: 职业
 8. interested_topics: 感兴趣话题数组
+9. internal_goals: 内部目标数组（2-4个简短目标，如"保护同学权益"、"维护学校声誉"、"获取关注度"等）
+10. utility_weights: 效用权重对象，包含四个数值字段(0.0-1.0):
+    - self_interest: 自身利益重视程度
+    - social_conformity: 从众倾向
+    - truth_seeking: 求真倾向
+    - emotional_expression: 情绪表达倾向
+11. initial_stance: 对核心话题的立场（-1.0强烈反对到1.0强烈支持，0为中立）
+12. emotional_tendency: 情绪基调（-1.0极度悲观到1.0极度乐观，0为中性）
+13. susceptibility: 受外界影响的敏感度（0.0不受影响到1.0极易受影响）
 
 重要:
 - 所有字段值必须是字符串或数字，不要使用换行符
@@ -661,6 +754,10 @@ class OasisProfileGenerator:
 - 使用中文（除了gender字段必须用英文male/female）
 - 内容要与实体信息保持一致
 - age必须是有效的整数，gender必须是"male"或"female"
+- internal_goals必须是字符串数组
+- utility_weights中每个值必须是0.0到1.0的浮点数
+- initial_stance和emotional_tendency必须是-1.0到1.0的浮点数
+- susceptibility必须是0.0到1.0的浮点数
 """
 
     def _build_group_persona_prompt(
@@ -709,7 +806,18 @@ class OasisProfileGenerator:
 - persona必须是一段连贯的文字描述，不要使用换行符
 - 使用中文（除了gender字段必须用英文"other"）
 - age必须是整数30，gender必须是字符串"other"
-- 机构账号发言要符合其身份定位"""
+- 机构账号发言要符合其身份定位
+9. internal_goals: 机构目标数组（2-4个，如"维护机构形象"、"引导舆论"、"信息透明化"等）
+10. utility_weights: {{"self_interest": 0.3, "social_conformity": 0.2, "truth_seeking": 0.7, "emotional_expression": 0.2}}（机构通常理性、重视真实性）
+11. initial_stance: 对核心话题的官方立场（-1.0到1.0）
+12. emotional_tendency: 情绪基调（机构通常偏中性，接近0.0）
+13. susceptibility: 受外界影响敏感度（机构通常偏低，0.1-0.3）
+
+重要（数值格式要求）:
+- internal_goals必须是字符串数组
+- utility_weights中每个值必须是0.0到1.0的浮点数
+- initial_stance和emotional_tendency必须是-1.0到1.0的浮点数
+- susceptibility必须是0.0到1.0的浮点数"""
     
     def _generate_profile_rule_based(
         self,
@@ -733,6 +841,11 @@ class OasisProfileGenerator:
                 "country": random.choice(self.COUNTRIES),
                 "profession": "Student",
                 "interested_topics": ["Education", "Social Issues", "Technology"],
+                "internal_goals": ["保护同学权益", "话题参与与表达"],
+                "utility_weights": {"self_interest": 0.5, "social_conformity": round(random.uniform(0.3, 0.7), 2), "truth_seeking": round(random.uniform(0.3, 0.6), 2), "emotional_expression": round(random.uniform(0.4, 0.8), 2)},
+                "initial_stance": round(random.uniform(-0.5, 0.5), 2),
+                "emotional_tendency": round(random.uniform(-0.3, 0.3), 2),
+                "susceptibility": round(random.uniform(0.4, 0.8), 2),
             }
         
         elif entity_type_lower in ["publicfigure", "expert", "faculty"]:
@@ -745,6 +858,11 @@ class OasisProfileGenerator:
                 "country": random.choice(self.COUNTRIES),
                 "profession": entity_attributes.get("occupation", "Expert"),
                 "interested_topics": ["Politics", "Economics", "Culture & Society"],
+                "internal_goals": ["传播专业见解", "影响公共议题"],
+                "utility_weights": {"self_interest": 0.4, "social_conformity": 0.2, "truth_seeking": 0.8, "emotional_expression": 0.3},
+                "initial_stance": round(random.uniform(-0.3, 0.3), 2),
+                "emotional_tendency": round(random.uniform(-0.1, 0.2), 2),
+                "susceptibility": round(random.uniform(0.1, 0.3), 2),
             }
         
         elif entity_type_lower in ["mediaoutlet", "socialmediaplatform"]:
@@ -757,6 +875,11 @@ class OasisProfileGenerator:
                 "country": "中国",
                 "profession": "Media",
                 "interested_topics": ["General News", "Current Events", "Public Affairs"],
+                "internal_goals": ["客观报道事实", "吸引受众关注"],
+                "utility_weights": {"self_interest": 0.3, "social_conformity": 0.2, "truth_seeking": 0.7, "emotional_expression": 0.2},
+                "initial_stance": 0.0,
+                "emotional_tendency": 0.0,
+                "susceptibility": 0.15,
             }
         
         elif entity_type_lower in ["university", "governmentagency", "ngo", "organization"]:
@@ -769,6 +892,11 @@ class OasisProfileGenerator:
                 "country": "中国",
                 "profession": entity_type,
                 "interested_topics": ["Public Policy", "Community", "Official Announcements"],
+                "internal_goals": ["维护机构形象", "信息透明化"],
+                "utility_weights": {"self_interest": 0.4, "social_conformity": 0.2, "truth_seeking": 0.6, "emotional_expression": 0.1},
+                "initial_stance": 0.3,
+                "emotional_tendency": 0.1,
+                "susceptibility": 0.1,
             }
         
         else:
@@ -782,6 +910,11 @@ class OasisProfileGenerator:
                 "country": random.choice(self.COUNTRIES),
                 "profession": entity_type,
                 "interested_topics": ["General", "Social Issues"],
+                "internal_goals": ["参与讨论", "表达观点"],
+                "utility_weights": {"self_interest": 0.5, "social_conformity": round(random.uniform(0.2, 0.6), 2), "truth_seeking": round(random.uniform(0.3, 0.7), 2), "emotional_expression": round(random.uniform(0.3, 0.7), 2)},
+                "initial_stance": round(random.uniform(-0.5, 0.5), 2),
+                "emotional_tendency": round(random.uniform(-0.3, 0.3), 2),
+                "susceptibility": round(random.uniform(0.3, 0.7), 2),
             }
     
     def set_graph_id(self, graph_id: str):

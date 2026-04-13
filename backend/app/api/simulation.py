@@ -1730,9 +1730,15 @@ def get_run_status(simulation_id: str):
                 }
             })
         
+        data = run_state.to_dict()
+        # 注入世界状态
+        ws_engine = SimulationRunner._world_state_engines.get(simulation_id)
+        if ws_engine and ws_engine.current_state:
+            data["world_state"] = ws_engine.current_state.to_dict()
+        
         return jsonify({
             "success": True,
-            "data": run_state.to_dict()
+            "data": data
         })
         
     except Exception as e:
@@ -1824,6 +1830,10 @@ def get_run_status_detail(simulation_id: str):
         
         # 获取基础状态信息
         result = run_state.to_dict()
+        # 注入世界状态
+        ws_engine = SimulationRunner._world_state_engines.get(simulation_id)
+        if ws_engine and ws_engine.current_state:
+            result["world_state"] = ws_engine.current_state.to_dict()
         result["all_actions"] = [a.to_dict() for a in all_actions]
         result["twitter_actions"] = [a.to_dict() for a in twitter_actions]
         result["reddit_actions"] = [a.to_dict() for a in reddit_actions]
@@ -2693,6 +2703,192 @@ def close_simulation_env():
         
     except Exception as e:
         logger.error(f"关闭环境失败: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
+# ============== 世界状态 API ==============
+
+@simulation_bp.route('/<simulation_id>/world-state', methods=['GET'])
+def get_world_state(simulation_id: str):
+    """
+    获取世界状态历史
+    
+    基于论文 §4.1.1 Environment State：
+    返回当前状态快照 + 历史状态序列
+    
+    Query参数：
+        last_n: 返回最近 N 轮的状态（默认全部）
+    
+    返回：
+        {
+            "success": true,
+            "data": {
+                "current_state": {...},
+                "state_history": [...],
+                "state_summary": "当前环境状态文本描述"
+            }
+        }
+    """
+    try:
+        last_n = request.args.get('last_n', type=int)
+        
+        ws_engine = SimulationRunner._world_state_engines.get(simulation_id)
+        
+        if not ws_engine:
+            return jsonify({
+                "success": True,
+                "data": {
+                    "current_state": None,
+                    "state_history": [],
+                    "state_summary": "世界状态引擎未初始化"
+                }
+            })
+        
+        history = ws_engine.state_history
+        if last_n and last_n > 0:
+            history = history[-last_n:]
+        
+        current = ws_engine.current_state
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "current_state": current.to_dict() if current else None,
+                "state_history": [s.to_dict() for s in history],
+                "state_summary": current.get_state_summary_text() if current else "暂无状态",
+                "total_rounds": len(ws_engine.state_history),
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"获取世界状态失败: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
+@simulation_bp.route('/<simulation_id>/events', methods=['GET'])
+def get_world_events(simulation_id: str):
+    """
+    获取世界事件时间线
+    
+    基于论文 §5.1.3 Social Influence：
+    返回关键事件序列，用于因果链追踪和可视化
+    
+    Query参数：
+        from_round: 起始轮次（默认0）
+        to_round: 结束轮次（默认999999）
+        event_type: 过滤事件类型
+    
+    返回：
+        {
+            "success": true,
+            "data": {
+                "events": [...],
+                "total_count": 10
+            }
+        }
+    """
+    try:
+        from_round = request.args.get('from_round', 0, type=int)
+        to_round = request.args.get('to_round', 999999, type=int)
+        event_type_filter = request.args.get('event_type')
+        
+        ws_engine = SimulationRunner._world_state_engines.get(simulation_id)
+        
+        if not ws_engine:
+            return jsonify({
+                "success": True,
+                "data": {
+                    "events": [],
+                    "total_count": 0
+                }
+            })
+        
+        events = ws_engine.get_events_in_range(from_round, to_round)
+        
+        if event_type_filter:
+            events = [e for e in events if e.event_type == event_type_filter]
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "events": [e.to_dict() for e in events],
+                "total_count": len(events),
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"获取世界事件失败: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
+@simulation_bp.route('/<simulation_id>/causal-graph', methods=['GET'])
+def get_causal_graph(simulation_id: str):
+    """
+    获取因果图谱
+    
+    基于论文 §5.1.3 Social Influence：
+    返回事件间因果关系图，支持因果链追踪
+    
+    Query参数：
+        event_id: 查询特定事件的因果链（可选）
+        direction: forward（该事件导致了什么）/ backward（什么导致了该事件）
+    
+    返回：
+        {
+            "success": true,
+            "data": {
+                "edges": [...],
+                "total_edges": 5,
+                "chains": [...],           // 仅当指定 event_id 时
+                "graph_summary": {...}
+            }
+        }
+    """
+    try:
+        event_id = request.args.get('event_id')
+        direction = request.args.get('direction', 'forward')
+        
+        ws_engine = SimulationRunner._world_state_engines.get(simulation_id)
+        
+        if not ws_engine:
+            return jsonify({
+                "success": True,
+                "data": {
+                    "edges": [],
+                    "total_edges": 0,
+                    "graph_summary": {"total_edges": 0, "total_events": 0}
+                }
+            })
+        
+        cg = ws_engine.causal_graph
+        result = cg.get_graph_summary()
+        
+        if event_id:
+            if direction == "backward":
+                chains = cg.get_cause_chain(event_id)
+            else:
+                chains = cg.get_causal_chain(event_id)
+            result["chains"] = [c.to_dict() for c in chains]
+        
+        return jsonify({
+            "success": True,
+            "data": result
+        })
+        
+    except Exception as e:
+        logger.error(f"获取因果图谱失败: {str(e)}")
         return jsonify({
             "success": False,
             "error": str(e),

@@ -58,3 +58,9 @@ backend/uploads/
 
 # Docker 数据
 data/
+
+# Neo4j 本地安装
+neo4j/
+
+# 论文 PDF
+papers/

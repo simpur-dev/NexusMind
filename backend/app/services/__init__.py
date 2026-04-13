@@ -36,6 +36,16 @@ from .simulation_ipc import (
     CommandType,
     CommandStatus
 )
+from .world_state import (
+    WorldStateEngine,
+    WorldStateSnapshot,
+    WorldEvent
+)
+from .causal_graph import (
+    CausalGraphEngine,
+    CausalEdge,
+    CausalChain
+)
 
 __all__ = [
     'OntologyGenerator', 
@@ -69,5 +79,11 @@ __all__ = [
     'IPCResponse',
     'CommandType',
     'CommandStatus',
+    'WorldStateEngine',
+    'WorldStateSnapshot',
+    'WorldEvent',
+    'CausalGraphEngine',
+    'CausalEdge',
+    'CausalChain',
 ]
 

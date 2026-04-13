@@ -22,6 +22,7 @@ from ..config import Config
 from ..utils.logger import get_logger
 from .graph_memory_updater import GraphMemoryManager
 from .simulation_ipc import SimulationIPCClient, CommandType, IPCResponse
+from .world_state import WorldStateEngine
 
 logger = get_logger('nexusmind.simulation_runner')
 
@@ -182,6 +183,7 @@ class SimulationRunState:
             "completed_at": self.completed_at,
             "error": self.error,
             "process_pid": self.process_pid,
+            "world_state": None,  # 由 SimulationRunner 填充
         }
     
     def to_detail_dict(self) -> Dict[str, Any]:
@@ -225,6 +227,10 @@ class SimulationRunner:
     
     # 图谱记忆更新配置
     _graph_memory_enabled: Dict[str, bool] = {}  # simulation_id -> enabled
+    
+    # 世界状态引擎（World State Engine）
+    _world_state_engines: Dict[str, WorldStateEngine] = {}
+    _round_action_buffers: Dict[str, List[Dict[str, Any]]] = {}  # simulation_id -> current round actions
     
     @classmethod
     def get_run_state(cls, simulation_id: str) -> Optional[SimulationRunState]:
@@ -382,6 +388,15 @@ class SimulationRunner:
                 cls._graph_memory_enabled[simulation_id] = False
         else:
             cls._graph_memory_enabled[simulation_id] = False
+        
+        # 初始化世界状态引擎
+        try:
+            ws_engine = WorldStateEngine(sim_dir=sim_dir, use_llm=bool(Config.LLM_API_KEY))
+            cls._world_state_engines[simulation_id] = ws_engine
+            cls._round_action_buffers[simulation_id] = []
+            logger.info(f"已初始化世界状态引擎: simulation_id={simulation_id}")
+        except Exception as e:
+            logger.error(f"初始化世界状态引擎失败: {e}")
         
         # 确定运行哪个脚本（脚本位于 backend/scripts/ 目录）
         if platform == "twitter":
@@ -654,6 +669,20 @@ class SimulationRunner:
                                         state.current_round = round_num
                                     # 总体时间取两个平台的最大值
                                     state.simulated_hours = max(state.twitter_simulated_hours, state.reddit_simulated_hours)
+                                    
+                                    # 触发世界状态引擎更新
+                                    ws_engine = cls._world_state_engines.get(state.simulation_id)
+                                    if ws_engine:
+                                        try:
+                                            buf = cls._round_action_buffers.get(state.simulation_id, [])
+                                            ws_engine.update_state(round_num, buf)
+                                            cls._round_action_buffers[state.simulation_id] = []
+                                            
+                                            # 将最新世界状态写入共享文件，供子进程读取注入 Agent prompt
+                                            # 对应论文 §4.1.1: "environment states directly influence agents' decision-making"
+                                            cls._write_world_state_for_subprocess(state.simulation_id, ws_engine)
+                                        except Exception as ws_err:
+                                            logger.warning(f"世界状态更新失败 (round {round_num}): {ws_err}")
                                 
                                 continue
                             
@@ -670,6 +699,10 @@ class SimulationRunner:
                             )
                             state.add_action(action)
                             
+                            # 缓存动作用于世界状态引擎
+                            if state.simulation_id in cls._round_action_buffers:
+                                cls._round_action_buffers[state.simulation_id].append(action_data)
+                            
                             # 更新轮次
                             if action.round_num and action.round_num > state.current_round:
                                 state.current_round = action.round_num
@@ -684,6 +717,46 @@ class SimulationRunner:
         except Exception as e:
             logger.warning(f"读取动作日志失败: {log_path}, error={e}")
             return position
+    
+    @classmethod
+    def _write_world_state_for_subprocess(cls, simulation_id: str, ws_engine) -> None:
+        """
+        将当前世界状态写入共享文件，供 OASIS 子进程读取注入 Agent prompt。
+        
+        对应论文 §4.1.1 Environment State:
+        "environment states record instant information from the environment 
+         during the scenario. They directly influence the agents' decision-making."
+        
+        文件路径: <sim_dir>/world_state_current.json
+        子进程在每轮开始前读取此文件，将状态摘要文本注入 Agent 的 user message。
+        """
+        try:
+            sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
+            ws_file = os.path.join(sim_dir, "world_state_current.json")
+            
+            current = ws_engine.current_state
+            if not current:
+                return
+            
+            # 写入状态快照 + 可注入 prompt 的摘要文本
+            payload = current.to_dict()
+            payload["state_summary_text"] = current.get_state_summary_text()
+            
+            # 最近事件（供 Agent 感知重大环境变化）
+            recent_events = ws_engine.events[-3:] if ws_engine.events else []
+            payload["recent_events"] = [
+                {"event_type": e.event_type, "description": e.description, "severity": e.severity}
+                for e in recent_events
+            ]
+            
+            # 原子写入：先写临时文件再重命名，避免子进程读到半截数据
+            tmp_file = ws_file + ".tmp"
+            with open(tmp_file, 'w', encoding='utf-8') as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+            os.replace(tmp_file, ws_file)
+            
+        except Exception as e:
+            logger.warning(f"写入世界状态共享文件失败: {e}")
     
     @classmethod
     def _check_all_platforms_completed(cls, state: SimulationRunState) -> bool:
