@@ -19,6 +19,7 @@ from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.llm_client import LLMClient
 from ..utils.graphiti_client import get_graphiti, run_async, get_neo4j_async_driver
+from .vector_store import VectorStore
 
 logger = get_logger('nexusmind.graph_tools')
 
@@ -425,7 +426,8 @@ class GraphToolsService:
         # api_key 参数保留用于接口兼容，Graphiti 使用 FalkorDB 本地连接
         # LLM客户端用于InsightForge生成子问题
         self._llm_client = llm_client
-        logger.info("GraphToolsService 初始化完成 (Graphiti 后端)")
+        self._vector_store = VectorStore()
+        logger.info("GraphToolsService 初始化完成 (Graphiti + VectorRAG 后端)")
     
     @property
     def llm(self) -> LLMClient:
@@ -456,6 +458,19 @@ class GraphToolsService:
                     logger.error(f"{operation_name} 在 {max_retries} 次尝试后仍失败: {str(e)}")
         
         raise last_exception
+    
+    def _vector_search(self, graph_id: str, query: str, top_k: int = 5):
+        """
+        向量 RAG 检索（内部方法）
+        
+        通过 Neo4j 向量索引检索与 query 最相似的文档片段。
+        如果向量索引不存在或检索失败，静默降级返回空列表。
+        """
+        try:
+            return self._vector_store.search(graph_id=graph_id, query=query, top_k=top_k)
+        except Exception as e:
+            logger.debug(f"向量检索降级（不影响 GraphRAG）: {e}")
+            return []
     
     def search_graph(
         self, 
@@ -1079,6 +1094,15 @@ class GraphToolsService:
                 all_facts.append(fact)
                 seen_facts.add(fact)
         
+        # Step 2.5: 向量 RAG 召回（与 GraphRAG 互补）
+        vector_results = self._vector_search(graph_id, query, top_k=8)
+        for vr in vector_results:
+            # 截取前300字作为一条 fact，避免过长
+            snippet = vr.chunk_text[:300].strip()
+            if snippet and snippet not in seen_facts:
+                all_facts.append(f"[文档片段] {snippet}")
+                seen_facts.add(snippet)
+        
         result.semantic_facts = all_facts
         result.total_facts = len(all_facts)
         
@@ -1293,7 +1317,17 @@ class GraphToolsService:
         result.active_count = len(active_facts)
         result.historical_count = len(historical_facts)
         
-        logger.info(f"PanoramaSearch完成: {result.active_count}条有效, {result.historical_count}条历史")
+        # 向量 RAG 补充（获取图谱未覆盖的细节片段）
+        vector_results = self._vector_search(graph_id, query, top_k=5)
+        existing_active = set(result.active_facts)
+        for vr in vector_results:
+            snippet = vr.chunk_text[:300].strip()
+            if snippet and snippet not in existing_active:
+                result.active_facts.append(f"[文档片段] {snippet}")
+                existing_active.add(snippet)
+        result.active_count = len(result.active_facts)
+        
+        logger.info(f"PanoramaSearch完成: {result.active_count}条有效(含向量), {result.historical_count}条历史")
         return result
     
     def quick_search(
@@ -1320,7 +1354,7 @@ class GraphToolsService:
         """
         logger.info(f"QuickSearch 简单搜索: {query[:50]}...")
         
-        # 直接调用现有的search_graph方法
+        # GraphRAG 检索
         result = self.search_graph(
             graph_id=graph_id,
             query=query,
@@ -1328,7 +1362,17 @@ class GraphToolsService:
             scope="edges"
         )
         
-        logger.info(f"QuickSearch完成: {result.total_count}条结果")
+        # 向量 RAG 补充检索
+        vector_results = self._vector_search(graph_id, query, top_k=3)
+        existing_facts = set(result.facts)
+        for vr in vector_results:
+            snippet = vr.chunk_text[:300].strip()
+            if snippet and snippet not in existing_facts:
+                result.facts.append(f"[文档片段] {snippet}")
+                existing_facts.add(snippet)
+        result.total_count = len(result.facts)
+        
+        logger.info(f"QuickSearch完成: {result.total_count}条结果 (含向量召回)")
         return result
     
     def interview_agents(

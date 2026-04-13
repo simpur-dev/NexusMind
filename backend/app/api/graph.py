@@ -464,11 +464,24 @@ def build_graph():
                 )
                 builder.tag_graph_data(graph_id)
                 
+                # 构建向量 RAG 索引
+                task_manager.update_task(
+                    task_id,
+                    message="构建向量 RAG 索引...",
+                    progress=93
+                )
+                from ..services.vector_store import VectorStore
+                vector_store = VectorStore()
+                vector_store.store_chunks(
+                    graph_id=graph_id,
+                    chunks=chunks,
+                )
+                
                 # 获取图谱数据
                 task_manager.update_task(
                     task_id,
                     message="获取图谱数据...",
-                    progress=95
+                    progress=96
                 )
                 graph_data = builder.get_graph_data(graph_id)
                 
