@@ -19,6 +19,7 @@ from ..config import Config
 from ..models.task import TaskManager, TaskStatus
 from ..utils.graphiti_client import get_graphiti, create_fresh_graphiti, run_async, run_async_batch, remove_instance, get_neo4j_async_driver
 from .text_processor import TextProcessor
+from .vector_store import VectorStore
 
 
 @dataclass
@@ -47,6 +48,7 @@ class GraphBuilderService:
     def __init__(self, api_key: Optional[str] = None):
         # api_key 参数保留用于兼容，但 Graphiti 使用环境变量中的 OPENAI_API_KEY
         self.task_manager = TaskManager()
+        self.vector_store = VectorStore()
     
     def build_graph_async(
         self,
@@ -161,7 +163,23 @@ class GraphBuilderService:
                 )
             )
             
-            # 6. 获取图谱信息
+            # 6. 存储向量 RAG 索引
+            self.task_manager.update_task(
+                task_id,
+                progress=85,
+                message="构建向量 RAG 索引..."
+            )
+            self.vector_store.store_chunks(
+                graph_id=graph_id,
+                chunks=chunks,
+                progress_callback=lambda msg, prog: self.task_manager.update_task(
+                    task_id,
+                    progress=85 + int(prog * 5),  # 85-90%
+                    message=msg
+                )
+            )
+            
+            # 7. 获取图谱信息
             self.task_manager.update_task(
                 task_id,
                 progress=90,
