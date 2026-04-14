@@ -1557,6 +1557,73 @@ class SimulationRunner:
             }
     
     @classmethod
+    def inject_event(
+        cls,
+        simulation_id: str,
+        event_type: str,
+        description: str,
+        severity: float = 0.7,
+        affected_variables: Dict[str, float] = None,
+        timeout: float = 10.0
+    ) -> Dict[str, Any]:
+        """
+        动态注入外部事件（上帝视角）
+        
+        在模拟运行过程中注入一个外部事件，影响世界状态和Agent行为。
+        事件将在下一轮被 WorldStateEngine 消费并合并到世界状态中。
+
+        Args:
+            simulation_id: 模拟ID
+            event_type: 事件类型
+            description: 事件描述
+            severity: 严重度 (0.0-1.0)
+            affected_variables: 受影响的状态变量及变化增量
+            timeout: 超时时间（秒）
+
+        Returns:
+            注入结果字典
+
+        Raises:
+            ValueError: 模拟不存在或环境未运行
+            TimeoutError: 等待响应超时
+        """
+        sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
+        if not os.path.exists(sim_dir):
+            raise ValueError(f"模拟不存在: {simulation_id}")
+
+        ipc_client = SimulationIPCClient(sim_dir)
+
+        if not ipc_client.check_env_alive():
+            raise ValueError(f"模拟环境未运行或已关闭，无法注入事件: {simulation_id}")
+
+        logger.info(f"注入事件: simulation_id={simulation_id}, type={event_type}, severity={severity}")
+
+        response = ipc_client.send_inject_event(
+            event_type=event_type,
+            description=description,
+            severity=severity,
+            affected_variables=affected_variables,
+            timeout=timeout
+        )
+
+        if response.status.value == "completed":
+            return {
+                "success": True,
+                "event_type": event_type,
+                "description": description,
+                "severity": severity,
+                "result": response.result,
+                "timestamp": response.timestamp
+            }
+        else:
+            return {
+                "success": False,
+                "event_type": event_type,
+                "error": response.error,
+                "timestamp": response.timestamp
+            }
+
+    @classmethod
     def interview_agents_batch(
         cls,
         simulation_id: str,

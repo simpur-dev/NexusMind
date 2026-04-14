@@ -207,6 +207,7 @@ IPC_COMMANDS_DIR = "ipc_commands"
 IPC_RESPONSES_DIR = "ipc_responses"
 ENV_STATUS_FILE = "env_status.json"
 WORLD_STATE_FILE = "world_state_current.json"
+INJECTED_EVENTS_FILE = "injected_events.json"
 
 
 # ============================================================
@@ -234,7 +235,67 @@ def read_world_state(simulation_dir: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def build_world_state_prompt(ws_data: Dict[str, Any]) -> str:
+# ============================================================
+# 差异化感知：不同立场的 Agent 对同一世界状态有不同感知
+# 对应论文 POSIM §3.2 BDI Belief Filter:
+# "agents perceive environment signals through their belief lens"
+# ============================================================
+
+# 立场 -> 感知侧重的状态维度权重
+_STANCE_PERCEPTION_PROFILES = {
+    "supportive": {
+        # 支持方更关注稳定性和信任度信号
+        "focus_dims": ["stability_level", "trust_level"],
+        "suppress_dims": ["panic_level"],
+        "event_severity_threshold": 0.6,  # 更高阈值 → 只看到严重事件
+        "perspective_hint": "你注意到社会舆论中也存在理性、建设性的声音。",
+    },
+    "opposing": {
+        # 反对方更关注恐慌和极化信号
+        "focus_dims": ["panic_level", "polarization_level"],
+        "suppress_dims": ["stability_level"],
+        "event_severity_threshold": 0.4,  # 更低阈值 → 对负面事件更敏感
+        "perspective_hint": "你感受到周围越来越多的人在表达不满和质疑。",
+    },
+    "observer": {
+        # 观察者/媒体 → 关注热度和所有事件
+        "focus_dims": ["attention_level", "polarization_level"],
+        "suppress_dims": [],
+        "event_severity_threshold": 0.35,  # 最低阈值 → 看到更多事件
+        "perspective_hint": "作为旁观者，你观察到事件正在多个方面持续发酵。",
+    },
+    "neutral": {
+        # 中立 → 均衡感知（默认行为）
+        "focus_dims": [],
+        "suppress_dims": [],
+        "event_severity_threshold": 0.5,
+        "perspective_hint": "",
+    },
+}
+
+
+def _load_agent_role_map(config: Dict[str, Any]) -> Dict[int, Dict[str, str]]:
+    """
+    从 simulation_config 中构建 agent_id -> 角色信息映射表。
+    
+    Returns:
+        {agent_id: {"entity_type": str, "stance": str}}
+    """
+    role_map = {}
+    for ac in config.get("agent_configs", []):
+        aid = ac.get("agent_id")
+        if aid is not None:
+            role_map[aid] = {
+                "entity_type": ac.get("entity_type", "Unknown"),
+                "stance": ac.get("stance", "neutral"),
+            }
+    return role_map
+
+
+def build_world_state_prompt(
+    ws_data: Dict[str, Any],
+    agent_role: Optional[Dict[str, str]] = None
+) -> str:
     """
     将世界状态数据转换为可注入 Agent prompt 的文本段落。
     
@@ -242,6 +303,12 @@ def build_world_state_prompt(ws_data: Dict[str, Any]) -> str:
     1. 只在状态显著偏离基线时注入（阻尼）
     2. 使用客观观察语气，不用指令语气（避免过度引导）
     3. 只呈现事实，让 Agent 人设决定如何反应（保持多样性）
+    4. [新] 不同立场的 Agent 感知到不同侧重的状态信号（差异化感知）
+    
+    Args:
+        ws_data: 世界状态原始数据
+        agent_role: Agent 角色信息 {"entity_type": str, "stance": str}，
+                    为 None 时退化为原始的全局统一行为
     """
     # 阻尼：状态接近中立时不注入，避免噪声干扰
     attention = ws_data.get("attention_level", 0.1)
@@ -261,6 +328,13 @@ def build_world_state_prompt(ws_data: Dict[str, Any]) -> str:
     if deviation < 0.15:
         return ""
     
+    # 获取立场感知配置
+    stance = (agent_role or {}).get("stance", "neutral")
+    perception = _STANCE_PERCEPTION_PROFILES.get(
+        stance, _STANCE_PERCEPTION_PROFILES["neutral"]
+    )
+    event_threshold = perception["event_severity_threshold"]
+    
     parts = []
     
     # 用客观观察语气，不用指令语气
@@ -268,13 +342,18 @@ def build_world_state_prompt(ws_data: Dict[str, Any]) -> str:
     if summary:
         parts.append(f"[Background: The current social environment you are in]\n{summary}")
     
-    # 只展示高严重度事件（>= 0.5）
+    # 差异化感知提示（仅当有 agent_role 且非中立时追加）
+    perspective_hint = perception.get("perspective_hint", "")
+    if perspective_hint:
+        parts.append(perspective_hint)
+    
+    # 按立场过滤事件（不同立场对事件严重度的敏感度不同）
     events = ws_data.get("recent_events", [])
     if events:
         event_lines = []
         for evt in events:
             severity = evt.get("severity", 0)
-            if severity >= 0.5:
+            if severity >= event_threshold:
                 event_lines.append(f"- {evt.get('description', '')}")
         if event_lines:
             parts.append("近期动态:\n" + "\n".join(event_lines))
@@ -287,7 +366,12 @@ def build_world_state_prompt(ws_data: Dict[str, Any]) -> str:
 
 # 全局世界状态 prompt（每轮更新，所有 Agent 共享）
 _current_world_state_prompt: str = ""
+_current_world_state_data: Optional[Dict[str, Any]] = None  # 原始世界状态数据（用于差异化渲染）
 _world_model_enabled: bool = True  # 可通过 --no-world-model 禁用
+
+# Agent 角色映射表：agent_id -> {"entity_type": str, "stance": str}
+# 在主循环开始前从 simulation_config 加载
+_agent_role_map: Dict[int, Dict[str, str]] = {}
 
 
 def patch_oasis_environment():
@@ -297,6 +381,12 @@ def patch_oasis_environment():
     
     论文 §4.1.1: "observation involves changes in the environment
     and the current state of surrounding entities"
+    
+    [v2] 差异化感知：根据 Agent 的 stance（立场）生成不同侧重的世界状态描述。
+    - supportive → 侧重稳定性/信任度信号，事件高阈值过滤
+    - opposing   → 侧重恐慌/极化信号，事件低阈值过滤
+    - observer   → 侧重热度/全貌信号，事件最低阈值
+    - neutral    → 均衡感知（与 v1 行为一致）
     """
     from oasis.social_agent.agent_environment import SocialEnvironment
     
@@ -309,19 +399,29 @@ def patch_oasis_environment():
             include_followers=include_followers,
             include_follows=include_follows,
         )
-        # 注入世界状态（全局变量，每轮由主循环更新）
-        if _current_world_state_prompt:
+        # 获取当前 Agent 的 ID 和角色信息
+        agent_id = getattr(getattr(self, 'action', None), 'agent_id', None)
+        agent_role = _agent_role_map.get(agent_id) if agent_id is not None else None
+        
+        # 使用原始世界状态数据做差异化渲染（每个 Agent 看到不同的 prompt）
+        if _current_world_state_data is not None:
+            personalized_prompt = build_world_state_prompt(_current_world_state_data, agent_role)
+            if personalized_prompt:
+                return original + "\n" + personalized_prompt
+        # 回退：使用全局统一 prompt（兼容无差异化数据的场景）
+        elif _current_world_state_prompt:
             return original + "\n" + _current_world_state_prompt
         return original
     
     SocialEnvironment.to_text_prompt = _patched_to_text_prompt
-    print("[WorldState] 已安装环境状态注入补丁 (论文 §4.1.1)")
+    print("[WorldState] 已安装环境状态注入补丁 v2（差异化感知 + 论文 §4.1.1）")
 
 
 class CommandType:
     """命令类型常量"""
     INTERVIEW = "interview"
     BATCH_INTERVIEW = "batch_interview"
+    INJECT_EVENT = "inject_event"
     CLOSE_ENV = "close_env"
 
 
@@ -625,6 +725,68 @@ class ParallelIPCHandler:
             self.send_response(command_id, "failed", error="没有成功的采访")
             return False
     
+    def handle_inject_event(
+        self,
+        command_id: str,
+        event_type: str,
+        description: str,
+        severity: float = 0.7,
+        affected_variables: Optional[Dict[str, float]] = None
+    ):
+        """
+        处理动态事件注入命令（上帝视角）
+        
+        将事件写入 injected_events.json 队列文件。
+        WorldStateEngine 在下一轮 update_state 时会消费这些事件，
+        合并到世界状态中并注入 Agent 的环境 prompt。
+        
+        Args:
+            command_id: IPC 命令ID
+            event_type: 事件类型
+            description: 事件描述
+            severity: 严重度 (0.0-1.0)
+            affected_variables: 受影响的状态变量及变化增量
+        """
+        try:
+            injected_event = {
+                "event_type": event_type,
+                "description": description,
+                "severity": max(0.0, min(1.0, severity)),
+                "affected_variables": affected_variables or {},
+                "source": "god_mode",
+                "timestamp": datetime.now().isoformat(),
+            }
+            
+            # 原子追加到注入事件队列文件
+            events_path = os.path.join(self.simulation_dir, INJECTED_EVENTS_FILE)
+            existing = []
+            if os.path.exists(events_path):
+                try:
+                    with open(events_path, 'r', encoding='utf-8') as f:
+                        existing = json.load(f)
+                except (json.JSONDecodeError, OSError):
+                    existing = []
+            
+            existing.append(injected_event)
+            
+            tmp_path = events_path + ".tmp"
+            with open(tmp_path, 'w', encoding='utf-8') as f:
+                json.dump(existing, f, ensure_ascii=False, indent=2)
+            os.replace(tmp_path, events_path)
+            
+            print(f"  [上帝视角] 事件已注入: type={event_type}, severity={severity:.2f}")
+            print(f"    描述: {description}")
+            
+            self.send_response(command_id, "completed", result={
+                "message": "事件已注入，将在下一轮生效",
+                "event": injected_event,
+                "queue_size": len(existing),
+            })
+            
+        except Exception as e:
+            print(f"  [上帝视角] 事件注入失败: {e}")
+            self.send_response(command_id, "failed", error=str(e))
+    
     def _get_interview_result(self, agent_id: int, platform: str) -> Dict[str, Any]:
         """从数据库获取最新的Interview结果"""
         db_path = os.path.join(self.simulation_dir, f"{platform}_simulation.db")
@@ -702,6 +864,16 @@ class ParallelIPCHandler:
             )
             return True
             
+        elif command_type == CommandType.INJECT_EVENT:
+            self.handle_inject_event(
+                command_id,
+                event_type=args.get("event_type", "custom"),
+                description=args.get("description", ""),
+                severity=args.get("severity", 0.7),
+                affected_variables=args.get("affected_variables")
+            )
+            return True
+        
         elif command_type == CommandType.CLOSE_ENV:
             print("收到关闭环境命令")
             self.send_response(command_id, "completed", result={"message": "环境即将关闭"})
@@ -1345,9 +1517,10 @@ async def run_twitter_simulation(
         
         # 读取世界状态并注入到全局环境 prompt（论文 §4.1.1 反馈闭环）
         if _world_model_enabled:
-            global _current_world_state_prompt
+            global _current_world_state_prompt, _current_world_state_data
             ws_data = read_world_state(simulation_dir)
             if ws_data:
+                _current_world_state_data = ws_data  # 保存原始数据供差异化渲染
                 _current_world_state_prompt = build_world_state_prompt(ws_data)
         
         simulated_minutes = round_num * minutes_per_round
@@ -1551,9 +1724,10 @@ async def run_reddit_simulation(
         
         # 读取世界状态并注入到全局环境 prompt（论文 §4.1.1 反馈闭环）
         if _world_model_enabled:
-            global _current_world_state_prompt
+            global _current_world_state_prompt, _current_world_state_data
             ws_data = read_world_state(simulation_dir)
             if ws_data:
+                _current_world_state_data = ws_data  # 保存原始数据供差异化渲染
                 _current_world_state_prompt = build_world_state_prompt(ws_data)
         
         simulated_minutes = round_num * minutes_per_round
@@ -1700,6 +1874,16 @@ async def main():
     log_manager.info(f"  - Twitter动作: twitter/actions.jsonl")
     log_manager.info(f"  - Reddit动作: reddit/actions.jsonl")
     log_manager.info("=" * 60)
+    
+    # 加载 Agent 角色映射表（差异化感知）
+    global _agent_role_map
+    _agent_role_map = _load_agent_role_map(config)
+    if _agent_role_map:
+        stances = {}
+        for r in _agent_role_map.values():
+            s = r.get("stance", "neutral")
+            stances[s] = stances.get(s, 0) + 1
+        log_manager.info(f"  - 差异化感知: 已加载 {len(_agent_role_map)} 个Agent角色, 立场分布={stances}")
     
     # 安装世界状态注入补丁（论文 §4.1.1 Environment State 反馈闭环）
     global _world_model_enabled

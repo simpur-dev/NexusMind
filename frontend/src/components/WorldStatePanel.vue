@@ -42,7 +42,44 @@
         </div>
       </div>
 
-      <!-- 3. 事件与因果链 (Event & Causal Graph) -->
+      <!-- 3. 事件注入面板 (God Mode) -->
+      <div class="inject-section section-box" v-if="simulationId">
+        <h4 class="section-title inject-title" @click="showInjectPanel = !showInjectPanel">
+          <span>Event Injection</span>
+          <span class="toggle-icon">{{ showInjectPanel ? '▾' : '▸' }}</span>
+        </h4>
+        <div v-if="showInjectPanel" class="inject-form">
+          <div class="form-row">
+            <label class="form-label">Event Type</label>
+            <select v-model="injectForm.event_type" class="form-select">
+              <option value="breaking_news">Breaking News</option>
+              <option value="official_statement">Official Statement</option>
+              <option value="policy_change">Policy Change</option>
+              <option value="rumor_spread">Rumor Spread</option>
+              <option value="public_protest">Public Protest</option>
+              <option value="expert_opinion">Expert Opinion</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Description</label>
+            <textarea v-model="injectForm.description" class="form-textarea" rows="3" placeholder="Describe the event..."></textarea>
+          </div>
+          <div class="form-row">
+            <label class="form-label">Severity: <span class="severity-val">{{ injectForm.severity.toFixed(1) }}</span></label>
+            <input type="range" v-model.number="injectForm.severity" min="0" max="1" step="0.1" class="form-range" />
+          </div>
+          <button class="inject-btn" :disabled="injectLoading || !injectForm.description" @click="handleInjectEvent">
+            <span v-if="injectLoading" class="spinner-small"></span>
+            {{ injectLoading ? 'Injecting...' : 'Inject Event' }}
+          </button>
+          <div v-if="injectResult" class="inject-result" :class="injectResult.success ? 'success' : 'error'">
+            {{ injectResult.message }}
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. 事件与因果链 (Event & Causal Graph) -->
       <div class="causal-section section-box">
         <h4 class="section-title">Event Causality Chain</h4>
         <div v-if="causalGraph && causalGraph.edges && causalGraph.edges.length > 0" class="causal-chain">
@@ -74,15 +111,52 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, reactive } from 'vue'
+import { injectEvent } from '../api/simulation'
 
 const props = defineProps({
   currentState: Object,
   stateHistory: Array,
   stateSummary: String,
   events: Array,
-  causalGraph: Object
+  causalGraph: Object,
+  simulationId: String
 })
+
+// --- Event Injection State ---
+const showInjectPanel = ref(false)
+const injectLoading = ref(false)
+const injectResult = ref(null)
+const injectForm = reactive({
+  event_type: 'breaking_news',
+  description: '',
+  severity: 0.7
+})
+
+const handleInjectEvent = async () => {
+  if (!props.simulationId || !injectForm.description) return
+  injectLoading.value = true
+  injectResult.value = null
+  try {
+    const res = await injectEvent({
+      simulation_id: props.simulationId,
+      event_type: injectForm.event_type,
+      description: injectForm.description,
+      severity: injectForm.severity
+    })
+    if (res.success) {
+      injectResult.value = { success: true, message: `Event injected (queue: ${res.data?.result?.queue_size || '?'})` }
+      injectForm.description = ''
+    } else {
+      injectResult.value = { success: false, message: res.error || 'Injection failed' }
+    }
+  } catch (err) {
+    injectResult.value = { success: false, message: err.message || 'Network error' }
+  } finally {
+    injectLoading.value = false
+    setTimeout(() => { injectResult.value = null }, 4000)
+  }
+}
 
 // --- Indicators ---
 const indicatorItems = computed(() => {
@@ -376,5 +450,128 @@ const getRelationSymbol = (type) => {
 .evt-desc {
   color: #cbd5e1;
   flex: 1;
+}
+/* Event Injection Panel */
+.inject-section {
+  border-color: rgba(168, 85, 247, 0.3);
+}
+
+.inject-title {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+  margin-bottom: 0 !important;
+}
+
+.inject-title:hover {
+  color: #c084fc;
+}
+
+.toggle-icon {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.inject-form {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-label {
+  font-size: 12px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.severity-val {
+  font-family: monospace;
+  color: #c084fc;
+}
+
+.form-select,
+.form-textarea {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text-primary, #e2e8f0);
+  font-family: inherit;
+  resize: vertical;
+}
+
+.form-select:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: #a855f7;
+}
+
+.form-range {
+  width: 100%;
+  accent-color: #a855f7;
+}
+
+.inject-btn {
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: opacity 0.2s;
+}
+
+.inject-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.inject-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.spinner-small {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.inject-result {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.inject-result.success {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.inject-result.error {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
 }
 </style>

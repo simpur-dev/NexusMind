@@ -26,6 +26,7 @@ class CommandType(str, Enum):
     """命令类型"""
     INTERVIEW = "interview"           # 单个Agent采访
     BATCH_INTERVIEW = "batch_interview"  # 批量采访
+    INJECT_EVENT = "inject_event"     # 动态事件注入（上帝视角）
     CLOSE_ENV = "close_env"           # 关闭环境
 
 
@@ -247,6 +248,52 @@ class SimulationIPCClient:
             
         return self.send_command(
             command_type=CommandType.BATCH_INTERVIEW,
+            args=args,
+            timeout=timeout
+        )
+    
+    def send_inject_event(
+        self,
+        event_type: str,
+        description: str,
+        severity: float = 0.7,
+        affected_variables: Dict[str, float] = None,
+        timeout: float = 10.0
+    ) -> IPCResponse:
+        """
+        发送动态事件注入命令（上帝视角）
+        
+        在模拟运行过程中注入一个外部事件，影响世界状态和Agent行为。
+        
+        Args:
+            event_type: 事件类型
+                - "breaking_news": 突发新闻
+                - "official_statement": 官方声明
+                - "policy_change": 政策变化
+                - "rumor_spread": 谣言传播
+                - "public_protest": 公众抗议
+                - "expert_opinion": 专家观点
+                - "custom": 自定义事件
+            description: 事件描述（会出现在Agent的环境prompt中）
+            severity: 事件严重度 (0.0-1.0)，影响事件可见性和状态变化幅度
+            affected_variables: 受影响的状态变量及变化方向
+                例: {"panic_level": 0.15, "trust_level": -0.1}
+                正值表示上升，负值表示下降
+            timeout: 超时时间
+            
+        Returns:
+            IPCResponse
+        """
+        args = {
+            "event_type": event_type,
+            "description": description,
+            "severity": max(0.0, min(1.0, severity)),
+        }
+        if affected_variables:
+            args["affected_variables"] = affected_variables
+            
+        return self.send_command(
+            command_type=CommandType.INJECT_EVENT,
             args=args,
             timeout=timeout
         )

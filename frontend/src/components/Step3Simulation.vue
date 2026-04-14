@@ -279,6 +279,7 @@
           :state-summary="worldStateSummary"
           :events="worldEvents"
           :causal-graph="causalGraph"
+          :simulation-id="simulationId"
         />
       </div>
     </div>

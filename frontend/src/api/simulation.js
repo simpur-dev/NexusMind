@@ -195,6 +195,14 @@ export const getSimulationActions = (simulationId, params = {}) => {
 }
 
 /**
+ * 动态注入外部事件（上帝视角）
+ * @param {Object} data - { simulation_id, event_type, description, severity?, affected_variables?, timeout? }
+ */
+export const injectEvent = (data) => {
+  return service.post('/api/simulation/inject-event', data)
+}
+
+/**
  * 关闭模拟环境（优雅退出）
  * @param {Object} data - { simulation_id, timeout? }
  */

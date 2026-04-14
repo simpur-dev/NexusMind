@@ -190,6 +190,8 @@ class WorldStateEngine:
         "stabilization": 0.10,        # stability 单轮上升超过此值
     }
     
+    INJECTED_EVENTS_FILE = "injected_events.json"
+    
     def __init__(self, sim_dir: str, use_llm: bool = True):
         """
         初始化世界状态引擎
@@ -202,6 +204,7 @@ class WorldStateEngine:
         self.use_llm = use_llm
         self.state_history_path = os.path.join(sim_dir, "world_state_history.jsonl")
         self.events_path = os.path.join(sim_dir, "events.jsonl")
+        self.injected_events_path = os.path.join(sim_dir, self.INJECTED_EVENTS_FILE)
         
         # 内存中的状态历史
         self._state_history: List[WorldStateSnapshot] = []
@@ -306,10 +309,16 @@ class WorldStateEngine:
         if self.use_llm and round_num > 0 and round_num % self.LLM_EVAL_INTERVAL == 0:
             new_state = self._refine_state_by_llm(new_state, actions, prev_state)
         
-        # 5. 检测事件
+        # 5. 消费注入事件（上帝视角）
+        injected_events = self._consume_injected_events(round_num, new_state)
+        
+        # 6. 检测自然事件
         new_events = self._detect_events(new_state, prev_state, observations)
         
-        # 6. 持久化
+        # 合并注入事件和自然事件
+        new_events = injected_events + new_events
+        
+        # 7. 持久化
         self._append_state(new_state)
         for event in new_events:
             self._append_event(event)
@@ -331,6 +340,92 @@ class WorldStateEngine:
             logger.debug(f"[Round {round_num}] 世界状态已更新，无新事件")
         
         return new_state, new_events
+    
+    # ============== 注入事件消费 ==============
+    
+    def _consume_injected_events(
+        self,
+        round_num: int,
+        state: WorldStateSnapshot
+    ) -> List[WorldEvent]:
+        """
+        读取并消费 injected_events.json 队列中的注入事件（上帝视角）
+        
+        流程：
+        1. 读取队列文件
+        2. 将每个注入事件的 affected_variables 增量应用到 state
+        3. 将每个注入事件转换为 WorldEvent
+        4. 清空队列文件
+        
+        Args:
+            round_num: 当前轮次
+            state: 当前计算出的世界状态（将被就地修改）
+            
+        Returns:
+            转换后的 WorldEvent 列表
+        """
+        if not os.path.exists(self.injected_events_path):
+            return []
+        
+        try:
+            with open(self.injected_events_path, 'r', encoding='utf-8') as f:
+                raw_events = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return []
+        
+        if not raw_events:
+            return []
+        
+        # 清空队列（原子写入空列表）
+        try:
+            tmp_path = self.injected_events_path + ".tmp"
+            with open(tmp_path, 'w', encoding='utf-8') as f:
+                json.dump([], f)
+            os.replace(tmp_path, self.injected_events_path)
+        except OSError as e:
+            logger.warning(f"清空注入事件队列失败: {e}")
+        
+        # 状态变量名集合（用于验证 affected_variables）
+        state_vars = {
+            "attention_level", "panic_level", "trust_level",
+            "polarization_level", "risk_level", "stability_level"
+        }
+        
+        world_events: List[WorldEvent] = []
+        
+        for raw in raw_events:
+            event_type = raw.get("event_type", "custom")
+            description = raw.get("description", "")
+            severity = max(0.0, min(1.0, raw.get("severity", 0.7)))
+            affected = raw.get("affected_variables", {})
+            
+            # 应用状态变量增量
+            applied_deltas = {}
+            for var_name, delta in affected.items():
+                if var_name in state_vars and isinstance(delta, (int, float)):
+                    old_val = getattr(state, var_name, 0.5)
+                    new_val = max(0.0, min(1.0, old_val + delta))
+                    setattr(state, var_name, new_val)
+                    applied_deltas[var_name] = delta
+            
+            # 转换为 WorldEvent
+            we = WorldEvent(
+                event_id=f"inject_{uuid.uuid4().hex[:8]}",
+                round_num=round_num,
+                timestamp=raw.get("timestamp", datetime.now().isoformat()),
+                event_type=f"injected_{event_type}",
+                description=f"[上帝视角] {description}",
+                severity=severity,
+                affected_variables=applied_deltas
+            )
+            world_events.append(we)
+            
+            logger.info(
+                f"[Round {round_num}] 消费注入事件: type={event_type}, "
+                f"severity={severity:.2f}, deltas={applied_deltas}"
+            )
+        
+        return world_events
     
     # ============== 观测信号提取 ==============
     

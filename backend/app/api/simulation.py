@@ -2640,6 +2640,111 @@ def get_env_status():
         }), 500
 
 
+# ============== 动态事件注入接口（上帝视角） ==============
+
+@simulation_bp.route('/inject-event', methods=['POST'])
+def inject_event():
+    """
+    动态注入外部事件（上帝视角）
+
+    在模拟运行过程中注入一个外部事件，影响世界状态和Agent行为。
+    事件将在下一轮被 WorldStateEngine 消费并合并到世界状态中。
+
+    注意：此功能需要模拟环境处于运行状态
+
+    请求（JSON）：
+        {
+            "simulation_id": "sim_xxxx",           // 必填，模拟ID
+            "event_type": "breaking_news",         // 必填，事件类型
+                // 可选值: breaking_news, official_statement, policy_change,
+                //        rumor_spread, public_protest, expert_opinion, custom
+            "description": "校方紧急发布声明...",   // 必填，事件描述
+            "severity": 0.8,                       // 可选，严重度(0-1)，默认0.7
+            "affected_variables": {                // 可选，受影响的状态变量
+                "panic_level": 0.15,               // 正值=上升，负值=下降
+                "trust_level": -0.1
+            },
+            "timeout": 10                          // 可选，超时时间（秒），默认10
+        }
+
+    返回：
+        {
+            "success": true,
+            "data": {
+                "event_type": "breaking_news",
+                "description": "校方紧急发布声明...",
+                "severity": 0.8,
+                "result": {
+                    "message": "事件已注入，将在下一轮生效",
+                    "queue_size": 1
+                },
+                "timestamp": "2025-12-08T10:00:01"
+            }
+        }
+    """
+    try:
+        data = request.get_json() or {}
+
+        simulation_id = data.get('simulation_id')
+        event_type = data.get('event_type')
+        description = data.get('description')
+        severity = data.get('severity', 0.7)
+        affected_variables = data.get('affected_variables')
+        timeout = data.get('timeout', 10)
+
+        if not simulation_id:
+            return jsonify({
+                "success": False,
+                "error": "请提供 simulation_id"
+            }), 400
+
+        if not event_type:
+            return jsonify({
+                "success": False,
+                "error": "请提供 event_type（事件类型）"
+            }), 400
+
+        if not description:
+            return jsonify({
+                "success": False,
+                "error": "请提供 description（事件描述）"
+            }), 400
+
+        result = SimulationRunner.inject_event(
+            simulation_id=simulation_id,
+            event_type=event_type,
+            description=description,
+            severity=severity,
+            affected_variables=affected_variables,
+            timeout=timeout
+        )
+
+        return jsonify({
+            "success": result.get("success", False),
+            "data": result
+        })
+
+    except ValueError as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 400
+
+    except TimeoutError as e:
+        return jsonify({
+            "success": False,
+            "error": f"等待事件注入响应超时: {str(e)}"
+        }), 504
+
+    except Exception as e:
+        logger.error(f"事件注入失败: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
 @simulation_bp.route('/close-env', methods=['POST'])
 def close_simulation_env():
     """
