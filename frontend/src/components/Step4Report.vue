@@ -39,6 +39,20 @@
             <div class="report-meta">
               <span class="report-tag">预测报告</span>
               <span class="report-id">编号 {{ reportId || '—' }}</span>
+              <button
+                v-if="isComplete"
+                class="export-pdf-btn"
+                :disabled="isExportingPdf"
+                @click="exportPdf"
+              >
+                <svg v-if="!isExportingPdf" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span v-if="isExportingPdf" class="loading-spinner-small"></span>
+                {{ isExportingPdf ? '导出中...' : '导出 PDF' }}
+              </button>
             </div>
             <h1 class="main-title">{{ reportOutline.title }}</h1>
             <p class="sub-title">{{ reportOutline.summary }}</p>
@@ -422,7 +436,8 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, h, reactive } from 'vue'
-import { getAgentLog, getConsoleLog } from '../api/report'
+import { getAgentLog, getConsoleLog, getReport, getReportSections } from '../api/report'
+import html2pdf from 'html2pdf.js'
 
 const props = defineProps({
   reportId: String,
@@ -454,6 +469,7 @@ const isComplete = ref(false)
 const startTime = ref(null)
 const leftPanel = ref(null)
 const rightPanel = ref(null)
+const isExportingPdf = ref(false)
 const logContent = ref(null)
 const showRawResult = reactive({})
 
@@ -1889,6 +1905,48 @@ const addLog = (msg) => {
   emit('add-log', msg)
 }
 
+const exportPdf = async () => {
+  if (!leftPanel.value || isExportingPdf.value) return
+  isExportingPdf.value = true
+  addLog('正在导出 PDF...')
+  
+  try {
+    // 先展开所有折叠的章节
+    const prevCollapsed = new Set(collapsedSections.value)
+    collapsedSections.value = new Set()
+    await nextTick()
+    
+    const el = leftPanel.value.querySelector('.report-content-wrapper')
+    if (!el) throw new Error('报告内容未找到')
+    
+    // 隐藏导出按钮，避免被截入 PDF
+    el.classList.add('pdf-exporting')
+    await nextTick()
+    
+    const title = reportOutline.value?.title || '预测报告'
+    const filename = `${title.replace(/[\\/:*?"<>|]/g, '_')}.pdf`
+    
+    await html2pdf().set({
+      margin: [15, 15, 15, 15],
+      filename,
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 2, useCORS: true, scrollY: 0 },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+    }).from(el).save()
+    
+    el.classList.remove('pdf-exporting')
+    addLog(`✓ PDF 已导出: ${filename}`)
+    
+    // 恢复折叠状态
+    collapsedSections.value = prevCollapsed
+  } catch (err) {
+    addLog(`✗ PDF 导出失败: ${err.message}`)
+  } finally {
+    isExportingPdf.value = false
+  }
+}
+
 const isSectionCompleted = (sectionIndex) => {
   return !!generatedSections.value[sectionIndex]
 }
@@ -2211,6 +2269,47 @@ const fetchConsoleLog = async () => {
   }
 }
 
+// 直接从后端加载已完成的报告（不依赖日志回放）
+const loadExistingReport = async () => {
+  if (!props.reportId) return false
+  
+  try {
+    // 先获取报告元信息
+    const reportRes = await getReport(props.reportId)
+    if (!reportRes.success || !reportRes.data) return false
+    
+    const report = reportRes.data
+    
+    // 恢复大纲
+    if (report.outline) {
+      reportOutline.value = report.outline
+    }
+    
+    // 如果报告已完成，直接加载各章节内容
+    if (report.status === 'completed') {
+      const sectionsRes = await getReportSections(props.reportId)
+      if (sectionsRes.success && sectionsRes.data) {
+        const sections = sectionsRes.data.sections || []
+        sections.forEach(s => {
+          generatedSections.value[s.section_index] = s.content
+        })
+      }
+      isComplete.value = true
+      emit('update-status', 'completed')
+      addLog('已加载已完成的报告')
+      
+      // 已完成的报告也加载 agent 日志（用于右侧时间线展示）
+      await fetchAgentLog()
+      return true
+    }
+    
+    return false
+  } catch (err) {
+    console.warn('loadExistingReport failed:', err)
+    return false
+  }
+}
+
 const startPolling = () => {
   if (agentLogTimer || consoleLogTimer) return
   
@@ -2232,11 +2331,41 @@ const stopPolling = () => {
   }
 }
 
+// 初始化：优先加载已完成的报告，否则开始轮询
+const initReport = async (reportId) => {
+  if (!reportId) return
+  
+  stopPolling()
+  agentLogs.value = []
+  consoleLogs.value = []
+  agentLogLine.value = 0
+  consoleLogLine.value = 0
+  reportOutline.value = null
+  currentSectionIndex.value = null
+  generatedSections.value = {}
+  expandedContent.value = new Set()
+  expandedLogs.value = new Set()
+  collapsedSections.value = new Set()
+  isComplete.value = false
+  startTime.value = null
+  
+  addLog(`Report Agent initialized: ${reportId}`)
+  
+  // 优先尝试直接加载已完成报告
+  const loaded = await loadExistingReport()
+  if (loaded) {
+    addLog('报告数据已从服务端恢复')
+    return
+  }
+  
+  // 报告尚未完成或加载失败，回退到轮询模式
+  startPolling()
+}
+
 // Lifecycle
 onMounted(() => {
   if (props.reportId) {
-    addLog(`Report Agent initialized: ${props.reportId}`)
-    startPolling()
+    initReport(props.reportId)
   }
 })
 
@@ -2244,24 +2373,11 @@ onUnmounted(() => {
   stopPolling()
 })
 
-watch(() => props.reportId, (newId) => {
-  if (newId) {
-    agentLogs.value = []
-    consoleLogs.value = []
-    agentLogLine.value = 0
-    consoleLogLine.value = 0
-    reportOutline.value = null
-    currentSectionIndex.value = null
-    generatedSections.value = {}
-    expandedContent.value = new Set()
-    expandedLogs.value = new Set()
-    collapsedSections.value = new Set()
-    isComplete.value = false
-    startTime.value = null
-    
-    startPolling()
+watch(() => props.reportId, (newId, oldId) => {
+  if (newId && newId !== oldId) {
+    initReport(newId)
   }
-}, { immediate: true })
+})
 </script>
 
 <style scoped>
@@ -2639,6 +2755,48 @@ watch(() => props.reportId, (newId) => {
   color: var(--nm-text-muted, #5c7a82);
   font-weight: 500;
   letter-spacing: 0.02em;
+}
+
+.export-pdf-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--nm-teal);
+  background: var(--nm-teal-soft);
+  border: 1px solid rgba(0, 102, 128, 0.18);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.export-pdf-btn:hover:not(:disabled) {
+  background: var(--nm-teal);
+  color: #fff;
+  border-color: var(--nm-teal);
+}
+.export-pdf-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.loading-spinner-small {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(0, 102, 128, 0.2);
+  border-top-color: var(--nm-teal);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.pdf-exporting .export-pdf-btn {
+  display: none !important;
 }
 
 .main-title {
