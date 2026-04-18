@@ -174,12 +174,15 @@ const indicatorItems = computed(() => {
 
 // --- Formatters ---
 const formatEventNode = (eventId) => {
-  if (!props.events) return eventId.substring(0, 8)
-  const evt = props.events.find(e => e.event_id === eventId)
-  if (evt) {
-    return `[R${evt.round_num}] ${formatEventType(evt.event_type)}`
+  if (eventId === null || eventId === undefined) return '-'
+  const idStr = String(eventId)
+  if (props.events) {
+    const evt = props.events.find(e => e.event_id === eventId)
+    if (evt) {
+      return `[R${evt.round_num}] ${formatEventType(evt.event_type)}`
+    }
   }
-  return eventId.substring(0, 8)
+  return idStr.length > 8 ? idStr.substring(0, 8) : idStr
 }
 
 const formatEventType = (type) => {

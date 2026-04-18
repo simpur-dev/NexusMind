@@ -47,6 +47,11 @@
               :class="{ available: project.report_id, unavailable: !project.report_id }"
               title="分析报告"
             >◆</span>
+            <span
+              class="card-delete-btn"
+              title="删除此推演记录"
+              @click.stop="confirmDelete(project)"
+            >×</span>
           </div>
         </div>
 
@@ -193,7 +198,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, onActivated, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { getSimulationHistory } from '../api/simulation'
+import { getSimulationHistory, deleteSimulation } from '../api/simulation'
 
 const router = useRouter()
 const route = useRoute()
@@ -396,6 +401,31 @@ const navigateToProject = (simulation) => {
   selectedProject.value = simulation
 }
 
+// 删除推演记录（带确认）
+const confirmDelete = async (project) => {
+  if (!project?.simulation_id) return
+  const simLabel = formatSimulationId(project.simulation_id)
+  const confirmed = window.confirm(`确定要删除推演记录 ${simLabel} 吗？\n此操作会停止运行中的进程并删除相关数据，不可撤销。`)
+  if (!confirmed) return
+  
+  try {
+    const res = await deleteSimulation(project.simulation_id)
+    if (res.success) {
+      // 乐观更新：从列表中移除
+      projects.value = projects.value.filter(p => p.simulation_id !== project.simulation_id)
+      // 若当前打开了详情弹窗则关闭
+      if (selectedProject.value?.simulation_id === project.simulation_id) {
+        selectedProject.value = null
+      }
+    } else {
+      alert('删除失败：' + (res.error || '未知错误'))
+    }
+  } catch (err) {
+    console.error('删除推演记录失败:', err)
+    alert('删除失败：' + (err.message || '网络错误'))
+  }
+}
+
 // 关闭弹窗
 const closeModal = () => {
   selectedProject.value = null
@@ -438,9 +468,13 @@ const goToReport = () => {
 
 // 加载历史项目
 const loadHistory = async () => {
+  loading.value = true
+  // 10秒超时保护，避免后端卡死导致前端永久加载
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('加载超时')), 10000)
+  )
   try {
-    loading.value = true
-    const response = await getSimulationHistory(20)
+    const response = await Promise.race([getSimulationHistory(20), timeoutPromise])
     if (response.success) {
       projects.value = response.data || []
     }
@@ -730,6 +764,26 @@ onUnmounted(() => {
 .status-icon.unavailable {
   color: #D1D5DB;
   opacity: 0.5;
+}
+
+/* 删除按钮 */
+.card-delete-btn {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #D1D5DB;
+  cursor: pointer;
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
+  transition: all 0.2s ease;
+  line-height: 1;
+  user-select: none;
+}
+
+.card-delete-btn:hover {
+  color: #EF4444;
+  background: rgba(239, 68, 68, 0.1);
+  transform: scale(1.2);
 }
 
 /* 轮数进度显示 */

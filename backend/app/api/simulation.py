@@ -204,6 +204,12 @@ def create_simulation():
             enable_reddit=data.get('enable_reddit', True),
         )
         
+        # 将 simulation_id 写回项目，确保页面刷新后能恢复状态
+        if not project.simulation_id or project.simulation_id != state.simulation_id:
+            project.simulation_id = state.simulation_id
+            ProjectManager.save_project(project)
+            logger.info(f"已将 simulation_id={state.simulation_id} 保存到项目 {project_id}")
+        
         return jsonify({
             "success": True,
             "data": state.to_dict()
@@ -243,13 +249,24 @@ def _check_simulation_prepared(simulation_id: str) -> tuple:
     if not os.path.exists(simulation_dir):
         return False, {"reason": "模拟目录不存在"}
     
-    # 必要文件列表（不包括脚本，脚本位于 backend/scripts/）
+    # 必要文件列表（根据实际启用的平台动态确定）
     required_files = [
         "state.json",
         "simulation_config.json",
-        "reddit_profiles.json",
-        "twitter_profiles.csv"
     ]
+    # 读取 state.json 检查启用了哪些平台
+    state_file_path = os.path.join(simulation_dir, "state.json")
+    try:
+        import json as _json
+        with open(state_file_path, 'r', encoding='utf-8') as _f:
+            _state = _json.load(_f)
+        if _state.get("enable_reddit", True):
+            required_files.append("reddit_profiles.json")
+        if _state.get("enable_twitter", True):
+            required_files.append("twitter_profiles.csv")
+    except Exception:
+        # 无法读取 state.json，使用默认检查
+        required_files.extend(["reddit_profiles.json", "twitter_profiles.csv"])
     
     # 检查文件是否存在
     existing_files = []
@@ -301,15 +318,23 @@ def _check_simulation_prepared(simulation_id: str) -> tuple:
                     profiles_data = json.load(f)
                     profiles_count = len(profiles_data) if isinstance(profiles_data, list) else 0
             
-            # 如果状态是preparing但文件已完成，自动更新状态为ready
-            if status == "preparing":
+            # 自愈：某些场景下 state.json 的 status 与实际情况不符，
+            # 当 prepare 文件已齐全且 config_generated=True 时，将其校正为 ready：
+            # - preparing: prepare 过程结束但状态未来得及更新
+            # - failed: prepare 已完成，failed 是后续运行/外部中断导致（如后端重启）
+            #   —— 这种 failed 对 Step2 UI 无意义，应让前端正常推进到 Step4
+            if status in ("preparing", "failed"):
                 try:
-                    state_data["status"] = "ready"
                     from datetime import datetime
+                    prev_status = status
+                    state_data["status"] = "ready"
                     state_data["updated_at"] = datetime.now().isoformat()
+                    # 清理 error（这个 error 属于运行期，不影响 prepare 结果）
+                    if prev_status == "failed":
+                        state_data["error"] = None
                     with open(state_file, 'w', encoding='utf-8') as f:
                         json.dump(state_data, f, ensure_ascii=False, indent=2)
-                    logger.info(f"自动更新模拟状态: {simulation_id} preparing -> ready")
+                    logger.info(f"自动更新模拟状态: {simulation_id} {prev_status} -> ready (prepare 已完成)")
                     status = "ready"
                 except Exception as e:
                     logger.warning(f"自动更新状态失败: {e}")
@@ -707,6 +732,42 @@ def get_prepare_status():
                             "prepare_info": prepare_info
                         }
                     })
+                
+                # 任务 ID 丢失（后端重启等），回退到 state.json 的状态
+                # 这样前端能感知到 failed，不会一直卡在"生成中"
+                try:
+                    sim_manager = SimulationManager()
+                    sim_state = sim_manager.get_simulation(simulation_id)
+                    if sim_state:
+                        sim_status = sim_state.status.value if hasattr(sim_state.status, 'value') else str(sim_state.status)
+                        # 映射 SimulationStatus → 任务状态
+                        if sim_status == 'failed':
+                            return jsonify({
+                                "success": True,
+                                "data": {
+                                    "simulation_id": simulation_id,
+                                    "task_id": task_id,
+                                    "status": "failed",
+                                    "progress": 0,
+                                    "message": "准备任务已中断（后端可能重启过），请重新点击生成",
+                                    "error": sim_state.error or "任务已中断",
+                                    "already_prepared": False
+                                }
+                            })
+                        # 其他状态（created/preparing 但文件未就绪）→ 视为 not_started，让用户重新触发
+                        return jsonify({
+                            "success": True,
+                            "data": {
+                                "simulation_id": simulation_id,
+                                "task_id": task_id,
+                                "status": "not_started",
+                                "progress": 0,
+                                "message": f"任务已丢失（当前状态: {sim_status}），请重新点击生成",
+                                "already_prepared": False
+                            }
+                        })
+                except Exception as e:
+                    logger.warning(f"读取 simulation state 兜底失败: {e}")
             
             return jsonify({
                 "success": False,
@@ -755,6 +816,38 @@ def get_simulation(simulation_id: str):
         
     except Exception as e:
         logger.error(f"获取模拟状态失败: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
+@simulation_bp.route('/<simulation_id>', methods=['DELETE'])
+def delete_simulation(simulation_id: str):
+    """删除模拟（停止运行中的子进程并删除数据目录）"""
+    try:
+        manager = SimulationManager()
+        state = manager.get_simulation(simulation_id)
+        if not state:
+            return jsonify({
+                "success": False,
+                "error": f"模拟不存在: {simulation_id}"
+            }), 404
+        
+        ok = manager.delete_simulation(simulation_id)
+        if not ok:
+            return jsonify({
+                "success": False,
+                "error": f"删除模拟失败: {simulation_id}"
+            }), 500
+        
+        return jsonify({
+            "success": True,
+            "data": {"simulation_id": simulation_id, "deleted": True}
+        })
+    except Exception as e:
+        logger.error(f"删除模拟失败: {str(e)}")
         return jsonify({
             "success": False,
             "error": str(e),
@@ -1564,6 +1657,13 @@ def start_simulation():
                     "success": False,
                     "error": f"模拟未准备好，当前状态: {state.status.value}，请先调用 /prepare 接口"
                 }), 400
+        elif force:
+            # 状态已是 READY 但用户请求 force：仍需清理旧的运行日志
+            logger.info(f"强制模式（状态已 READY）：清理旧模拟日志 {simulation_id}")
+            cleanup_result = SimulationRunner.cleanup_simulation_logs(simulation_id)
+            if not cleanup_result.get("success"):
+                logger.warning(f"清理日志时出现警告: {cleanup_result.get('errors')}")
+            force_restarted = True
         
         # 获取图谱ID（用于图谱记忆更新）
         graph_id = None
@@ -1732,7 +1832,7 @@ def get_run_status(simulation_id: str):
         
         data = run_state.to_dict()
         # 注入世界状态
-        ws_engine = SimulationRunner._world_state_engines.get(simulation_id)
+        ws_engine = SimulationRunner.get_or_restore_world_state_engine(simulation_id)
         if ws_engine and ws_engine.current_state:
             data["world_state"] = ws_engine.current_state.to_dict()
         
@@ -1831,7 +1931,7 @@ def get_run_status_detail(simulation_id: str):
         # 获取基础状态信息
         result = run_state.to_dict()
         # 注入世界状态
-        ws_engine = SimulationRunner._world_state_engines.get(simulation_id)
+        ws_engine = SimulationRunner.get_or_restore_world_state_engine(simulation_id)
         if ws_engine and ws_engine.current_state:
             result["world_state"] = ws_engine.current_state.to_dict()
         result["all_actions"] = [a.to_dict() for a in all_actions]
@@ -2841,7 +2941,7 @@ def get_world_state(simulation_id: str):
     try:
         last_n = request.args.get('last_n', type=int)
         
-        ws_engine = SimulationRunner._world_state_engines.get(simulation_id)
+        ws_engine = SimulationRunner.get_or_restore_world_state_engine(simulation_id)
         
         if not ws_engine:
             return jsonify({
@@ -2905,7 +3005,7 @@ def get_world_events(simulation_id: str):
         to_round = request.args.get('to_round', 999999, type=int)
         event_type_filter = request.args.get('event_type')
         
-        ws_engine = SimulationRunner._world_state_engines.get(simulation_id)
+        ws_engine = SimulationRunner.get_or_restore_world_state_engine(simulation_id)
         
         if not ws_engine:
             return jsonify({
@@ -2965,7 +3065,7 @@ def get_causal_graph(simulation_id: str):
         event_id = request.args.get('event_id')
         direction = request.args.get('direction', 'forward')
         
-        ws_engine = SimulationRunner._world_state_engines.get(simulation_id)
+        ws_engine = SimulationRunner.get_or_restore_world_state_engine(simulation_id)
         
         if not ws_engine:
             return jsonify({

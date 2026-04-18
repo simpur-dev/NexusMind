@@ -49,6 +49,10 @@ class Project:
     chunk_size: int = 500
     chunk_overlap: int = 50
     
+    # 模拟关联
+    simulation_id: Optional[str] = None
+    report_id: Optional[str] = None
+    
     # 错误信息
     error: Optional[str] = None
     
@@ -69,6 +73,8 @@ class Project:
             "simulation_requirement": self.simulation_requirement,
             "chunk_size": self.chunk_size,
             "chunk_overlap": self.chunk_overlap,
+            "simulation_id": self.simulation_id,
+            "report_id": self.report_id,
             "error": self.error
         }
     
@@ -94,6 +100,8 @@ class Project:
             simulation_requirement=data.get('simulation_requirement'),
             chunk_size=data.get('chunk_size', 500),
             chunk_overlap=data.get('chunk_overlap', 50),
+            simulation_id=data.get('simulation_id'),
+            report_id=data.get('report_id'),
             error=data.get('error')
         )
 

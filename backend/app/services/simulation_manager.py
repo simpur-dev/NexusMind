@@ -5,6 +5,7 @@ OASIS模拟管理器
 """
 
 import os
+import sys
 import json
 import shutil
 from typing import Dict, Any, List, Optional
@@ -135,15 +136,21 @@ class SimulationManager:
         # 内存中的模拟状态缓存
         self._simulations: Dict[str, SimulationState] = {}
     
-    def _get_simulation_dir(self, simulation_id: str) -> str:
-        """获取模拟数据目录"""
+    def _get_simulation_dir(self, simulation_id: str, create: bool = False) -> str:
+        """获取模拟数据目录。
+
+        注意：默认 create=False，不会自动创建目录。这避免了在删除模拟时，
+        任何意外调用 `_get_simulation_dir` 的代码路径重新创建空目录的问题。
+        仅当明确需要写入时（如 `_save_simulation_state`）才设 create=True。
+        """
         sim_dir = os.path.join(self.SIMULATION_DATA_DIR, simulation_id)
-        os.makedirs(sim_dir, exist_ok=True)
+        if create:
+            os.makedirs(sim_dir, exist_ok=True)
         return sim_dir
     
     def _save_simulation_state(self, state: SimulationState):
         """保存模拟状态到文件"""
-        sim_dir = self._get_simulation_dir(state.simulation_id)
+        sim_dir = self._get_simulation_dir(state.simulation_id, create=True)
         state_file = os.path.join(sim_dir, "state.json")
         
         state.updated_at = datetime.now().isoformat()
@@ -198,7 +205,7 @@ class SimulationManager:
         enable_reddit: bool = True,
     ) -> SimulationState:
         """
-        创建新的模拟
+        创建新的模拟（同一项目复用已有模拟，避免重复生成Agent人设）
         
         Args:
             project_id: 项目ID
@@ -209,6 +216,12 @@ class SimulationManager:
         Returns:
             SimulationState
         """
+        # 检查该项目是否已有模拟，如果有则复用
+        existing = self._find_simulation_by_project(project_id)
+        if existing:
+            logger.info(f"复用已有模拟: {existing.simulation_id}, project={project_id}")
+            return existing
+        
         import uuid
         simulation_id = f"sim_{uuid.uuid4().hex[:12]}"
         
@@ -225,6 +238,29 @@ class SimulationManager:
         logger.info(f"创建模拟: {simulation_id}, project={project_id}, graph={graph_id}")
         
         return state
+    
+    def _find_simulation_by_project(self, project_id: str) -> Optional[SimulationState]:
+        """查找项目对应的已有模拟"""
+        import os
+        sim_base = Config.OASIS_SIMULATION_DATA_DIR
+        if not os.path.exists(sim_base):
+            return None
+        
+        for sim_dir_name in os.listdir(sim_base):
+            if not sim_dir_name.startswith("sim_"):
+                continue
+            state_file = os.path.join(sim_base, sim_dir_name, "state.json")
+            if not os.path.exists(state_file):
+                continue
+            try:
+                import json
+                with open(state_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                if data.get("project_id") == project_id:
+                    return self._load_simulation_state(sim_dir_name)
+            except Exception:
+                continue
+        return None
     
     def prepare_simulation(
         self,
@@ -458,6 +494,181 @@ class SimulationManager:
     def get_simulation(self, simulation_id: str) -> Optional[SimulationState]:
         """获取模拟状态"""
         return self._load_simulation_state(simulation_id)
+    
+    def delete_simulation(self, simulation_id: str) -> bool:
+        """删除模拟（先停进程，再删目录）
+        
+        策略（Windows 友好）：
+        1. 停进程 + 强杀 PID
+        2. 主动关闭 Flask 进程内持有的所有文件句柄/引用（log 文件、world state engine 等）
+        3. **先删 state.json**：这样即便部分日志文件被占用导致 rmtree 失败，
+           历史列表也会立刻看不到这条记录（list_simulations 依赖 state.json 存在）
+        4. 尝试 rmtree；失败时只要 state.json 已删，仍视为成功
+        
+        Args:
+            simulation_id: 模拟ID
+            
+        Returns:
+            是否删除成功（state.json 被删即视为成功）
+        """
+        import time
+        # 注意：不使用 _get_simulation_dir，避免它的 os.makedirs 副作用重建目录
+        sim_dir = os.path.join(self.SIMULATION_DATA_DIR, simulation_id)
+        if not os.path.exists(sim_dir):
+            return False
+        
+        # 1. 尝试通过 SimulationRunner 正常停止（若有 Popen 句柄）
+        from .simulation_runner import SimulationRunner
+        try:
+            SimulationRunner.stop_simulation(simulation_id)
+        except Exception as e:
+            logger.warning(f"stop_simulation 失败（继续走强杀路径）: {e}")
+        
+        # 2. 兜底：直接用 PID 强杀（Flask 重启后 reattach 的孤儿子进程没有 Popen 句柄）
+        run_state = SimulationRunner.get_run_state(simulation_id)
+        pid = getattr(run_state, 'process_pid', None) if run_state else None
+        if pid and SimulationRunner._pid_alive(pid):
+            try:
+                import signal
+                if sys.platform == 'win32':
+                    os.system(f'taskkill /F /T /PID {pid} >nul 2>&1')
+                else:
+                    os.kill(pid, signal.SIGKILL)
+                logger.info(f"已强杀模拟进程: pid={pid}")
+                # 等待句柄释放
+                for _ in range(20):
+                    if not SimulationRunner._pid_alive(pid):
+                        break
+                    time.sleep(0.2)
+            except Exception as e:
+                logger.warning(f"强杀进程 {pid} 失败: {e}")
+        
+        # 3. 主动关闭 Flask 进程内持有的文件句柄（Windows 删除失败的主要原因）
+        try:
+            fh = SimulationRunner._stdout_files.pop(simulation_id, None)
+            if fh:
+                try:
+                    fh.close()
+                except Exception:
+                    pass
+            fh = SimulationRunner._stderr_files.pop(simulation_id, None)
+            if fh:
+                try:
+                    fh.close()
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning(f"关闭日志句柄失败（忽略）: {e}")
+        
+        # 4. 停止图谱记忆更新器（若启用）
+        try:
+            if SimulationRunner._graph_memory_enabled.get(simulation_id, False):
+                from .graph_memory_updater import GraphMemoryManager
+                try:
+                    GraphMemoryManager.stop_updater(simulation_id)
+                except Exception as e:
+                    logger.warning(f"停止图谱记忆更新器失败（忽略）: {e}")
+                SimulationRunner._graph_memory_enabled.pop(simulation_id, None)
+        except Exception:
+            pass
+        
+        # 5. 清除 Runner 的内存状态与引用（包括 world state engine / action buffer）
+        try:
+            SimulationRunner._run_states.pop(simulation_id, None)
+            SimulationRunner._processes.pop(simulation_id, None)
+            SimulationRunner._monitor_threads.pop(simulation_id, None)
+            SimulationRunner._action_queues.pop(simulation_id, None) if hasattr(SimulationRunner, '_action_queues') else None
+            SimulationRunner._world_state_engines.pop(simulation_id, None)
+            SimulationRunner._round_action_buffers.pop(simulation_id, None)
+        except Exception:
+            pass
+        
+        # 6. 解除项目与该模拟的关联
+        try:
+            from ..models.project import ProjectManager
+            state = self._load_simulation_state(simulation_id)
+            if state and state.project_id:
+                project = ProjectManager.get_project(state.project_id)
+                if project and project.simulation_id == simulation_id:
+                    project.simulation_id = None
+                    ProjectManager.save_project(project)
+                    logger.info(f"已解除项目 {state.project_id} 与模拟 {simulation_id} 的关联")
+        except Exception as e:
+            logger.warning(f"清理项目关联失败（忽略）: {e}")
+        
+        # 7. 清除 Manager 的内存缓存
+        self._simulations.pop(simulation_id, None)
+        
+        # 8. 【关键】先删 state.json：使模拟立即从 list_simulations 消失
+        #    即便后面 rmtree 因文件占用而失败，用户 UX 层面也是"已删除"
+        state_file = os.path.join(sim_dir, "state.json")
+        state_json_removed = False
+        try:
+            if os.path.exists(state_file):
+                os.remove(state_file)
+                state_json_removed = True
+                logger.info(f"已删除 state.json: {state_file}")
+        except Exception as e:
+            logger.warning(f"删除 state.json 失败: {e}")
+        
+        # 9. 尝试删除整个目录（Windows 文件占用时重试几次，允许部分失败）
+        def _on_rm_error(func, path, exc_info):
+            try:
+                os.chmod(path, 0o777)
+                func(path)
+            except Exception:
+                pass
+        
+        # 轻度 gc 促使未引用的文件对象被关闭
+        try:
+            import gc
+            gc.collect()
+        except Exception:
+            pass
+        
+        last_err = None
+        for attempt in range(5):
+            try:
+                shutil.rmtree(sim_dir, onerror=_on_rm_error)
+                if not os.path.exists(sim_dir):
+                    logger.info(f"已删除模拟目录: {sim_dir}")
+                    return True
+            except Exception as e:
+                last_err = e
+                logger.warning(f"rmtree 第{attempt+1}次失败: {e}")
+            time.sleep(0.5 * (attempt + 1))
+        
+        # 10. 最后兜底：rmtree 失败时忽略错误删一次，尽量清空可删的文件
+        try:
+            shutil.rmtree(sim_dir, ignore_errors=True)
+        except Exception:
+            pass
+        
+        if not os.path.exists(sim_dir):
+            logger.info(f"已删除模拟目录（忽略错误兜底）: {sim_dir}")
+            return True
+        
+        # state.json 已删 → 列表层面已不可见，视为成功；残留文件用户可手动清理
+        if state_json_removed:
+            remaining = []
+            try:
+                for root, dirs, files in os.walk(sim_dir):
+                    for name in files:
+                        remaining.append(os.path.join(root, name))
+                        if len(remaining) >= 10:
+                            break
+                    if len(remaining) >= 10:
+                        break
+            except Exception:
+                pass
+            logger.warning(
+                f"模拟目录部分残留（state.json 已删，列表不再显示此记录）: {sim_dir}, "
+                f"残留文件示例: {remaining}, 最后错误: {last_err}"
+            )
+            return True
+        
+        logger.error(f"删除模拟目录最终失败: {sim_dir}, 最后错误: {last_err}")
+        return False
     
     def list_simulations(self, project_id: Optional[str] = None) -> List[SimulationState]:
         """列出所有模拟"""

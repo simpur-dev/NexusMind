@@ -33,6 +33,14 @@ export const getSimulation = (simulationId) => {
 }
 
 /**
+ * 删除模拟（停止进程 + 删除数据目录）
+ * @param {string} simulationId
+ */
+export const deleteSimulation = (simulationId) => {
+  return service.delete(`/api/simulation/${simulationId}`)
+}
+
+/**
  * 获取模拟的 Agent Profiles
  * @param {string} simulationId
  * @param {string} platform - 'reddit' | 'twitter'
@@ -105,10 +113,7 @@ export const getRunStatus = (simulationId) => {
  * @param {string} simulationId
  */
 export const getRunStatusDetail = (simulationId) => {
-  return request({
-    url: `/api/simulation/${simulationId}/run-status/detail`,
-    method: 'get'
-  })
+  return service.get(`/api/simulation/${simulationId}/run-status/detail`)
 }
 
 /**
@@ -117,11 +122,7 @@ export const getRunStatusDetail = (simulationId) => {
  * @param {Object} params
  */
 export const getWorldState = (simulationId, params = {}) => {
-  return request({
-    url: `/api/simulation/${simulationId}/world-state`,
-    method: 'get',
-    params
-  })
+  return service.get(`/api/simulation/${simulationId}/world-state`, { params })
 }
 
 /**
@@ -130,11 +131,7 @@ export const getWorldState = (simulationId, params = {}) => {
  * @param {Object} params
  */
 export const getWorldEvents = (simulationId, params = {}) => {
-  return request({
-    url: `/api/simulation/${simulationId}/events`,
-    method: 'get',
-    params
-  })
+  return service.get(`/api/simulation/${simulationId}/events`, { params })
 }
 
 /**
@@ -143,11 +140,7 @@ export const getWorldEvents = (simulationId, params = {}) => {
  * @param {Object} params
  */
 export const getCausalGraph = (simulationId, params = {}) => {
-  return request({
-    url: `/api/simulation/${simulationId}/causal-graph`,
-    method: 'get',
-    params
-  })
+  return service.get(`/api/simulation/${simulationId}/causal-graph`, { params })
 }
 
 /**

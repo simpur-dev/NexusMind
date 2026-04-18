@@ -621,6 +621,7 @@ def build_world_state_prompt(
     # v5: 移除固定收尾句，防止自身成为模板源
     return "\n".join(parts) + "\n"
 _current_world_state_data: Optional[Dict[str, Any]] = None  # 原始世界状态数据（用于差异化渲染）
+_current_world_state_prompt: Optional[str] = None           # 兼容回退：全局统一 prompt（避免 R0 时 NameError）
 _prev_world_state_data: Optional[Dict[str, Any]] = None     # v3: 上一轮状态（用于趋势检测）
 _prev2_world_state_data: Optional[Dict[str, Any]] = None    # v5: 前两轮状态（用于二阶趋势确认）
 _world_model_enabled: bool = True  # 可通过 --no-world-model 禁用
@@ -1711,10 +1712,7 @@ async def run_twitter_simulation(
     event_config = config.get("event_config", {})
     initial_posts = event_config.get("initial_posts", [])
     
-    # 记录 round 0 开始（初始事件阶段）
-    if action_logger:
-        action_logger.log_round_start(0, 0)  # round 0, simulated_hour 0
-    
+    # 初始事件阶段（不计入正式轮次，避免 max_rounds=N 时实际跑 N+1 轮）
     initial_action_count = 0
     if initial_posts:
         initial_actions = {}
@@ -1745,9 +1743,8 @@ async def run_twitter_simulation(
             await result.env.step(initial_actions)
             log_info(f"已发布 {len(initial_actions)} 条初始帖子")
     
-    # 记录 round 0 结束
-    if action_logger:
-        action_logger.log_round_end(0, initial_action_count)
+    if initial_action_count > 0:
+        log_info(f"初始事件阶段完成: {initial_action_count} 个动作（不计入轮次）")
     
     # 主模拟循环
     time_config = config.get("time_config", {})
@@ -1919,10 +1916,7 @@ async def run_reddit_simulation(
     event_config = config.get("event_config", {})
     initial_posts = event_config.get("initial_posts", [])
     
-    # 记录 round 0 开始（初始事件阶段）
-    if action_logger:
-        action_logger.log_round_start(0, 0)  # round 0, simulated_hour 0
-    
+    # 初始事件阶段（不计入正式轮次，避免 max_rounds=N 时实际跑 N+1 轮）
     initial_action_count = 0
     if initial_posts:
         initial_actions = {}
@@ -1961,9 +1955,8 @@ async def run_reddit_simulation(
             await result.env.step(initial_actions)
             log_info(f"已发布 {len(initial_actions)} 条初始帖子")
     
-    # 记录 round 0 结束
-    if action_logger:
-        action_logger.log_round_end(0, initial_action_count)
+    if initial_action_count > 0:
+        log_info(f"初始事件阶段完成: {initial_action_count} 个动作（不计入轮次）")
     
     # 主模拟循环
     time_config = config.get("time_config", {})

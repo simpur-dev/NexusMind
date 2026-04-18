@@ -331,18 +331,18 @@
               :key="idx"
               class="step-dot-wrap"
               :title="name"
-              @click="currentStep > idx + 1 && (currentStep = idx + 1)"
-              :style="{ cursor: currentStep > idx + 1 ? 'pointer' : 'default' }"
+              @click="maxReachedStep >= idx + 1 && currentStep !== idx + 1 && (currentStep = idx + 1)"
+              :style="{ cursor: maxReachedStep >= idx + 1 && currentStep !== idx + 1 ? 'pointer' : 'default' }"
             >
               <div
                 class="step-dot"
                 :class="{
                   active: currentStep === idx + 1,
-                  completed: currentStep > idx + 1,
-                  pending: currentStep < idx + 1
+                  completed: maxReachedStep > idx + 1 && currentStep !== idx + 1,
+                  pending: maxReachedStep < idx + 1
                 }"
               >
-                <span v-if="currentStep > idx + 1" class="dot-check">✓</span>
+                <span v-if="maxReachedStep > idx + 1 && currentStep !== idx + 1" class="dot-check">✓</span>
                 <span v-else class="dot-num">{{ idx + 1 }}</span>
               </div>
               <span class="step-dot-label">{{ name }}</span>
@@ -405,6 +405,7 @@
                 v-else-if="currentStep === 3"
                 :simulationId="currentSimulationId"
                 :maxRounds="maxRounds"
+                :freshStart="pendingFreshStart"
                 :projectData="projectData"
                 :graphData="graphData"
                 :systemLogs="systemLogs"
@@ -412,6 +413,7 @@
                 @next-step="handleNextStep"
                 @add-log="addLog"
                 @update-status="updateStatus"
+                @fresh-start-consumed="pendingFreshStart = false"
               />
               <Step4Report
                 v-else-if="currentStep === 4"
@@ -474,10 +476,12 @@ const isFullScreen = ref(false)
 
 // Step 导航状态
 const currentStep = ref(1) // 1: 图谱构建, 2: 环境搭建, 3: 开始模拟, 4: 报告生成, 5: 深度互动
-const stepNames = ['图谱构建', '环境搭建', '开始模拟', '报告生成', '深度互动']
+const maxReachedStep = ref(1) // 已到达过的最高步骤，允许在已访问步骤间自由跳转
+const stepNames = ['图谱构建', '环境搭建', '世界模型推演', '报告生成', '深度互动']
 const currentSimulationId = ref(null)
 const currentReportId = ref(null)
 const maxRounds = ref(null) // 从 Step2 传入的模拟轮数配置
+const pendingFreshStart = ref(false) // Step2 点击"开始推演"时置 true，让 Step3 跳过 resume 直接启动
 const systemLogs = ref([])
 
 // DOM引用
@@ -687,17 +691,42 @@ const updateStatus = (s) => {
   // status reflected in statusClass/statusText
 }
 
+// 把 currentStep 同步到 URL ?step=N，这样浏览器前进/后退可以切 Step
+// isSyncingFromRoute 防止"路由变化 → 改 step → 又去改路由"的死循环
+let isSyncingFromRoute = false
+let isInitialStepSync = true
+const pushStepToRoute = (step) => {
+  if (isSyncingFromRoute) return
+  if (Number(route.query.step) === step) return
+  const navigate = isInitialStepSync ? router.replace : router.push
+  navigate.call(router, {
+    name: 'Process',
+    params: { projectId: route.params.projectId },
+    query: { ...route.query, step: String(step) }
+  })
+  isInitialStepSync = false
+}
+
 const handleNextStep = (params = {}) => {
-  // Step2 passes maxRounds
+  // Step2 passes maxRounds —— 始终更新，防止上一次的旧值残留
   if (params.maxRounds) {
     maxRounds.value = params.maxRounds
+    // 从 Step2 点"开始推演"进入 Step3 时，标记需要全新启动
+    if (currentStep.value === 2) {
+      pendingFreshStart.value = true
+    }
     addLog(`配置模拟轮数: ${params.maxRounds} 轮`)
+  } else {
+    maxRounds.value = null
   }
   if (params.reportId) {
     currentReportId.value = params.reportId
   }
   if (currentStep.value < 5) {
     currentStep.value++
+    if (currentStep.value > maxReachedStep.value) {
+      maxReachedStep.value = currentStep.value
+    }
     addLog(`进入 ${stepNames[currentStep.value - 1]} (Step ${currentStep.value}/5)`)
   }
 }
@@ -719,9 +748,31 @@ const handleGoBackTo = (step) => {
 const handleSimulationCreated = ({ simulationId }) => {
   currentSimulationId.value = simulationId
   currentStep.value = 2
+  if (2 > maxReachedStep.value) maxReachedStep.value = 2
   addLog(`模拟实例已创建: ${simulationId}`)
   addLog(`进入 ${stepNames[1]} (Step 2/5)`)
 }
+
+// 兜底：任何 currentStep 变更（包括初始化/加载项目）都同步到 URL
+// 首次会通过 router.replace 写入 ?step=N（不产生历史），后续是 push（产生历史）
+watch(currentStep, (newStep) => {
+  if (!newStep) return
+  pushStepToRoute(newStep)
+})
+
+// 监听 URL ?step=N 变化（浏览器后退/前进），同步 currentStep
+watch(() => route.query.step, (newStep) => {
+  if (!newStep) return
+  const target = Number(newStep)
+  if (!Number.isInteger(target) || target < 1 || target > 5) return
+  // 只允许跳到已到达过的 step，防止通过 URL 非法越级
+  if (target > maxReachedStep.value) return
+  if (target === currentStep.value) return
+  isSyncingFromRoute = true
+  currentStep.value = target
+  addLog(`浏览器导航：切换到 ${stepNames[target - 1]} (Step ${target}/5)`)
+  nextTick(() => { isSyncingFromRoute = false })
+})
 
 const toggleFullScreen = () => {
   isFullScreen.value = !isFullScreen.value
@@ -871,14 +922,20 @@ const loadProject = async () => {
       if (response.data.report_id) {
         // 报告已生成，恢复到 Step 4
         currentStep.value = 4
+        maxReachedStep.value = 4
         currentSimulationId.value = response.data.simulation_id
         currentReportId.value = response.data.report_id
         addLog(`从历史记录恢复项目，已在 Step 4 (报告生成)`)
       } else if (response.data.simulation_id) {
-        // 模拟已创建，恢复到 Step 2
-        currentStep.value = 2
+        // 模拟已创建，恢复到 Step 2（环境搭建会自动检查是否已准备完成）
         currentSimulationId.value = response.data.simulation_id
-        addLog(`从历史记录恢复项目，已在 Step 2 (环境搭建)`)
+        currentStep.value = 2
+        maxReachedStep.value = 3
+        if (response.data.graph_id) {
+          currentPhase.value = 2
+          await loadGraph(response.data.graph_id)
+        }
+        addLog(`从历史记录恢复项目，模拟ID: ${response.data.simulation_id}`)
       } else if (response.data.status === 'graph_completed' && response.data.graph_id) {
         // 图谱构建完成，默认在 Step 1
         currentPhase.value = 2
@@ -2401,6 +2458,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0;
+  flex: 1;
 }
 
 .step-dot-wrap {
@@ -2409,6 +2467,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
   position: relative;
+  flex: 1;
+  min-width: 64px;
 }
 
 .step-dot-wrap:not(:last-child)::after {

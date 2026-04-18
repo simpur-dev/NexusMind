@@ -222,6 +222,7 @@ class SimulationRunner:
     _processes: Dict[str, subprocess.Popen] = {}
     _action_queues: Dict[str, Queue] = {}
     _monitor_threads: Dict[str, threading.Thread] = {}
+    _state_epochs: Dict[str, int] = {}  # 启动纪元，防止旧监控线程覆盖新 state
     _stdout_files: Dict[str, Any] = {}  # 存储 stdout 文件句柄
     _stderr_files: Dict[str, Any] = {}  # 存储 stderr 文件句柄
     
@@ -231,17 +232,176 @@ class SimulationRunner:
     # 世界状态引擎（World State Engine）
     _world_state_engines: Dict[str, WorldStateEngine] = {}
     _round_action_buffers: Dict[str, List[Dict[str, Any]]] = {}  # simulation_id -> current round actions
-    
+
+    @classmethod
+    def reattach_running_simulations(cls) -> Dict[str, int]:
+        """Flask 启动时扫盘并接管孤儿子进程。
+
+        对每个 runner_status=running 的 sim：
+        - PID 活着 → 拉起 pid_only 监控线程，继续读动作日志 / 更新世界状态
+        - PID 死了 → 持久化为 failed，避免前端一直显示"running 假象"
+
+        返回：{"reattached": N, "marked_failed": M, "scanned": S}
+        """
+        stats = {"reattached": 0, "marked_failed": 0, "scanned": 0}
+        if not os.path.isdir(cls.RUN_STATE_DIR):
+            return stats
+
+        for name in sorted(os.listdir(cls.RUN_STATE_DIR)):
+            sim_dir = os.path.join(cls.RUN_STATE_DIR, name)
+            state_file = os.path.join(sim_dir, "run_state.json")
+            if not os.path.isfile(state_file):
+                continue
+            if name in cls._monitor_threads and cls._monitor_threads[name].is_alive():
+                continue  # 已有监控线程
+            stats["scanned"] += 1
+
+            try:
+                state = cls.get_run_state(name)
+                if not state or state.runner_status != RunnerStatus.RUNNING:
+                    continue
+
+                pid = state.process_pid
+                if cls._pid_alive(pid):
+                    # 1) 恢复世界状态引擎（内存缓存）
+                    cls.get_or_restore_world_state_engine(name)
+                    cls._round_action_buffers.setdefault(name, [])
+
+                    # 2) 从当前 jsonl 文件末尾开始读，避免重复累积 counts
+                    tw_log = os.path.join(sim_dir, "twitter", "actions.jsonl")
+                    rd_log = os.path.join(sim_dir, "reddit", "actions.jsonl")
+                    tw_pos = os.path.getsize(tw_log) if os.path.exists(tw_log) else 0
+                    rd_pos = os.path.getsize(rd_log) if os.path.exists(rd_log) else 0
+
+                    # 3) 启动 pid_only 监控线程
+                    t = threading.Thread(
+                        target=cls._monitor_simulation,
+                        args=(name,),
+                        kwargs={
+                            "pid_only": True,
+                            "pid": pid,
+                            "start_twitter_position": tw_pos,
+                            "start_reddit_position": rd_pos,
+                        },
+                        daemon=True,
+                    )
+                    t.start()
+                    cls._monitor_threads[name] = t
+                    stats["reattached"] += 1
+                    logger.info(
+                        f"reattach: sim={name} pid={pid} 重新接管 "
+                        f"(tw_pos={tw_pos}, rd_pos={rd_pos})"
+                    )
+                else:
+                    state.runner_status = RunnerStatus.FAILED
+                    state.error = state.error or "Flask 重启时子进程已退出"
+                    state.twitter_running = False
+                    state.reddit_running = False
+                    state.completed_at = state.completed_at or datetime.now().isoformat()
+                    cls._save_run_state(state)
+                    stats["marked_failed"] += 1
+                    logger.warning(
+                        f"reattach: sim={name} pid={pid} 已失活 → failed"
+                    )
+            except Exception as e:
+                logger.warning(f"reattach 扫描失败 sim={name}: {e}")
+
+        if stats["reattached"] or stats["marked_failed"]:
+            logger.info(
+                f"reattach 完成：接管 {stats['reattached']} 个，"
+                f"标记失败 {stats['marked_failed']} 个，共扫描 {stats['scanned']} 个"
+            )
+        return stats
+
+    @classmethod
+    def get_or_restore_world_state_engine(cls, simulation_id: str) -> Optional[WorldStateEngine]:
+        """获取内存中的世界状态引擎；未命中时尝试从磁盘重建只读副本。
+
+        解决 Flask 进程重启后 _world_state_engines 丢失导致 world_state API 返回
+        空数据的问题。WorldStateEngine.__init__ 已实现 _load_history()，可直接从
+        world_state_history.jsonl / events.jsonl 恢复历史快照与事件。
+        """
+        engine = cls._world_state_engines.get(simulation_id)
+        if engine is not None:
+            return engine
+
+        sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
+        history_path = os.path.join(sim_dir, "world_state_history.jsonl")
+        if not os.path.exists(history_path):
+            return None
+
+        try:
+            # use_llm=False：只读重建，不触发任何 LLM 调用
+            engine = WorldStateEngine(sim_dir=sim_dir, use_llm=False)
+            if not engine.state_history:
+                return None
+            cls._world_state_engines[simulation_id] = engine
+            logger.info(
+                f"从磁盘恢复世界状态引擎: simulation_id={simulation_id}, "
+                f"history={len(engine.state_history)}, events={len(engine.events)}"
+            )
+            return engine
+        except Exception as e:
+            logger.warning(f"恢复世界状态引擎失败 simulation_id={simulation_id}: {e}")
+            return None
+
     @classmethod
     def get_run_state(cls, simulation_id: str) -> Optional[SimulationRunState]:
-        """获取运行状态"""
+        """获取运行状态（含活性检查）
+
+        当持久化状态为 running/starting 但实际进程已死亡且无活跃监控线程时，
+        自动修正为 stopped，避免前端永远显示"运行中"的假象。
+        """
         if simulation_id in cls._run_states:
-            return cls._run_states[simulation_id]
-        
-        # 尝试从文件加载
-        state = cls._load_run_state(simulation_id)
+            state = cls._run_states[simulation_id]
+        else:
+            # 尝试从文件加载
+            state = cls._load_run_state(simulation_id)
+            if state:
+                cls._run_states[simulation_id] = state
+
         if state:
-            cls._run_states[simulation_id] = state
+            state = cls._rectify_stale_running(state)
+        return state
+
+    @classmethod
+    def _rectify_stale_running(cls, state: SimulationRunState) -> SimulationRunState:
+        """检测并修正"状态为 running 但进程已死"的情况。
+
+        检查条件（全部满足才修正）：
+        1. runner_status 是 RUNNING 或 STARTING
+        2. 没有活跃的 Popen 句柄（Flask 未重启时正常启动的进程）
+        3. 没有存活的监控线程
+        4. PID 不再存活
+        """
+        if state.runner_status not in (RunnerStatus.RUNNING, RunnerStatus.STARTING):
+            return state
+
+        # 如果 Flask 进程内仍持有 Popen 且进程还活着，一切正常
+        proc = cls._processes.get(state.simulation_id)
+        if proc is not None and proc.poll() is None:
+            return state
+
+        # 如果监控线程还活着，它会负责善后
+        mon = cls._monitor_threads.get(state.simulation_id)
+        if mon is not None and mon.is_alive():
+            return state
+
+        # 最后通过 PID 探活兜底
+        if cls._pid_alive(state.process_pid):
+            return state
+
+        # ---- 进程确实死了，修正状态 ----
+        logger.warning(
+            f"检测到模拟 {state.simulation_id} (pid={state.process_pid}) "
+            f"状态为 {state.runner_status.value} 但进程已不存在，修正为 stopped"
+        )
+        state.runner_status = RunnerStatus.STOPPED
+        state.error = state.error or "后端进程已退出（可能因崩溃、内存不足或服务重启）"
+        state.twitter_running = False
+        state.reddit_running = False
+        state.completed_at = state.completed_at or datetime.now().isoformat()
+        cls._save_run_state(state)
         return state
     
     @classmethod
@@ -341,6 +501,15 @@ class SimulationRunner:
         if existing and existing.runner_status in [RunnerStatus.RUNNING, RunnerStatus.STARTING]:
             raise ValueError(f"模拟已在运行中: {simulation_id}")
         
+        # 等待旧监控线程退出，防止其最终保存覆盖新 run_state
+        old_thread = cls._monitor_threads.get(simulation_id)
+        if old_thread and old_thread.is_alive():
+            logger.info(f"等待旧监控线程退出: {simulation_id}")
+            old_thread.join(timeout=10)
+            if old_thread.is_alive():
+                logger.warning(f"旧监控线程未能在 10s 内退出: {simulation_id}")
+        cls._monitor_threads.pop(simulation_id, None)
+        
         # 加载模拟配置
         sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
         config_path = os.path.join(sim_dir, "simulation_config.json")
@@ -371,6 +540,9 @@ class SimulationRunner:
             total_simulation_hours=total_hours,
             started_at=datetime.now().isoformat(),
         )
+        
+        # 递增纪元，旧监控线程保存时会检测到纪元不匹配而跳过
+        cls._state_epochs[simulation_id] = cls._state_epochs.get(simulation_id, 0) + 1
         
         cls._save_run_state(state)
         
@@ -490,25 +662,86 @@ class SimulationRunner:
         return state
     
     @classmethod
-    def _monitor_simulation(cls, simulation_id: str):
-        """监控模拟进程，解析动作日志"""
+    def _pid_alive(cls, pid: Optional[int]) -> bool:
+        """跨平台轻量 PID 探活（Windows / Unix）。用于 Flask 重启后判断
+        之前的子进程是否还活着。
+        """
+        if not pid:
+            return False
+        try:
+            if sys.platform == "win32":
+                import ctypes
+                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+                STILL_ACTIVE = 259
+                h = ctypes.windll.kernel32.OpenProcess(
+                    PROCESS_QUERY_LIMITED_INFORMATION, False, pid
+                )
+                if not h:
+                    return False
+                try:
+                    code = ctypes.c_ulong(0)
+                    if not ctypes.windll.kernel32.GetExitCodeProcess(
+                        h, ctypes.byref(code)
+                    ):
+                        return False
+                    return code.value == STILL_ACTIVE
+                finally:
+                    ctypes.windll.kernel32.CloseHandle(h)
+            else:
+                os.kill(pid, 0)
+                return True
+        except Exception:
+            return False
+
+    @classmethod
+    def _monitor_simulation(
+        cls,
+        simulation_id: str,
+        *,
+        pid_only: bool = False,
+        pid: Optional[int] = None,
+        start_twitter_position: int = 0,
+        start_reddit_position: int = 0,
+    ):
+        """监控模拟进程，解析动作日志。
+
+        - 默认（pid_only=False）使用 Popen.poll()：适用于新启动的子进程
+        - pid_only=True：用 PID 探活循环，适用于 Flask 重启后接管孤儿子进程
+        """
         sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
-        
+
         # 新的日志结构：分平台的动作日志
         twitter_actions_log = os.path.join(sim_dir, "twitter", "actions.jsonl")
         reddit_actions_log = os.path.join(sim_dir, "reddit", "actions.jsonl")
-        
-        process = cls._processes.get(simulation_id)
+
         state = cls.get_run_state(simulation_id)
-        
-        if not process or not state:
+        if not state:
             return
-        
-        twitter_position = 0
-        reddit_position = 0
-        
+
+        # 记录启动时的纪元，用于保存前检测是否已被新启动替代
+        my_epoch = cls._state_epochs.get(simulation_id, 0)
+
+        process = None if pid_only else cls._processes.get(simulation_id)
+        if not pid_only and not process:
+            return
+
+        def _alive() -> bool:
+            if pid_only:
+                return cls._pid_alive(pid)
+            return process.poll() is None
+
+        twitter_position = start_twitter_position
+        reddit_position = start_reddit_position
+
+        def _epoch_stale() -> bool:
+            """检查纪元是否已过期（新启动已替代本线程）"""
+            return cls._state_epochs.get(simulation_id, 0) != my_epoch
+
         try:
-            while process.poll() is None:  # 进程仍在运行
+            while _alive():  # 进程仍在运行
+                if _epoch_stale():
+                    logger.info(f"监控线程检测到纪元过期，退出: {simulation_id}")
+                    return
                 # 读取 Twitter 动作日志
                 if os.path.exists(twitter_actions_log):
                     twitter_position = cls._read_action_log(
@@ -522,45 +755,62 @@ class SimulationRunner:
                     )
                 
                 # 更新状态
-                cls._save_run_state(state)
+                if not _epoch_stale():
+                    cls._save_run_state(state)
                 time.sleep(2)
             
+            # 纪元过期则不做最终保存
+            if _epoch_stale():
+                logger.info(f"监控线程纪元过期，跳过最终保存: {simulation_id}")
+                return
+
             # 进程结束后，最后读取一次日志
             if os.path.exists(twitter_actions_log):
                 cls._read_action_log(twitter_actions_log, twitter_position, state, "twitter")
             if os.path.exists(reddit_actions_log):
                 cls._read_action_log(reddit_actions_log, reddit_position, state, "reddit")
             
-            # 进程结束
-            exit_code = process.returncode
-            
-            if exit_code == 0:
-                state.runner_status = RunnerStatus.COMPLETED
-                state.completed_at = datetime.now().isoformat()
-                logger.info(f"模拟完成: {simulation_id}")
+            # 进程结束 —— pid_only 模式拿不到 returncode，用 simulation_end 事件判断
+            if pid_only:
+                if cls._check_all_platforms_completed(state):
+                    state.runner_status = RunnerStatus.COMPLETED
+                    state.completed_at = datetime.now().isoformat()
+                    logger.info(f"模拟完成（reattach 监测）: {simulation_id}")
+                else:
+                    state.runner_status = RunnerStatus.FAILED
+                    state.error = state.error or "子进程在 Flask 管理之外退出"
+                    logger.warning(f"模拟未完成即退出（reattach 监测）: {simulation_id}")
             else:
-                state.runner_status = RunnerStatus.FAILED
-                # 从主日志文件读取错误信息
-                main_log_path = os.path.join(sim_dir, "simulation.log")
-                error_info = ""
-                try:
-                    if os.path.exists(main_log_path):
-                        with open(main_log_path, 'r', encoding='utf-8') as f:
-                            error_info = f.read()[-2000:]  # 取最后2000字符
-                except Exception:
-                    pass
-                state.error = f"进程退出码: {exit_code}, 错误: {error_info}"
-                logger.error(f"模拟失败: {simulation_id}, error={state.error}")
+                exit_code = process.returncode
+                if exit_code == 0:
+                    state.runner_status = RunnerStatus.COMPLETED
+                    state.completed_at = datetime.now().isoformat()
+                    logger.info(f"模拟完成: {simulation_id}")
+                else:
+                    state.runner_status = RunnerStatus.FAILED
+                    # 从主日志文件读取错误信息
+                    main_log_path = os.path.join(sim_dir, "simulation.log")
+                    error_info = ""
+                    try:
+                        if os.path.exists(main_log_path):
+                            with open(main_log_path, 'r', encoding='utf-8') as f:
+                                error_info = f.read()[-2000:]  # 取最后2000字符
+                    except Exception:
+                        pass
+                    state.error = f"进程退出码: {exit_code}, 错误: {error_info}"
+                    logger.error(f"模拟失败: {simulation_id}, error={state.error}")
             
             state.twitter_running = False
             state.reddit_running = False
-            cls._save_run_state(state)
+            if not _epoch_stale():
+                cls._save_run_state(state)
             
         except Exception as e:
             logger.error(f"监控线程异常: {simulation_id}, error={str(e)}")
-            state.runner_status = RunnerStatus.FAILED
-            state.error = str(e)
-            cls._save_run_state(state)
+            if not _epoch_stale():
+                state.runner_status = RunnerStatus.FAILED
+                state.error = str(e)
+                cls._save_run_state(state)
         
         finally:
             # 停止图谱记忆更新器

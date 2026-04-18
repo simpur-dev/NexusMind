@@ -45,6 +45,19 @@ def get_project(project_id: str):
             "error": f"项目不存在: {project_id}"
         }), 404
     
+    # 兼容旧数据：如果项目没有 simulation_id，尝试从模拟目录中查找
+    if not project.simulation_id:
+        try:
+            from ..services.simulation_manager import SimulationManager
+            mgr = SimulationManager()
+            existing_sim = mgr._find_simulation_by_project(project_id)
+            if existing_sim:
+                project.simulation_id = existing_sim.simulation_id
+                ProjectManager.save_project(project)
+                logger.info(f"自动补全 simulation_id={existing_sim.simulation_id} -> 项目 {project_id}")
+        except Exception as e:
+            logger.debug(f"查找模拟失败: {e}")
+    
     return jsonify({
         "success": True,
         "data": project.to_dict()

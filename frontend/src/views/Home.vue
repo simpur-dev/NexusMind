@@ -185,21 +185,21 @@
                 <span class="step-num">02</span>
                 <div class="step-info">
                   <div class="step-title">环境搭建</div>
-                  <div class="step-desc">抽取实体关联关系，生成智能体设定，完成环境配置与仿真参数部署</div>
+                  <div class="step-desc">抽取实体关联关系，生成含内部目标与价值权重的智能体设定，完成环境配置与仿真参数部署</div>
                 </div>
               </div>
               <div class="workflow-item">
                 <span class="step-num">03</span>
                 <div class="step-info">
-                  <div class="step-title">开始模拟</div>
-                  <div class="step-desc">双平台并行启动仿真，自动解析预测任务，动态更新时序化交互记忆</div>
+                  <div class="step-title">世界模型推演</div>
+                  <div class="step-desc">双平台并行启动仿真。世界状态每轮写回每个 Agent 的 prompt，使其感知讨论演化、自主决策</div>
                 </div>
               </div>
               <div class="workflow-item">
                 <span class="step-num">04</span>
                 <div class="step-info">
                   <div class="step-title">报告生成</div>
-                  <div class="step-desc">ReportAgent与仿真后环境深度交互，自动生成专业预测报告</div>
+                  <div class="step-desc">ReportAgent 融合世界状态轨迹与因果图谱，自动生成可解释的专业预测报告</div>
                 </div>
               </div>
               <div class="workflow-item">
@@ -649,7 +649,7 @@ const startSimulation = () => {
   width: 340px;
   height: 340px;
   background: radial-gradient(circle, rgba(115, 168, 185, 0.2), transparent 70%);
-  filter: blur(10px);
+  filter: blur(6px);
 }
 
 .hero-panel-top {
@@ -1011,7 +1011,7 @@ const startSimulation = () => {
   position: absolute;
   inset: 12% 16%;
   background: radial-gradient(circle, rgba(115, 168, 185, 0.3), rgba(115, 168, 185, 0.14) 34%, transparent 70%);
-  filter: blur(16px);
+  filter: blur(10px);
 }
 
 .orbit-ring {
@@ -1041,13 +1041,20 @@ const startSimulation = () => {
   transform: rotate(-8deg);
 }
 
+.logo-container {
+  contain: layout paint;
+}
+
 .hero-logo {
   max-width: 100%;
   width: min(100%, 590px);
   position: relative;
   z-index: 1;
-  filter: drop-shadow(0 0 40px rgba(115, 168, 185, 0.25)) drop-shadow(0 0 70px rgba(115, 168, 185, 0.22));
+  /* perf: 单层 drop-shadow，避免双重滤镜与动画叠加造成的帧重绘 */
+  filter: drop-shadow(0 0 28px rgba(115, 168, 185, 0.28));
   animation: logo-float 7s ease-in-out infinite;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 @keyframes logo-float {
@@ -1581,6 +1588,11 @@ const startSimulation = () => {
 }
 
 .start-engine-btn:not(:disabled) {
+  /* perf: 将 box-shadow 动画由 infinite 调为 hover 触发，同时提升合成层 */
+  will-change: box-shadow;
+}
+
+.start-engine-btn:not(:disabled):hover {
   animation: pulse-border 2s infinite;
 }
 
