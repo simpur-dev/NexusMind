@@ -394,19 +394,21 @@ class TestWorldStateIPC:
     def test_build_prompt_with_state(self):
         """状态显著偏离基线时应生成包含环境描述的 prompt"""
         ws_data = {
-            "state_summary_text": "当前环境状态（第5轮）：\n- 舆论关注度: 较高（0.65）",
-            "attention_level": 0.65,
-            "panic_level": 0.4,
-            "trust_level": 0.3,
-            "polarization_level": 0.3,
+            "attention_level": 0.8,
+            "panic_level": 0.6,
+            "trust_level": 0.2,
+            "polarization_level": 0.5,
             "recent_events": [
                 {"event_type": "heat_spike", "description": "舆论热度急升", "severity": 0.7}
             ],
         }
         prompt = build_world_state_prompt(ws_data)
-        assert "Background" in prompt
-        assert "舆论关注度" in prompt
-        assert "舆论热度急升" in prompt
+        # v7: 改用 RC/factual 措辞，header 池与维度描述都重写
+        assert any(h in prompt for h in ("当前讨论片段", "可观察的讨论切面", "讨论结构快照", "近期讨论要点"))
+        assert any(tok in prompt for tok in ("参与量", "担忧", "质疑", "核验", "解读", "讨论"))
+        # v7: heat_spike 抽象 → "相关话题近期进入较高讨论量区间" / "讨论数量较前一阶段增加"
+        assert "近期动态" in prompt
+        assert any(tok in prompt for tok in ("讨论量", "讨论数量", "话题"))
 
     def test_build_prompt_empty_state(self):
         """无状态数据时应返回空字符串"""
@@ -454,7 +456,9 @@ class TestWorldStateIPC:
             ],
         }
         prompt = build_world_state_prompt(ws_data)
-        assert "信任骤降" in prompt
+        # v7: trust_drop → "针对先前说法的追问" / "核验性问题"
+        assert "近期动态" in prompt
+        assert any(tok in prompt for tok in ("追问", "核验", "先前说法", "解释"))
 
 
 # ============================================================
@@ -544,8 +548,11 @@ class TestDifferentiatedPerception:
             agent_role={"entity_type": "Citizen", "stance": "neutral"}
         )
         # severity=0.45 的事件：opposing 看得到，neutral 看不到
-        assert "信任崩塌" in prompt_opposing
-        assert "信任崩塌" not in prompt_neutral
+        # v7: trust_drop → "针对先前说法的追问正在增加" / "核验性问题"
+        assert any(tok in prompt_opposing for tok in ("追问", "核验", "先前说法", "解释"))
+        # neutral 阈值更高（0.5），这条 severity=0.45 事件不应出现在 neutral prompt
+        assert "追问正在增加" not in prompt_neutral
+        assert "核验性问题" not in prompt_neutral
 
     def test_supportive_sees_fewer_events(self):
         """supportive 立场（阈值 0.6）应过滤更多事件"""
@@ -554,21 +561,27 @@ class TestDifferentiatedPerception:
             agent_role={"entity_type": "Official", "stance": "supportive"}
         )
         # severity=0.55 的事件被过滤（阈值0.6）
-        assert "官方沉默引发猜测" not in prompt_supportive
-        # severity=0.7 的事件仍然可见
-        assert "热度急升" in prompt_supportive
+        # v4: 事件被抽象化，检查抽象文本而非原始描述
+        assert "官方沉默" not in prompt_supportive
+        # v7: heat_spike → "相关话题近期进入较高讨论量区间" / "讨论数量较前一阶段增加"
+        assert any(tok in prompt_supportive for tok in ("讨论量", "讨论数量", "话题"))
 
     def test_observer_sees_most_events(self):
-        """observer 立场（阈值 0.35）应看到几乎所有事件"""
+        """observer 立场（阈值 0.35）应看到更多事件"""
         prompt_observer = build_world_state_prompt(
             self.HIGH_DEVIATION_STATE,
             agent_role={"entity_type": "Media", "stance": "observer"}
         )
-        # severity=0.35 的事件可见
-        assert "小道消息流传" in prompt_observer
-        assert "热度急升" in prompt_observer
-        assert "信任崩塌" in prompt_observer
-        assert "官方沉默引发猜测" in prompt_observer
+        # v3: 高偏离时显示事件，最多2个
+        # v7: 事件被抽象化且变体扩大
+        assert "近期动态" in prompt_observer
+        assert any(tok in prompt_observer for tok in ("讨论量", "讨论数量", "话题", "讨论分支"))
+        # observer 应该看到比 neutral 更多事件
+        prompt_neutral = build_world_state_prompt(
+            self.HIGH_DEVIATION_STATE,
+            agent_role={"entity_type": "Citizen", "stance": "neutral"}
+        )
+        assert prompt_observer.count("近期动态") >= prompt_neutral.count("近期动态")
 
     def test_all_stances_filter_very_low_severity(self):
         """所有立场都不应看到 severity < 0.35 的事件"""
@@ -584,29 +597,35 @@ class TestDifferentiatedPerception:
 
     # --- 差异化感知提示测试 ---
 
-    def test_opposing_has_perspective_hint(self):
-        """opposing 应包含情感侧重提示"""
+    def test_opposing_sees_panic_signals(self):
+        """opposing 应侧重看到恐慌/极化信号（v3: 不再使用指令式 perspective_hint）"""
         prompt = build_world_state_prompt(
             self.HIGH_DEVIATION_STATE,
             agent_role={"entity_type": "Student", "stance": "opposing"}
         )
-        assert "不满" in prompt or "质疑" in prompt
+        # v7: opposing focus_dims=[panic_level, polarization_level]
+        # 新词汇：panic_level → "担忧"; polarization → "解读/立场"
+        assert any(tok in prompt for tok in ("担忧", "解读", "立场", "分歧"))
 
-    def test_supportive_has_perspective_hint(self):
-        """supportive 应包含理性/建设性提示"""
+    def test_supportive_sees_trust_signals(self):
+        """supportive 应侧重看到信任/稳定信号（v3: 不再使用指令式 perspective_hint）"""
         prompt = build_world_state_prompt(
             self.HIGH_DEVIATION_STATE,
             agent_role={"entity_type": "Official", "stance": "supportive"}
         )
-        assert "理性" in prompt or "建设性" in prompt
+        # v7: supportive focus_dims=[stability_level, trust_level]
+        # 新词汇：stability → "稳定/讨论节奏"; trust → "核验/质疑"
+        assert any(tok in prompt for tok in ("稳定", "节奏", "核验", "质疑", "信息来源"))
 
-    def test_observer_has_perspective_hint(self):
-        """observer 应包含旁观者/发酵提示"""
+    def test_observer_sees_attention_signals(self):
+        """observer 应侧重看到关注度/极化信号（v3: 不再使用指令式 perspective_hint）"""
         prompt = build_world_state_prompt(
             self.HIGH_DEVIATION_STATE,
             agent_role={"entity_type": "Media", "stance": "observer"}
         )
-        assert "旁观者" in prompt or "发酵" in prompt
+        # v7: observer focus_dims=[attention_level, polarization_level]
+        # 新词汇：attention → "参与量"; polarization → "解读/立场"
+        assert any(tok in prompt for tok in ("参与量", "解读", "立场", "分歧"))
 
     def test_neutral_has_no_perspective_hint(self):
         """neutral 不应包含额外感知提示"""

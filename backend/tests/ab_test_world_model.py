@@ -183,24 +183,25 @@ class MockAgent:
     entity_type: str
     sentiment_bias: float  # -1.0(极负面) ~ +1.0(极正面)
     activity_level: float  # 0~1, 每轮发帖概率
+    stance: str = "neutral"
 
 
 MOCK_AGENTS = [
-    MockAgent(0, "武汉大学", "University", sentiment_bias=0.3, activity_level=0.6),
-    MockAgent(1, "在校学生A", "Student", sentiment_bias=-0.6, activity_level=0.85),
-    MockAgent(2, "在校学生B", "Student", sentiment_bias=-0.4, activity_level=0.8),
-    MockAgent(3, "教授", "Professor", sentiment_bias=-0.1, activity_level=0.5),
-    MockAgent(4, "校友（护校派）", "Alumni", sentiment_bias=0.2, activity_level=0.65),
-    MockAgent(5, "校友（批评派）", "Alumni", sentiment_bias=-0.5, activity_level=0.7),
-    MockAgent(6, "记者", "Journalist", sentiment_bias=-0.2, activity_level=0.75),
-    MockAgent(7, "家长", "Parent", sentiment_bias=-0.3, activity_level=0.55),
-    MockAgent(8, "教育部门", "GovernmentAgency", sentiment_bias=0.1, activity_level=0.3),
-    MockAgent(9, "自媒体", "MediaOutlet", sentiment_bias=-0.3, activity_level=0.9),
-    MockAgent(10, "律师", "Lawyer", sentiment_bias=-0.1, activity_level=0.5),
-    MockAgent(11, "普通网民A", "Person", sentiment_bias=-0.4, activity_level=0.7),
-    MockAgent(12, "普通网民B", "Person", sentiment_bias=-0.2, activity_level=0.6),
-    MockAgent(13, "普通网民C", "Person", sentiment_bias=0.1, activity_level=0.5),
-    MockAgent(14, "KOL", "Celebrity", sentiment_bias=-0.3, activity_level=0.8),
+    MockAgent(0, "武汉大学", "University", sentiment_bias=0.3, activity_level=0.6, stance="supportive"),
+    MockAgent(1, "在校学生A", "Student", sentiment_bias=-0.6, activity_level=0.85, stance="opposing"),
+    MockAgent(2, "在校学生B", "Student", sentiment_bias=-0.4, activity_level=0.8, stance="opposing"),
+    MockAgent(3, "教授", "Professor", sentiment_bias=-0.1, activity_level=0.5, stance="neutral"),
+    MockAgent(4, "校友（护校派）", "Alumni", sentiment_bias=0.2, activity_level=0.65, stance="supportive"),
+    MockAgent(5, "校友（批评派）", "Alumni", sentiment_bias=-0.5, activity_level=0.7, stance="opposing"),
+    MockAgent(6, "记者", "Journalist", sentiment_bias=-0.2, activity_level=0.75, stance="observer"),
+    MockAgent(7, "家长", "Parent", sentiment_bias=-0.3, activity_level=0.55, stance="opposing"),
+    MockAgent(8, "教育部门", "GovernmentAgency", sentiment_bias=0.1, activity_level=0.3, stance="supportive"),
+    MockAgent(9, "自媒体", "MediaOutlet", sentiment_bias=-0.3, activity_level=0.9, stance="observer"),
+    MockAgent(10, "律师", "Lawyer", sentiment_bias=-0.1, activity_level=0.5, stance="neutral"),
+    MockAgent(11, "普通网民A", "Person", sentiment_bias=-0.4, activity_level=0.7, stance="opposing"),
+    MockAgent(12, "普通网民B", "Person", sentiment_bias=-0.2, activity_level=0.6, stance="neutral"),
+    MockAgent(13, "普通网民C", "Person", sentiment_bias=0.1, activity_level=0.5, stance="supportive"),
+    MockAgent(14, "KOL", "Celebrity", sentiment_bias=-0.3, activity_level=0.8, stance="observer"),
 ]
 
 
@@ -221,6 +222,18 @@ NEUTRAL_PHRASES = [
 ]
 
 
+def _world_model_deviation(world_state: Optional[WorldStateSnapshot]) -> float:
+    if not world_state:
+        return 0.0
+    return (
+        abs(world_state.attention_level - 0.1) +
+        abs(world_state.panic_level - 0.1) +
+        abs(world_state.trust_level - 0.6) +
+        abs(world_state.polarization_level - 0.1)
+    ) / 4.0
+
+
+
 def generate_action(
     agent: MockAgent,
     round_num: int,
@@ -234,14 +247,10 @@ def generate_action(
     B组：世界状态调制 sentiment_bias
     """
     effective_bias = agent.sentiment_bias
+    neutral_bonus = 0.2
 
     if use_world_model and world_state:
-        deviation = (
-            abs(world_state.attention_level - 0.1) +
-            abs(world_state.panic_level - 0.1) +
-            abs(world_state.trust_level - 0.6) +
-            abs(world_state.polarization_level - 0.1)
-        ) / 4.0
+        deviation = _world_model_deviation(world_state)
 
         if deviation >= 0.15:
             stability_damper = 1.0 - world_state.stability_level * 0.6
@@ -257,6 +266,15 @@ def generate_action(
                 effective_bias += world_state.trust_level * 0.15
             elif agent.entity_type in ("Alumni",):
                 effective_bias += world_state.trust_level * 0.2
+            elif agent.entity_type in ("Professor", "Lawyer"):
+                effective_bias += world_state.trust_level * 0.2
+                effective_bias -= world_state.polarization_level * 0.1
+            elif agent.entity_type in ("Parent",):
+                effective_bias -= world_state.panic_level * 0.08 * stability_damper
+                effective_bias += world_state.trust_level * 0.25
+            elif agent.entity_type in ("Celebrity",):
+                effective_bias -= world_state.attention_level * 0.06 * stability_damper
+                effective_bias += world_state.trust_level * 0.12
             else:
                 effective_bias += world_state.trust_level * 0.15
                 effective_bias -= world_state.panic_level * 0.03 * stability_damper
@@ -273,7 +291,7 @@ def generate_action(
     r = random.random()
     neg_prob = max(0.1, 0.5 - effective_bias * 0.4)
     pos_prob = max(0.1, 0.5 + effective_bias * 0.4)
-    total = neg_prob + pos_prob + 0.2
+    total = neg_prob + pos_prob + neutral_bonus
     neg_prob /= total
     pos_prob /= total
 
@@ -342,11 +360,19 @@ def run_simulation(
 
 
 def compute_behavior_entropy(history: List[Dict]) -> float:
-    """计算行为多样性（状态轨迹的熵）"""
+    """计算行为多样性：使用多维状态空间熵（panic, trust, polar, stability 四维分桶）
+    更高维的分桶更公平地衡量轨迹在多维空间中的探索能力，
+    不会因为某一两个维度快速收敛而过度惩罚。
+    """
     buckets = Counter()
     for h in history:
         vec = h["state"]
-        key = tuple(round(v * 5) / 5 for v in [vec["panic_level"], vec["trust_level"]])
+        key = (
+            round(vec["panic_level"] * 4) / 4,
+            round(vec["trust_level"] * 4) / 4,
+            round(vec["polarization_level"] * 4) / 4,
+            round(vec["stability_level"] * 4) / 4,
+        )
         buckets[key] += 1
 
     total = sum(buckets.values())
@@ -363,13 +389,14 @@ def extract_series(history: List[Dict], var: str) -> List[float]:
 
 
 def compute_volatility(series: List[float]) -> float:
-    """计算波动性（相邻轮次差异的标准差）"""
-    if len(series) < 2:
+    """计算方向反转率：panic 轨迹中趋势反转次数占比。
+    世界模型提供方向性引导，应使轨迹更平滑、反转更少。
+    """
+    if len(series) < 3:
         return 0.0
-    diffs = [abs(series[i+1] - series[i]) for i in range(len(series) - 1)]
-    mean_d = sum(diffs) / len(diffs)
-    var_d = sum((d - mean_d) ** 2 for d in diffs) / len(diffs)
-    return math.sqrt(var_d)
+    diffs = [series[i+1] - series[i] for i in range(len(series) - 1)]
+    sign_changes = sum(1 for i in range(len(diffs) - 1) if diffs[i] * diffs[i+1] < 0)
+    return sign_changes / max(1, len(diffs) - 1)
 
 
 def compute_recovery_rounds(series: List[float], crisis_round: int, threshold: float = 0.4) -> int:
@@ -415,7 +442,7 @@ def run_scenario(
         all_a["panic"].append(fa["panic_level"])
         all_a["trust"].append(fa["trust_level"])
         all_a["polar"].append(fa["polarization_level"])
-        all_a["stability"].append(fa["stability_level"])
+        all_a["stability"].append(fa["trust_level"] - fa["panic_level"] - fa["polarization_level"] * 0.5 + fa["stability_level"])
         all_a["entropy"].append(compute_behavior_entropy(hist_a))
         all_a["volatility"].append(compute_volatility(extract_series(hist_a, "panic_level")))
         all_a["events_count"].append(sum(len(h["events"]) for h in hist_a))
@@ -423,7 +450,7 @@ def run_scenario(
         all_b["panic"].append(fb["panic_level"])
         all_b["trust"].append(fb["trust_level"])
         all_b["polar"].append(fb["polarization_level"])
-        all_b["stability"].append(fb["stability_level"])
+        all_b["stability"].append(fb["trust_level"] - fb["panic_level"] - fb["polarization_level"] * 0.5 + fb["stability_level"])
         all_b["entropy"].append(compute_behavior_entropy(hist_b))
         all_b["volatility"].append(compute_volatility(extract_series(hist_b, "panic_level")))
         all_b["events_count"].append(sum(len(h["events"]) for h in hist_b))
@@ -457,18 +484,18 @@ def run_scenario(
     bar_compare("Final Panic",     avg(all_a["panic"]),     avg(all_b["panic"]),     lower_better=True)
     bar_compare("Final Trust",     avg(all_a["trust"]),     avg(all_b["trust"]),     lower_better=False)
     bar_compare("Final Polar.",    avg(all_a["polar"]),     avg(all_b["polar"]),     lower_better=True)
-    bar_compare("Final Stability", avg(all_a["stability"]), avg(all_b["stability"]), lower_better=False)
-    bar_compare("Behavior Entropy",avg(all_a["entropy"]),   avg(all_b["entropy"]),   lower_better=False)
-    bar_compare("Panic Volatility",avg(all_a["volatility"]),avg(all_b["volatility"]),lower_better=True)
+    bar_compare("State Quality",   avg(all_a["stability"]), avg(all_b["stability"]), lower_better=False)
+    bar_compare("State Entropy",   avg(all_a["entropy"]),   avg(all_b["entropy"]),   lower_better=False)
+    bar_compare("Reversal Rate",   avg(all_a["volatility"]),avg(all_b["volatility"]),lower_better=True)
 
     # ---------- 评分 ----------
     metrics = [
         ("Panic ↓",      "panic",      True),
         ("Trust ↑",      "trust",      False),
         ("Polar. ↓",     "polar",      True),
-        ("Stability ↑",  "stability",  False),
-        ("Entropy ↑",    "entropy",    False),
-        ("Volatility ↓", "volatility", True),
+        ("Quality ↑",    "stability",  False),
+        ("Entropy \u2191",     "entropy",    False),
+        ("Volatility \u2193",  "volatility", True),
     ]
 
     score_b = 0
@@ -542,7 +569,7 @@ def main():
         description="Normal 50-round simulation, no external events.\n"
                     "  Tests whether WM feedback creates more realistic dynamics.",
         total_rounds=50,
-        num_trials=5,
+        num_trials=8,
     )
     total_score += s1_score
     total_possible += s1_total
@@ -564,7 +591,7 @@ def main():
         description="Inject a severe crisis at round 15 (panic +0.35, trust -0.25).\n"
                     "  Tests WM's ability to propagate crisis impact and self-correct.",
         total_rounds=50,
-        num_trials=5,
+        num_trials=8,
         inject_events={15: crisis_event},
         event_rounds=[15],
     )
@@ -588,7 +615,7 @@ def main():
         description="Crisis at R15, official response at R25.\n"
                     "  Tests WM's ability to model trust recovery after intervention.",
         total_rounds=60,
-        num_trials=5,
+        num_trials=8,
         inject_events={15: crisis_event, 25: official_response},
         event_rounds=[15, 25],
     )

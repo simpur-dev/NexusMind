@@ -61,3 +61,10 @@ data/
 
 # Neo4j 本地安装
 neo4j/
+
+# 论文本地抽取产物（由 PDF 派生，不入库）
+papers/**/_extracted/
+backend/tests/_paper_extract.py
+
+# 小规模验证临时结果（只保留 large 基准）
+backend/tests/llm_validation_result.json

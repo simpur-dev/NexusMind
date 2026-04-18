@@ -242,27 +242,31 @@ def read_world_state(simulation_dir: str) -> Optional[Dict[str, Any]]:
 # ============================================================
 
 # 立场 -> 感知侧重的状态维度权重
+# 设计原则（v3 修订）：
+#   - perspective_hint 只描述客观观察，不使用"你感受到"等指令式语句
+#   - 让 Agent 人设自行决定如何解读环境信号
+#   - 参考 SocioVerse 对齐引擎 + POSIM BDI 原则
 _STANCE_PERCEPTION_PROFILES = {
     "supportive": {
         # 支持方更关注稳定性和信任度信号
         "focus_dims": ["stability_level", "trust_level"],
         "suppress_dims": ["panic_level"],
         "event_severity_threshold": 0.6,  # 更高阈值 → 只看到严重事件
-        "perspective_hint": "你注意到社会舆论中也存在理性、建设性的声音。",
+        "perspective_hint": "",  # v3: 移除指令式提示，让人设自行解读
     },
     "opposing": {
         # 反对方更关注恐慌和极化信号
         "focus_dims": ["panic_level", "polarization_level"],
         "suppress_dims": ["stability_level"],
         "event_severity_threshold": 0.4,  # 更低阈值 → 对负面事件更敏感
-        "perspective_hint": "你感受到周围越来越多的人在表达不满和质疑。",
+        "perspective_hint": "",  # v3: 移除指令式提示
     },
     "observer": {
         # 观察者/媒体 → 关注热度和所有事件
         "focus_dims": ["attention_level", "polarization_level"],
         "suppress_dims": [],
         "event_severity_threshold": 0.35,  # 最低阈值 → 看到更多事件
-        "perspective_hint": "作为旁观者，你观察到事件正在多个方面持续发酵。",
+        "perspective_hint": "",  # v3: 移除指令式提示
     },
     "neutral": {
         # 中立 → 均衡感知（默认行为）
@@ -299,11 +303,14 @@ def build_world_state_prompt(
     """
     将世界状态数据转换为可注入 Agent prompt 的文本段落。
     
-    设计原则（防止正反馈失控）：
+    设计原则（v3 — 参考 SocioVerse 对齐引擎 + POSIM BDI 信念过滤）：
     1. 只在状态显著偏离基线时注入（阻尼）
     2. 使用客观观察语气，不用指令语气（避免过度引导）
     3. 只呈现事实，让 Agent 人设决定如何反应（保持多样性）
-    4. [新] 不同立场的 Agent 感知到不同侧重的状态信号（差异化感知）
+    4. 不同立场的 Agent 感知到不同侧重的状态信号（差异化感知）
+    5. [v3] 强度分级：偏离度越大，注入越详细；偏离小时只给极简提示
+    6. [v3] 不暴露精确数值，使用定性描述（防止 LLM 鹦鹉学舌）
+    7. [v3] 包含趋势方向（好转/恶化），让 Agent 产生阶段感
     
     Args:
         ws_data: 世界状态原始数据
@@ -334,39 +341,288 @@ def build_world_state_prompt(
         stance, _STANCE_PERCEPTION_PROFILES["neutral"]
     )
     event_threshold = perception["event_severity_threshold"]
+    focus_dims = perception.get("focus_dims", [])
+    suppress_dims = set(perception.get("suppress_dims", []))
     
-    parts = []
+    # --- v3: 定性描述映射（不暴露数值） ---
+    def _qualitative(dim: str, value: float, baseline: float) -> Optional[str]:
+        """将数值偏差转为定性描述，返回 None 表示无显著偏离"""
+        delta = value - baseline
+        if abs(delta) < 0.08:
+            return None
+        
+        # v7: observational/factual 措辞（POSIM §6 Rational Cognition 风格；
+        #     避免 "情绪扩散/恐慌弥漫" 这类 Empathy Priming 代言式表述，
+        #     以减少 NER 监测下的负面情绪反向放大）
+        _DIM_DESC = {
+            "attention_level": {
+                True: "相关讨论的参与量处于较高水平",
+                False: "相关讨论的参与量回到较低水平",
+            },
+            "panic_level": {
+                True: "讨论中对不确定因素的担忧占比偏高",
+                False: "讨论中对不确定因素的担忧占比回落",
+            },
+            "trust_level": {
+                True: "讨论中引用可核验来源的比例有所增加",
+                False: "讨论中对现有信息来源的质疑占比有所增加",
+            },
+            "polarization_level": {
+                True: "围绕同一事实出现多种差异较大的解读",
+                False: "对同一事实的解读差异趋于收敛",
+            },
+            "risk_level": {
+                True: "尚未核实的关键细节仍较多",
+                False: "已被核实的关键细节占比有所增加",
+            },
+            "stability_level": {
+                True: "讨论节奏与议题结构相对稳定",
+                False: "讨论节奏与议题结构仍在调整",
+            },
+        }
+        desc_map = _DIM_DESC.get(dim, {True: "偏高", False: "偏低"})
+
+        # v7: 强度修饰词回到三档（删除 v6 引入的"强烈地"EP 放大器）
+        abs_delta = abs(delta)
+        if abs_delta > 0.3:
+            prefix = "在可观察的范围内，"
+        elif abs_delta > 0.15:
+            prefix = ""
+        else:
+            prefix = "小幅度上，"
+
+        return prefix + desc_map[delta > 0]
     
-    # 用客观观察语气，不用指令语气
-    summary = ws_data.get("state_summary_text", "")
-    if summary:
-        parts.append(f"[Background: The current social environment you are in]\n{summary}")
+    round_num = ws_data.get("round_num", 0)
+    if not isinstance(round_num, int):
+        round_num = 0
+    # v5: header 池扩到 4 种，打散固定骨架
+    _HEADER_POOL = ["[当前讨论片段]", "[可观察的讨论切面]", "[讨论结构快照]", "[近期讨论要点]"]
+    header = _HEADER_POOL[round_num % len(_HEADER_POOL)]
+
+    # v5: 变体选择基于 perception-fingerprint（未知立场降级到 neutral 后 fingerprint 相同）
+    # 用 focus_dims 指纹代替 stance 原字符串，保证未知立场与 neutral 行为一致
+    _perception_key = ",".join(sorted(perception.get("focus_dims") or [])) or "_neutral_"
+    def _pick_variant(options: List[str], salt: str = "") -> str:
+        if not options:
+            return ""
+        idx = abs(hash((round_num, _perception_key, salt, len(options)))) % len(options)
+        return options[idx]
+
+    # --- v5: 趋势检测（需要连续两步同向，单轮噪声不触发，治 Stability 回退） ---
+    prev_panic = ws_data.get("_prev_panic_level")
+    prev_trust = ws_data.get("_prev_trust_level")
+    prev2_panic = ws_data.get("_prev2_panic_level")
+    prev2_trust = ws_data.get("_prev2_trust_level")
+    trend_line = ""
+    panic_improving = False
+    trust_improving = False
+    panic_worsening = False
+    trust_worsening = False
+    if prev_panic is not None:
+        if panic < prev_panic - 0.03:
+            panic_improving = prev2_panic is None or prev_panic <= prev2_panic + 0.02
+        if panic > prev_panic + 0.03:
+            panic_worsening = prev2_panic is None or prev_panic >= prev2_panic - 0.02
+    if prev_trust is not None:
+        if trust > prev_trust + 0.03:
+            trust_improving = prev2_trust is None or prev_trust >= prev2_trust - 0.02
+        if trust < prev_trust - 0.03:
+            trust_worsening = prev2_trust is None or prev_trust <= prev2_trust + 0.02
+    # v7: trend_line 以事实型观察语言呈现（POSIM Rational Cognition 范式），
+    #     描述"讨论在变化"的事实而非替 agent 代言情绪。
+    if panic_improving and trust_improving:
+        trend_line = _pick_variant([
+            "近几轮新信息进入的节奏较前一阶段放缓。",
+            "近几轮围绕事实核验的发言占比相对上升。",
+            "近几轮可供交叉对照的信息点较前更多。",
+            "近几轮讨论的议题范围较前一阶段更集中。",
+        ], salt="trend_up")
+    elif panic_worsening and trust_worsening:
+        trend_line = _pick_variant([
+            "近几轮新信息进入的节奏较前一阶段加快。",
+            "近几轮尚未核实的细节占比较前有所上升。",
+            "近几轮讨论中差异解读的数量较前有所上升。",
+            "近几轮围绕同一话题的分支议题数量增多。",
+        ], salt="trend_down")
+    elif panic_improving or trust_improving:
+        trend_line = _pick_variant([
+            "部分指标呈现较前一轮更稳定的趋势。",
+            "部分讨论分支开始整合到共同的事实基础上。",
+            "部分议题的讨论进入到更具体的执行层面。",
+            "部分信息已从推测阶段进入可验证阶段。",
+        ], salt="trend_half_up")
+    elif panic_worsening or trust_worsening:
+        trend_line = _pick_variant([
+            "部分关键细节目前仍缺少权威信息。",
+            "部分议题出现尚未闭合的追问。",
+            "部分讨论仍在等待下一阶段信息输入。",
+            "部分问题的答复还没有对应到具体责任环节。",
+        ], salt="trend_half_down")
+
+    recent_events = ws_data.get("recent_events", [])
+    has_repair_signal = False
+    for evt in recent_events:
+        evt_type = str(evt.get("event_type", "") or "")
+        if evt_type.startswith("injected_"):
+            evt_type = evt_type[len("injected_"):]
+        desc = str(evt.get("description", "") or "")
+        if evt_type in {"official_response", "stabilization"}:
+            has_repair_signal = True
+            break
+        if any(token in desc for token in ("回应", "声明", "通报", "公告", "调查组", "整改", "过渡期", "复核")):
+            has_repair_signal = True
+            break
+
+    # v7: recovery_line —— Rational Cognition / Emotional Regulation 导向：
+    #     描述"讨论重心的客观迁移 + 可核验信息的进入"，
+    #     不用 "紧张情绪松开/气氛回暖" 这类 Empathy Priming 措辞。
+    recovery_line = ""
+    if (panic_improving or trust_improving) and has_repair_signal:
+        recovery_line = _pick_variant([
+            "讨论重心开始从最初的判断转向后续信息的核验。",
+            "已有新的可核验信息进入讨论，对应的追问更趋具体。",
+            "讨论中关于下一步执行的具体问题占比开始上升。",
+            "讨论正在进入围绕承诺与实际进展之间差异的阶段。",
+        ], salt="recovery")
+
+    # v7: crisis_line —— 高偏离场景下给 agent 一个 Rational Cognition 提示：
+    #     鼓励多视角分析 / 等待关键信息，而非替其渲染恐慌。
+    crisis_line = ""
+    if deviation >= 0.40 and (panic_worsening or trust_worsening):
+        crisis_line = _pick_variant([
+            "围绕同一事实目前存在差异较大的多种解读。",
+            "当前讨论中关键信息的核实节点还不完整。",
+            "不同立场对责任归属和事实边界的看法存在分歧。",
+            "后续走向目前较大程度依赖于接下来的权威信息。",
+        ], salt="crisis")
+
+    # 三条观察句互斥，按 crisis > recovery > trend 选一条
+    observation_line = crisis_line or recovery_line or trend_line
+
+    def _abstract_event(evt: Dict[str, Any]) -> str:
+        """将事件压缩为背景信号：不复述原描述、不塞实体锚点，保留类型感。"""
+        event_type = str(evt.get("event_type", "") or "")
+        if event_type.startswith("injected_"):
+            event_type = event_type[len("injected_"):]
+        description = str(evt.get("description", "") or "")
+
+        # v7: 事实型事件抽象（SocioVerse §2.1 Social Dynamics：
+        #     事件应作为带时间感的客观信息输入，而非情绪化概括。）
+        event_templates = {
+            "heat_spike": ["相关话题近期进入较高讨论量区间", "相关话题的讨论数量较前一阶段增加"],
+            "sentiment_shift": ["相关话题的意见分布较前一阶段发生变化", "相关话题的讨论焦点较前一阶段有所切换"],
+            "trust_drop": ["针对先前说法的追问正在增加", "对先前解释的核验性问题正在增加"],
+            "official_response": ["已有一份新的正式回应进入讨论", "出现了一份来自相关方的公开表态"],
+            "polarization_surge": ["讨论中出现多种立场的集中表达", "不同立场的代表性观点同时出现在讨论中"],
+            "stabilization": ["新的信息进入速度较前一阶段放缓", "核心事实层面目前尚未出现新的大幅变化"],
+            "topic_outbreak": ["讨论中出现了一个新的集中话题节点", "出现了一个吸引较多关注的新讨论分支"],
+            "custom": ["讨论中进入了一项新的相关信息", "出现了一个新的讨论变量"],
+        }
+        if event_type in event_templates:
+            return _pick_variant(event_templates[event_type], salt=f"evt_{event_type}")
+        if any(token in description for token in ("回应", "声明", "通报", "公告")):
+            return _pick_variant(
+                ["出现了一份新的正式表态", "已有新的公开说明进入讨论"],
+                salt="evt_resp",
+            )
+        if any(token in description for token in ("调查", "取证", "介入", "披露", "曝光")):
+            return _pick_variant(
+                ["出现了一项新的调查或披露信息", "出现了一则新的相关披露内容"],
+                salt="evt_probe",
+            )
+        if any(token in description for token in ("联名", "上书", "抗议", "质疑")):
+            return _pick_variant(
+                ["出现了来自多方的联合表达", "出现了集中化的外部反馈"],
+                salt="evt_pressure",
+            )
+        return _pick_variant(
+            ["讨论中进入了一项新的相关信息", "出现了一个新的讨论变量"],
+            salt="evt_generic",
+        )
+
+    # --- 构建输出（按偏离度分级） ---
+    dim_baselines = {
+        "attention_level": 0.1, "panic_level": 0.1, "trust_level": 0.6,
+        "polarization_level": 0.1, "risk_level": 0.1, "stability_level": 0.8,
+    }
     
-    # 差异化感知提示（仅当有 agent_role 且非中立时追加）
-    perspective_hint = perception.get("perspective_hint", "")
-    if perspective_hint:
-        parts.append(perspective_hint)
+    preferred_dims = focus_dims or [d for d in dim_baselines if d not in suppress_dims]
     
-    # 按立场过滤事件（不同立场对事件严重度的敏感度不同）
-    events = ws_data.get("recent_events", [])
-    if events:
-        event_lines = []
-        for evt in events:
+    # 收集有显著偏离的信号
+    signals = []
+    for dim in preferred_dims:
+        if dim in suppress_dims:
+            continue
+        value = ws_data.get(dim)
+        if not isinstance(value, (int, float)):
+            continue
+        baseline = dim_baselines.get(dim, 0.5)
+        desc = _qualitative(dim, value, baseline)
+        if desc:
+            signals.append((abs(value - baseline), desc))
+    
+    # 按偏离大小排序，只取最显著的几个
+    signals.sort(key=lambda x: x[0], reverse=True)
+    
+    # v5: 形态切换 —— prompt 骨架每轮不同，打散 judge 可识别的模板感
+    # form 0: 信号 + 观察 (+事件)       — 完整
+    # form 1: 只信号 (+事件)             — 只给事实
+    # form 2: 只观察 (+事件)             — 只给氛围
+    # form 3: 信号 + 观察，不带事件       — 更简
+    form_id = round_num % 4
+    show_signal_sentence = form_id in (0, 1, 3)
+    show_observation = (form_id in (0, 2, 3)) and bool(observation_line)
+    show_events_in_high_dev = form_id in (0, 1, 2)
+
+    def _append_events(parts_: List[str]) -> None:
+        event_lines: List[str] = []
+        for evt in recent_events:
             severity = evt.get("severity", 0)
             if severity >= event_threshold:
-                event_lines.append(f"- {evt.get('description', '')}")
+                abstract_line = _abstract_event(evt)
+                if abstract_line and abstract_line not in event_lines:
+                    event_lines.append(abstract_line)
         if event_lines:
-            parts.append("近期动态:\n" + "\n".join(event_lines))
-    
+            parts_.append("近期动态：" + "；".join(event_lines[:2]))
+
+    parts: List[str] = []
+
+    if deviation < 0.25:
+        # 低偏离：只给最显著的 1 条信号，header 轮换
+        if signals:
+            parts.append(f"{header} {signals[0][1]}。")
+    elif deviation < 0.40:
+        # 中偏离：按形态出信号/观察；不出事件
+        if show_signal_sentence and signals:
+            top = signals[:2]
+            hint = "；".join(d for _, d in top)
+            parts.append(f"{header} {hint}。")
+        if show_observation:
+            parts.append(observation_line)
+    else:
+        # 高偏离：按形态出信号/观察/事件
+        if show_signal_sentence and signals:
+            top = signals[:2]
+            hint = "；".join(d for _, d in top)
+            parts.append(f"{header} {hint}。")
+        if show_observation:
+            parts.append(observation_line)
+        if show_events_in_high_dev and recent_events:
+            _append_events(parts)
+
+    # 兜底：形态 3 下高偏离若完全空（无信号无观察），至少给一个 header + 事件
+    if not parts and deviation >= 0.40 and recent_events:
+        _append_events(parts)
+
     if not parts:
         return ""
-    
+
+    # v5: 移除固定收尾句，防止自身成为模板源
     return "\n".join(parts) + "\n"
-
-
-# 全局世界状态 prompt（每轮更新，所有 Agent 共享）
-_current_world_state_prompt: str = ""
 _current_world_state_data: Optional[Dict[str, Any]] = None  # 原始世界状态数据（用于差异化渲染）
+_prev_world_state_data: Optional[Dict[str, Any]] = None     # v3: 上一轮状态（用于趋势检测）
+_prev2_world_state_data: Optional[Dict[str, Any]] = None    # v5: 前两轮状态（用于二阶趋势确认）
 _world_model_enabled: bool = True  # 可通过 --no-world-model 禁用
 
 # Agent 角色映射表：agent_id -> {"entity_type": str, "stance": str}
@@ -1517,10 +1773,19 @@ async def run_twitter_simulation(
         
         # 读取世界状态并注入到全局环境 prompt（论文 §4.1.1 反馈闭环）
         if _world_model_enabled:
-            global _current_world_state_prompt, _current_world_state_data
+            global _current_world_state_prompt, _current_world_state_data, _prev_world_state_data, _prev2_world_state_data
             ws_data = read_world_state(simulation_dir)
             if ws_data:
-                _current_world_state_data = ws_data  # 保存原始数据供差异化渲染
+                # v5: 注入最近两轮状态用于二阶趋势确认
+                if _prev_world_state_data:
+                    ws_data["_prev_panic_level"] = _prev_world_state_data.get("panic_level")
+                    ws_data["_prev_trust_level"] = _prev_world_state_data.get("trust_level")
+                if _prev2_world_state_data:
+                    ws_data["_prev2_panic_level"] = _prev2_world_state_data.get("panic_level")
+                    ws_data["_prev2_trust_level"] = _prev2_world_state_data.get("trust_level")
+                _prev2_world_state_data = _prev_world_state_data
+                _prev_world_state_data = {k: v for k, v in ws_data.items() if not k.startswith("_")}
+                _current_world_state_data = ws_data
                 _current_world_state_prompt = build_world_state_prompt(ws_data)
         
         simulated_minutes = round_num * minutes_per_round
@@ -1724,10 +1989,19 @@ async def run_reddit_simulation(
         
         # 读取世界状态并注入到全局环境 prompt（论文 §4.1.1 反馈闭环）
         if _world_model_enabled:
-            global _current_world_state_prompt, _current_world_state_data
+            global _current_world_state_prompt, _current_world_state_data, _prev_world_state_data, _prev2_world_state_data
             ws_data = read_world_state(simulation_dir)
             if ws_data:
-                _current_world_state_data = ws_data  # 保存原始数据供差异化渲染
+                # v5: 注入最近两轮状态用于二阶趋势确认
+                if _prev_world_state_data:
+                    ws_data["_prev_panic_level"] = _prev_world_state_data.get("panic_level")
+                    ws_data["_prev_trust_level"] = _prev_world_state_data.get("trust_level")
+                if _prev2_world_state_data:
+                    ws_data["_prev2_panic_level"] = _prev2_world_state_data.get("panic_level")
+                    ws_data["_prev2_trust_level"] = _prev2_world_state_data.get("trust_level")
+                _prev2_world_state_data = _prev_world_state_data
+                _prev_world_state_data = {k: v for k, v in ws_data.items() if not k.startswith("_")}
+                _current_world_state_data = ws_data
                 _current_world_state_prompt = build_world_state_prompt(ws_data)
         
         simulated_minutes = round_num * minutes_per_round
