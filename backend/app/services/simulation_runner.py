@@ -793,6 +793,24 @@ class SimulationRunner:
                 # 更新状态
                 if not _epoch_stale():
                     cls._save_run_state(state)
+                
+                # 如果所有平台都已完成，给子进程 10 秒自行退出，否则主动终止
+                if state.runner_status == RunnerStatus.COMPLETED:
+                    logger.info(f"所有平台已完成，等待子进程退出...")
+                    for _ in range(5):  # 最多等 10 秒
+                        time.sleep(2)
+                        if not _alive():
+                            break
+                    if _alive():
+                        logger.info(f"子进程未自行退出，主动终止: {simulation_id}")
+                        try:
+                            if process:
+                                process.terminate()
+                                process.wait(timeout=5)
+                        except Exception:
+                            pass
+                    break  # 跳出 while 循环
+                
                 time.sleep(2)
             
             # 纪元过期则不做最终保存
@@ -806,8 +824,10 @@ class SimulationRunner:
             if os.path.exists(reddit_actions_log):
                 cls._read_action_log(reddit_actions_log, reddit_position, state, "reddit")
             
-            # 进程结束 —— pid_only 模式拿不到 returncode，用 simulation_end 事件判断
-            if pid_only:
+            # 进程结束 —— 如果已经通过 simulation_end 事件确认 COMPLETED，保留该状态
+            if state.runner_status == RunnerStatus.COMPLETED:
+                logger.info(f"模拟完成: {simulation_id}")
+            elif pid_only:
                 if cls._check_all_platforms_completed(state):
                     state.runner_status = RunnerStatus.COMPLETED
                     state.completed_at = datetime.now().isoformat()
@@ -818,9 +838,9 @@ class SimulationRunner:
                     logger.warning(f"模拟未完成即退出（reattach 监测）: {simulation_id}")
             else:
                 exit_code = process.returncode
-                if exit_code == 0:
+                if exit_code == 0 or cls._check_all_platforms_completed(state):
                     state.runner_status = RunnerStatus.COMPLETED
-                    state.completed_at = datetime.now().isoformat()
+                    state.completed_at = state.completed_at or datetime.now().isoformat()
                     logger.info(f"模拟完成: {simulation_id}")
                 else:
                     state.runner_status = RunnerStatus.FAILED

@@ -220,6 +220,15 @@ export const interviewAgents = (data) => {
 }
 
 /**
+ * 获取模拟知识图谱数据（SimAgent + SimAction 节点与关系）
+ * @param {string} simulationId
+ * @param {Object} params - { platform?, limit? }
+ */
+export const getSimGraph = (simulationId, params = {}) => {
+  return service.get(`/api/simulation/${simulationId}/sim-graph`, { params })
+}
+
+/**
  * 获取历史模拟列表（带项目详情）
  * 用于首页历史项目展示
  * @param {number} limit - 返回数量限制

@@ -131,6 +131,13 @@
           {{ isStarting ? '重启中…' : '重新模拟' }}
         </button>
         <button
+          v-if="phase === 2"
+          class="action-btn secondary"
+          @click="scrollToSimGraph"
+        >
+          查看模拟图谱
+        </button>
+        <button
           class="action-btn primary"
           :disabled="phase !== 2 || isGeneratingReport"
           @click="handleNextStep"
@@ -284,6 +291,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { 
   startSimulation, 
   stopSimulation,
@@ -313,6 +321,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['go-back', 'next-step', 'add-log', 'update-status', 'fresh-start-consumed'])
+const vueRouter = useRouter()
 
 // State
 const isGeneratingReport = ref(false)
@@ -326,7 +335,6 @@ const runStatus = ref({})
 const allActions = ref([]) // 所有动作（增量累积）
 const actionIds = ref(new Set()) // 用于去重的动作ID集合
 const scrollContainer = ref(null)
-
 // World State Data
 const worldState = ref(null)
 const worldStateHistory = ref([])
@@ -519,6 +527,18 @@ const doResumeSimulation = async () => {
   } finally {
     isStarting.value = false
   }
+}
+
+// 打开模拟图谱独立页面
+const scrollToSimGraph = () => {
+  vueRouter.push({
+    name: 'SimGraph',
+    params: { simulationId: props.simulationId },
+    query: {
+      graph_id: props.projectData?.graph_id,
+      project_id: props.projectData?.project_id
+    }
+  })
 }
 
 // 重新模拟：先停止当前（如在运行），再强制启动

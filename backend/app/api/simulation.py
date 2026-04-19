@@ -3178,3 +3178,242 @@ def get_causal_graph(simulation_id: str):
             "error": str(e),
             "traceback": traceback.format_exc()
         }), 500
+
+
+@simulation_bp.route('/<simulation_id>/sim-graph', methods=['GET'])
+def get_sim_graph(simulation_id):
+    """获取模拟知识图谱数据（SimAgent + SimAction 节点与关系）
+    
+    Neo4j 实际 schema:
+      SimAgent  {name, graph_id}
+      SimAction {uid, action_type, content, round, platform, timestamp, graph_id}
+      (SimAgent)-[:PERFORMED]->(SimAction)
+      (SimAgent)-[:CORRESPONDS_TO]->(知识图谱实体)
+    """
+    try:
+        from neo4j import GraphDatabase
+
+        graph_id = request.args.get('graph_id')
+        if not graph_id:
+            return jsonify({"success": False, "error": "缺少 graph_id 参数，无法查询图谱"}), 400
+
+        platform = request.args.get('platform')
+        action_limit = min(int(request.args.get('limit', 240)), 1200)
+        event_limit = min(int(request.args.get('event_limit', 18)), 60)
+        action_links_per_event = min(int(request.args.get('action_links_per_event', 6)), 20)
+
+        ws_engine = SimulationRunner.get_or_restore_world_state_engine(simulation_id)
+        current_state = ws_engine.current_state if ws_engine else None
+        prev_state = ws_engine.state_history[-2] if ws_engine and len(ws_engine.state_history) > 1 else None
+        recent_events = ws_engine.events[-event_limit:] if ws_engine else []
+        event_rounds = sorted({evt.round_num for evt in recent_events})
+        recent_event_ids = {evt.event_id for evt in recent_events}
+        causal_edges = []
+        if ws_engine and recent_event_ids:
+            causal_edges = [
+                edge for edge in ws_engine.causal_graph.edges
+                if edge.source_event_id in recent_event_ids and edge.target_event_id in recent_event_ids
+            ]
+
+        nodes = []
+        edges = []
+        node_ids = set()
+        action_rows = []
+
+        def add_node(node):
+            node_id = node.get("id")
+            if node_id and node_id not in node_ids:
+                nodes.append(node)
+                node_ids.add(node_id)
+
+        driver = GraphDatabase.driver(
+            Config.NEO4J_URI,
+            auth=(Config.NEO4J_USERNAME, Config.NEO4J_PASSWORD)
+        )
+
+        with driver.session() as session:
+            agent_result = session.run(
+                "MATCH (a:SimAgent {graph_id: $gid}) "
+                "OPTIONAL MATCH (a)-[:PERFORMED]->(act:SimAction) "
+                "WHERE $platform = '' OR act.platform = $platform "
+                "RETURN a.name AS name, count(act) AS action_count, collect(DISTINCT act.platform) AS platforms",
+                gid=graph_id,
+                platform=platform or ''
+            )
+            for rec in agent_result:
+                plats = [p for p in (rec["platforms"] or []) if p]
+                add_node({
+                    "id": f"agent_{rec['name']}",
+                    "label": rec["name"],
+                    "type": "agent",
+                    "platform": ','.join(plats),
+                    "action_count": rec["action_count"] or 0,
+                })
+
+            action_query = (
+                "MATCH (ag:SimAgent {graph_id: $gid})-[:PERFORMED]->(act:SimAction) "
+                "WHERE ($platform = '' OR act.platform = $platform) "
+            )
+            params = {
+                "gid": graph_id,
+                "platform": platform or '',
+                "limit": action_limit,
+                "event_rounds": event_rounds,
+            }
+            if event_rounds:
+                action_query += "AND act.round IN $event_rounds "
+            action_query += (
+                "RETURN ag.name AS agent_name, act.uid AS uid, act.action_type AS action_type, "
+                "act.platform AS platform, act.round AS round_num, substring(act.content, 0, 120) AS content_preview "
+                "ORDER BY act.round DESC LIMIT $limit"
+            )
+
+            action_result = session.run(action_query, **params)
+            for rec in action_result:
+                action_id = f"action_{rec['uid']}"
+                agent_id = f"agent_{rec['agent_name']}"
+                action_row = {
+                    "id": action_id,
+                    "agent_id": agent_id,
+                    "label": rec["action_type"],
+                    "type": "action",
+                    "platform": rec["platform"],
+                    "round_num": rec["round_num"],
+                    "content_preview": rec["content_preview"] or "",
+                }
+                action_rows.append(action_row)
+                add_node(action_row)
+                edges.append({
+                    "source": agent_id,
+                    "target": action_id,
+                    "type": "PERFORMED",
+                })
+
+            link_result = session.run(
+                "MATCH (a:SimAgent {graph_id: $gid})-[:CORRESPONDS_TO]->(e) "
+                "RETURN a.name AS agent_name, elementId(e) AS entity_eid, e.name AS entity_name, labels(e) AS entity_labels",
+                gid=graph_id
+            )
+            for rec in link_result:
+                entity_id = f"entity_{rec['entity_eid']}"
+                agent_id = f"agent_{rec['agent_name']}"
+                add_node({
+                    "id": entity_id,
+                    "label": rec["entity_name"] or "Entity",
+                    "type": "entity",
+                    "entity_labels": rec["entity_labels"],
+                })
+                edges.append({
+                    "source": agent_id,
+                    "target": entity_id,
+                    "type": "CORRESPONDS_TO",
+                })
+
+            stats_result = session.run(
+                "MATCH (act:SimAction {graph_id: $gid}) "
+                "RETURN count(act) AS total_actions, count(DISTINCT act.platform) AS platforms, max(act.round) AS max_round",
+                gid=graph_id
+            ).single()
+
+            agent_count = session.run(
+                "MATCH (a:SimAgent {graph_id: $gid}) RETURN count(a) AS c",
+                gid=graph_id
+            ).single()["c"]
+
+        driver.close()
+
+        variable_meta = {
+            "attention_level": "关注度",
+            "panic_level": "恐慌度",
+            "trust_level": "信任度",
+            "polarization_level": "极化度",
+            "risk_level": "风险等级",
+            "stability_level": "稳定性",
+        }
+
+        for key, label in variable_meta.items():
+            current_value = getattr(current_state, key, 0.0) if current_state else 0.0
+            prev_value = getattr(prev_state, key, current_value) if prev_state else current_value
+            add_node({
+                "id": f"var_{key}",
+                "label": label,
+                "type": "variable",
+                "key": key,
+                "value": round(current_value, 3),
+                "delta": round(current_value - prev_value, 3),
+                "round_num": current_state.round_num if current_state else None,
+            })
+
+        action_ids_by_round = {}
+        for action in action_rows:
+            if action["content_preview"]:
+                action_ids_by_round.setdefault(action["round_num"], []).append(action["id"])
+
+        for evt in recent_events:
+            event_node_id = f"event_{evt.event_id}"
+            add_node({
+                "id": event_node_id,
+                "label": evt.event_type,
+                "type": "event",
+                "event_type": evt.event_type,
+                "description": evt.description,
+                "severity": evt.severity,
+                "round_num": evt.round_num,
+                "affected_variables": evt.affected_variables,
+            })
+
+            for var_name, delta in (evt.affected_variables or {}).items():
+                var_node_id = f"var_{var_name}"
+                if var_node_id in node_ids:
+                    edges.append({
+                        "source": event_node_id,
+                        "target": var_node_id,
+                        "type": "AFFECTS",
+                        "delta": delta,
+                    })
+
+            linked_action_ids = action_ids_by_round.get(evt.round_num, [])[:action_links_per_event]
+            for action_id in linked_action_ids:
+                edges.append({
+                    "source": action_id,
+                    "target": event_node_id,
+                    "type": "CONTRIBUTES_TO",
+                })
+
+        for edge in causal_edges:
+            source_id = f"event_{edge.source_event_id}"
+            target_id = f"event_{edge.target_event_id}"
+            if source_id in node_ids and target_id in node_ids:
+                edges.append({
+                    "source": source_id,
+                    "target": target_id,
+                    "type": "CAUSAL",
+                    "relation_type": edge.relation_type,
+                    "strength": edge.strength,
+                    "evidence": edge.evidence,
+                    "round_num": edge.round_num,
+                })
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "nodes": nodes,
+                "edges": edges,
+                "stats": {
+                    "total_agents": agent_count,
+                    "total_actions": stats_result["total_actions"] if stats_result else 0,
+                    "total_events": len(recent_events),
+                    "total_variables": len(variable_meta),
+                    "platforms": stats_result["platforms"] if stats_result else 0,
+                    "max_round": stats_result["max_round"] if stats_result else 0,
+                    "causal_edges": len(causal_edges),
+                }
+            }
+        })
+    except Exception as e:
+        logger.error(f"获取模拟图谱失败: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500

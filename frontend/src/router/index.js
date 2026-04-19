@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Home from '../views/Home.vue'
 import Process from '../views/Process.vue'
+import SimGraphPage from '../views/SimGraphPage.vue'
 
 const routes = [
   {
@@ -12,6 +13,12 @@ const routes = [
     path: '/process/:projectId',
     name: 'Process',
     component: Process,
+    props: true
+  },
+  {
+    path: '/sim-graph/:simulationId',
+    name: 'SimGraph',
+    component: SimGraphPage,
     props: true
   }
 ]
