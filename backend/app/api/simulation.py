@@ -427,12 +427,13 @@ def prepare_simulation():
                 "error": f"模拟不存在: {simulation_id}"
             }), 404
         
-        # 检查是否强制重新生成
+        # 检查是否强制重新生成 / 续生成
         force_regenerate = data.get('force_regenerate', False)
-        logger.info(f"开始处理 /prepare 请求: simulation_id={simulation_id}, force_regenerate={force_regenerate}")
+        resume = data.get('resume', False)  # 续生成：保留已有 profiles，只生成缺失的
+        logger.info(f"开始处理 /prepare 请求: simulation_id={simulation_id}, force_regenerate={force_regenerate}, resume={resume}")
         
         # 检查是否已经准备完成（避免重复生成）
-        if not force_regenerate:
+        if not force_regenerate and not resume:
             logger.debug(f"检查模拟 {simulation_id} 是否已准备完成...")
             is_prepared, prepare_info = _check_simulation_prepared(simulation_id)
             logger.debug(f"检查结果: is_prepared={is_prepared}, prepare_info={prepare_info}")
@@ -589,7 +590,8 @@ def prepare_simulation():
                     defined_entity_types=entity_types_list,
                     use_llm_for_profiles=use_llm_for_profiles,
                     progress_callback=progress_callback,
-                    parallel_profile_count=parallel_profile_count
+                    parallel_profile_count=parallel_profile_count,
+                    resume=resume
                 )
                 
                 # 任务完成

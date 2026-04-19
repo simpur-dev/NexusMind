@@ -155,6 +155,16 @@ def generate_report():
                 ReportManager.save_report(report)
                 
                 if report.status == ReportStatus.COMPLETED:
+                    # 把 report_id 写回项目，确保从首页恢复时能定位到 Step 4
+                    try:
+                        proj = ProjectManager.get_project(state.project_id)
+                        if proj:
+                            proj.report_id = report.report_id
+                            ProjectManager.save_project(proj)
+                            logger.info(f"已将 report_id={report.report_id} 写回项目 {state.project_id}")
+                    except Exception as pe:
+                        logger.warning(f"写回 report_id 到项目失败: {pe}")
+                    
                     task_manager.complete_task(
                         task_id,
                         result={

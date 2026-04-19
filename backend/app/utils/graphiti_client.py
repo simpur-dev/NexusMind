@@ -192,16 +192,20 @@ def _ensure_loop() -> asyncio.AbstractEventLoop:
     return _loop
 
 
-def run_async(coro) -> Any:
+def run_async(coro, timeout: float = 30) -> Any:
     """
     在同步上下文中运行 async 协程。
 
     使用持久化的后台 event loop，保证 Neo4j 等 async 连接
     在多次调用间保持活跃（不会因 loop 关闭而断开）。
+
+    Args:
+        coro: 要运行的协程
+        timeout: 超时秒数，防止 Neo4j 不可用时无限阻塞（默认 30s）
     """
     loop = _ensure_loop()
     future = asyncio.run_coroutine_threadsafe(coro, loop)
-    return future.result()
+    return future.result(timeout=timeout)
 
 
 def run_async_batch(coros: list, max_concurrency: int = 3) -> list:
@@ -222,4 +226,4 @@ def run_async_batch(coros: list, max_concurrency: int = 3) -> list:
         return await asyncio.gather(*[_limited(c) for c in coros])
 
     future = asyncio.run_coroutine_threadsafe(_gather(), loop)
-    return future.result()
+    return future.result(timeout=120)

@@ -443,24 +443,26 @@ const goToProject = () => {
 }
 
 // 导航到环境配置页面（Simulation）
-// 跳转到 Process 页面，通过 projectId 加载，自动恢复到 Step 2
+// 跳转到 Process 页面，通过 query.step=2 强制定位到 Step 2
 const goToSimulation = () => {
   if (selectedProject.value?.project_id) {
     router.push({
       name: 'Process',
-      params: { projectId: selectedProject.value.project_id }
+      params: { projectId: selectedProject.value.project_id },
+      query: { step: 2 }
     })
     closeModal()
   }
 }
 
-// 导航到分析报告页面（Simulation/Step2 → Step3 → Step4）
-// 同样跳转到 Process 页面，自动恢复到 Step 4
+// 导航到分析报告页面
+// 跳转到 Process 页面，通过 query.step=4 强制定位到 Step 4
 const goToReport = () => {
   if (selectedProject.value?.project_id) {
     router.push({
       name: 'Process',
-      params: { projectId: selectedProject.value.project_id }
+      params: { projectId: selectedProject.value.project_id },
+      query: { step: 4 }
     })
     closeModal()
   }

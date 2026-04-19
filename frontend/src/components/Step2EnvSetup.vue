@@ -49,7 +49,8 @@
             <span class="step-title">生成 Agent 人设</span>
           </div>
           <div class="step-status">
-            <span v-if="phase > 1" class="badge success">已完成</span>
+            <span v-if="phase > 1 && !isProfilesIncomplete" class="badge success">已完成</span>
+            <span v-else-if="phase > 1 && isProfilesIncomplete" class="badge warning">部分完成</span>
             <span v-else-if="phase === 1" class="badge processing">进行中</span>
             <span v-else class="badge pending">等待</span>
           </div>
@@ -60,6 +61,18 @@
           <p class="description">
             从知识图谱梳理实体与关系，初始化模拟个体，并基于现实种子赋予独特的行为、记忆与<span class="desc-accent">内部目标、价值权重</span>等目标驱动的认知属性
           </p>
+
+          <!-- 继续生成提示 -->
+          <div v-if="isProfilesIncomplete && phase > 1" class="incomplete-notice">
+            <div class="notice-info">
+              <span class="notice-icon">⚠</span>
+              <span>当前Agent数 <strong>{{ profiles.length }}</strong> 未达到预期 <strong>{{ expectedTotal }}</strong>，可继续生成剩余Agent</span>
+            </div>
+            <button class="continue-btn" :disabled="isContinueGenerating" @click="continueGenerateProfiles">
+              <span v-if="isContinueGenerating" class="btn-spinner"></span>
+              {{ isContinueGenerating ? '生成中...' : '继续生成' }}
+            </button>
+          </div>
 
           <!-- Profiles Stats -->
           <div v-if="profiles.length > 0" class="stats-grid">
@@ -662,6 +675,12 @@ const expectedTotal = ref(null)
 const simulationConfig = ref(null)
 const selectedProfile = ref(null)
 const showProfilesDetail = ref(true)
+const isContinueGenerating = ref(false)
+
+// 是否Agent数未达预期
+const isProfilesIncomplete = computed(() => {
+  return expectedTotal.value && profiles.value.length > 0 && profiles.value.length < expectedTotal.value
+})
 
 // 日志去重：记录上一次输出的关键信息
 let lastLoggedMessage = ''
@@ -735,6 +754,45 @@ const totalTopicsCount = computed(() => {
 // Methods
 const addLog = (msg) => {
   emit('add-log', msg)
+}
+
+// 继续生成剩余Agent
+const continueGenerateProfiles = async () => {
+  if (isContinueGenerating.value || !props.simulationId) return
+  isContinueGenerating.value = true
+  addLog(`继续生成Agent人设（当前 ${profiles.value.length}/${expectedTotal.value}）...`)
+  
+  try {
+    phase.value = 1
+    const res = await prepareSimulation({
+      simulation_id: props.simulationId,
+      use_llm_for_profiles: true,
+      parallel_profile_count: 5,
+      resume: true
+    })
+    
+    if (res.success && res.data) {
+      if (res.data.already_prepared) {
+        addLog('准备工作已完成')
+        isContinueGenerating.value = false
+        await loadPreparedData()
+      } else {
+        taskId.value = res.data.task_id
+        addLog(`继续生成任务已启动: ${res.data.task_id}`)
+        // isContinueGenerating 保持 true，由轮询完成后在 loadPreparedData 中重置
+        startPolling()
+        startProfilesPolling()
+      }
+    } else {
+      addLog(`继续生成失败: ${res.error || '未知错误'}`)
+      isContinueGenerating.value = false
+      await loadPreparedData()
+    }
+  } catch (err) {
+    addLog(`继续生成异常: ${err.message}`)
+    isContinueGenerating.value = false
+    await loadPreparedData()
+  }
 }
 
 // 处理开始模拟按钮点击
@@ -834,6 +892,8 @@ const stopPolling = () => {
 }
 
 const startProfilesPolling = () => {
+  stopProfilesPolling()
+  fetchProfilesRealtime()
   profilesTimer = setInterval(fetchProfilesRealtime, 3000)
 }
 
@@ -1028,6 +1088,7 @@ const fetchConfigRealtime = async () => {
 
 const loadPreparedData = async () => {
   phase.value = 2
+  isContinueGenerating.value = false
   addLog('正在加载已有配置数据...')
 
   // 最后获取一次 Profiles
@@ -1059,6 +1120,12 @@ const loadPreparedData = async () => {
         addLog('✓ 环境搭建完成，可以开始模拟')
         phase.value = 4
         emit('update-status', 'completed')
+        
+        // 如果 profiles 不完整，持续轮询以捕获后台正在运行的生成任务
+        if (isProfilesIncomplete.value) {
+          addLog(`Agent数未达预期（${profiles.value.length}/${expectedTotal.value}），持续监听...`)
+          startProfilesPolling()
+        }
       } else {
         // 配置尚未生成，开始轮询
         addLog('配置生成中，开始轮询等待...')
@@ -1172,9 +1239,67 @@ onUnmounted(() => {
 }
 
 .badge.success { background: rgba(115, 168, 185, 0.15); color: #3A5A6A; border: 1px solid rgba(115, 168, 185, 0.3); }
+.badge.warning { background: rgba(234, 179, 8, 0.12); color: #92600a; border: 1px solid rgba(234, 179, 8, 0.3); }
 .badge.processing { background: #73A8B9; color: #fff; }
 .badge.pending { background: rgba(115, 168, 185, 0.1); color: #73A8B9; }
 .badge.accent { background: rgba(115, 168, 185, 0.15); color: #3A5A6A; }
+
+.incomplete-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: rgba(234, 179, 8, 0.06);
+  border: 1px solid rgba(234, 179, 8, 0.2);
+  border-radius: 10px;
+}
+.notice-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #5c4a1e;
+  line-height: 1.5;
+}
+.notice-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.continue-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: #73A8B9;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s;
+}
+.continue-btn:hover:not(:disabled) {
+  background: #5a8fa0;
+}
+.continue-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.btn-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 
 .card-content {
   /* No extra padding - uses step-card's padding */

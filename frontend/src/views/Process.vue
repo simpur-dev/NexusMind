@@ -918,14 +918,23 @@ const loadProject = async () => {
       projectData.value = response.data
       updatePhaseByStatus(response.data.status)
 
+      // URL 中指定的目标步骤（从历史回放按钮传入）
+      const requestedStep = Number(route.query.step) || 0
+
       // 从项目数据恢复 Step 导航状态
       if (response.data.report_id) {
-        // 报告已生成，恢复到 Step 4
-        currentStep.value = 4
-        maxReachedStep.value = 4
+        // 报告已生成，恢复关联数据
         currentSimulationId.value = response.data.simulation_id
         currentReportId.value = response.data.report_id
-        addLog(`从历史记录恢复项目，已在 Step 4 (报告生成)`)
+        maxReachedStep.value = 4
+        if (response.data.graph_id) {
+          currentPhase.value = 2
+          await loadGraph(response.data.graph_id)
+        }
+        // 优先使用 URL 指定的步骤，否则默认 Step 4
+        const targetStep = (requestedStep >= 1 && requestedStep <= maxReachedStep.value) ? requestedStep : 4
+        currentStep.value = targetStep
+        addLog(`从历史记录恢复项目，进入 Step ${targetStep} (${stepNames[targetStep - 1]})`)
       } else if (response.data.simulation_id) {
         // 模拟已创建，恢复到 Step 2（环境搭建会自动检查是否已准备完成）
         currentSimulationId.value = response.data.simulation_id

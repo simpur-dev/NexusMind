@@ -270,7 +270,8 @@ class SimulationManager:
         defined_entity_types: Optional[List[str]] = None,
         use_llm_for_profiles: bool = True,
         progress_callback: Optional[callable] = None,
-        parallel_profile_count: int = 8
+        parallel_profile_count: int = 8,
+        resume: bool = False
     ) -> SimulationState:
         """
         准备模拟环境（全程自动化）
@@ -339,10 +340,24 @@ class SimulationManager:
             # ========== 阶段2: 生成Agent Profile ==========
             total_entities = len(filtered.entities)
             
+            # 如果是续生成模式，加载已有的 profiles
+            existing_profiles_data = None
+            if resume:
+                try:
+                    reddit_path = os.path.join(sim_dir, "reddit_profiles.json")
+                    if os.path.exists(reddit_path):
+                        import json as _json
+                        with open(reddit_path, 'r', encoding='utf-8') as f:
+                            existing_profiles_data = _json.load(f)
+                        logger.info(f"续生成模式：加载了 {len(existing_profiles_data)} 个已有 profiles")
+                except Exception as e:
+                    logger.warning(f"加载已有 profiles 失败，将全部重新生成: {e}")
+                    existing_profiles_data = None
+            
             if progress_callback:
                 progress_callback(
                     "generating_profiles", 0, 
-                    "开始生成...",
+                    f"开始生成...{'（续生成模式）' if existing_profiles_data else ''}",
                     current=0,
                     total=total_entities
                 )
@@ -378,7 +393,8 @@ class SimulationManager:
                 graph_id=state.graph_id,  # 传入graph_id用于图谱检索
                 parallel_count=parallel_profile_count,  # 并行生成数量
                 realtime_output_path=realtime_output_path,  # 实时保存路径
-                output_platform=realtime_platform  # 输出格式
+                output_platform=realtime_platform,  # 输出格式
+                existing_profiles=existing_profiles_data  # 续生成时传入已有 profiles
             )
             
             state.profiles_count = len(profiles)

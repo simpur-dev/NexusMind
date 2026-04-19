@@ -233,6 +233,11 @@ class OasisProfileGenerator:
         
         # Graphiti 用于检索丰富上下文
         self.graph_id = graph_id
+        
+        # 熔断器：连续 N 次图谱检索失败后自动跳过，避免 Neo4j 不可用时阻塞整个后端
+        self._graph_search_failures = 0
+        self._graph_search_circuit_open = False
+        self._GRAPH_FAILURE_THRESHOLD = 3
     
     def generate_profile_from_entity(
         self, 
@@ -380,6 +385,10 @@ class OasisProfileGenerator:
             logger.debug(f"跳过图谱检索：未设置graph_id")
             return results
         
+        # 熔断器：连续多次失败后跳过图谱检索，避免 Neo4j 不可用时反复超时
+        if self._graph_search_circuit_open:
+            return results
+        
         comprehensive_query = f"关于{entity_name}的所有信息、活动、事件、关系和背景"
         
         try:
@@ -429,9 +438,19 @@ class OasisProfileGenerator:
             results["context"] = "\n\n".join(context_parts)
             
             logger.info(f"图谱检索完成: {entity_name}, 获取 {len(results['facts'])} 条事实, {len(results['node_summaries'])} 个相关节点")
+            # 成功时重置失败计数
+            self._graph_search_failures = 0
             
         except Exception as e:
-            logger.warning(f"图谱检索失败 ({entity_name}): {e}")
+            self._graph_search_failures += 1
+            if self._graph_search_failures >= self._GRAPH_FAILURE_THRESHOLD:
+                self._graph_search_circuit_open = True
+                logger.warning(
+                    f"图谱检索连续失败 {self._graph_search_failures} 次，熔断器开启，"
+                    f"后续实体将跳过图谱检索（Neo4j 可能未运行）"
+                )
+            else:
+                logger.warning(f"图谱检索失败 ({entity_name}): {e}")
         
         return results
     
@@ -929,7 +948,8 @@ class OasisProfileGenerator:
         graph_id: Optional[str] = None,
         parallel_count: int = 5,
         realtime_output_path: Optional[str] = None,
-        output_platform: str = "reddit"
+        output_platform: str = "reddit",
+        existing_profiles: Optional[List] = None
     ) -> List[OasisAgentProfile]:
         """
         批量从实体生成Agent Profile（支持并行生成）
@@ -942,6 +962,7 @@ class OasisProfileGenerator:
             parallel_count: 并行生成数量，默认5
             realtime_output_path: 实时写入的文件路径（如果提供，每生成一个就写入一次）
             output_platform: 输出平台格式 ("reddit" 或 "twitter")
+            existing_profiles: 已有的 profiles 列表（用于续生成时跳过已有实体）
             
         Returns:
             Agent Profile列表
@@ -952,6 +973,17 @@ class OasisProfileGenerator:
         # 设置graph_id用于图谱检索
         if graph_id:
             self.graph_id = graph_id
+        
+        # 构建已有 profiles 的名称集合，用于跳过已生成的实体
+        existing_names = set()
+        existing_map = {}  # name -> profile data
+        if existing_profiles:
+            for ep in existing_profiles:
+                name = ep.get('name') or ep.get('user_name') or ''
+                if name:
+                    existing_names.add(name.lower())
+                    existing_map[name.lower()] = ep
+            logger.info(f"续生成模式：已有 {len(existing_names)} 个 profiles，将跳过对应实体")
         
         total = len(entities)
         profiles = [None] * total  # 预分配列表保持顺序
