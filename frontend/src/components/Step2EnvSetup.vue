@@ -50,8 +50,8 @@
           </div>
           <div class="step-status">
             <span v-if="phase > 1 && !isProfilesIncomplete" class="badge success">已完成</span>
+            <span v-else-if="isContinueGenerating || phase === 1" class="badge processing">进行中</span>
             <span v-else-if="phase > 1 && isProfilesIncomplete" class="badge warning">部分完成</span>
-            <span v-else-if="phase === 1" class="badge processing">进行中</span>
             <span v-else class="badge pending">等待</span>
           </div>
         </div>
@@ -685,6 +685,7 @@ const isProfilesIncomplete = computed(() => {
 // 日志去重：记录上一次输出的关键信息
 let lastLoggedMessage = ''
 let lastLoggedProfileCount = 0
+let profileStaleCount = 0
 let lastLoggedConfigStage = ''
 
 // 模拟轮数配置
@@ -998,6 +999,14 @@ const fetchProfilesRealtime = async () => {
       // 输出 Profile 生成进度日志（仅当数量变化时）
       const currentCount = profiles.value.length
       if (currentCount > 0 && currentCount !== lastLoggedProfileCount) {
+        // 数量在增长 → 后台正在生成，自动切换到"生成中"状态
+        if (currentCount > prevCount && isProfilesIncomplete.value && !isContinueGenerating.value) {
+          isContinueGenerating.value = true
+        }
+        
+        // 数量有变化，重置停滞计数器
+        profileStaleCount = 0
+        
         lastLoggedProfileCount = currentCount
         const total = expectedTotal.value || '?'
         const latestProfile = profiles.value[currentCount - 1]
@@ -1010,6 +1019,26 @@ const fetchProfilesRealtime = async () => {
         // 如果全部生成完成
         if (expectedTotal.value && currentCount >= expectedTotal.value) {
           addLog(`✓ 全部 ${currentCount} 个Agent人设生成完成`)
+          isContinueGenerating.value = false
+        }
+      } else if (isContinueGenerating.value && isProfilesIncomplete.value) {
+        // 数量没变化但标记为正在生成 → 累计停滞次数
+        profileStaleCount++
+        // 连续 5 次轮询无变化 → 主动查后台任务状态确认
+        if (profileStaleCount >= 5) {
+          profileStaleCount = 0
+          try {
+            const statusRes = await getPrepareStatus({ simulation_id: props.simulationId })
+            const backendRunning = statusRes.success && statusRes.data &&
+              (statusRes.data.status === 'preparing' || statusRes.data.status === 'processing')
+            if (!backendRunning) {
+              isContinueGenerating.value = false
+              addLog(`⚠ 检测到生成已停止（${currentCount}/${expectedTotal.value || '?'}），可点击"继续生成"恢复`)
+            }
+          } catch (_) {
+            // 查询失败也重置，让用户可以手动触发
+            isContinueGenerating.value = false
+          }
         }
       }
     }
@@ -1121,9 +1150,19 @@ const loadPreparedData = async () => {
         phase.value = 4
         emit('update-status', 'completed')
         
-        // 如果 profiles 不完整，持续轮询以捕获后台正在运行的生成任务
+        // 如果 profiles 不完整，检查后台是否有正在运行的生成任务
         if (isProfilesIncomplete.value) {
-          addLog(`Agent数未达预期（${profiles.value.length}/${expectedTotal.value}），持续监听...`)
+          addLog(`Agent数未达预期（${profiles.value.length}/${expectedTotal.value}），检查后台任务...`)
+          try {
+            const statusRes = await getPrepareStatus({ simulation_id: props.simulationId })
+            if (statusRes.success && statusRes.data && statusRes.data.status === 'preparing') {
+              // 后台正在生成中，显示"生成中..."状态
+              isContinueGenerating.value = true
+              taskId.value = statusRes.data.task_id || taskId.value
+              addLog('检测到后台正在生成Agent人设，继续监听...')
+              startPolling()
+            }
+          } catch (_) {}
           startProfilesPolling()
         }
       } else {

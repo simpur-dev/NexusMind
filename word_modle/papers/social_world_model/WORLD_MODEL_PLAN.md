@@ -1,345 +1,316 @@
 # NexusMind 世界模型化改造方案
 
-> 基于论文 *"From Individual to Society: A Survey on Social Simulation Driven by LLM-based Agents"* (Mou et al., ACM Computing Surveys, 2026) 的理论框架，结合本项目现有代码定制。
+> 基于 **SocioVerse、AgentSociety、GenSim、OASIS、MOSAIC、Rumor Spreading、Generative Agents、POSIM** 与 *"World Models Survey"* 的统一视角，结合本项目现有 OASIS + `WorldStateEngine` 架构定制。
 
 ---
 
-## 一、理论对标：论文框架 vs 本项目现状
+## 一、论文统一后的世界模型定义
 
-论文将 LLM 驱动的社会模拟拆为三层（Individual → Scenario → Society），每层有明确的架构要素。下表是当前项目的对标分析：
+论文系统梳理后，本项目的 world model 不应只等于 `world_state.py` 里的全局 6 维状态，而应由四个相互耦合的层组成：
 
-### 1. Individual Simulation 层（§3）
+| 层级 | 论文依据 | 在 NexusMind 中的含义 |
+|------|----------|----------------------|
+| **Agent Prior / Persona Layer** | SocioVerse、MOSAIC、POSIM | `reddit_profiles.json` 中的人设、兴趣、立场、效用权重等稳定先验；这些字段必须持续参与模拟，而不是只作为首次 role-play 文本 |
+| **Agent Cognitive State Layer** | POSIM、Rumor Spreading、Generative Agents | agent 在运行时对事件的 `belief / emotion / trust / attention / reflection` 等动态内部状态 |
+| **Macro / Topic State Layer** | SocioVerse、AgentSociety、World Models Survey | 群体级环境状态、话题热度、叙事分裂、风险变化等外部世界 |
+| **Personalized Perception Layer** | OASIS、MOSAIC | 同一外部世界对不同 agent 的渲染结果不同；agent 看到什么、如何理解，不应对所有人完全一致 |
 
-| 论文要素 | 论文描述 | 本项目现状 | 差距 |
-|---------|---------|-----------|------|
-| **Profile** | 人设构建（描述/对话型），支持 LLM 生成 | ✅ `oasis_profile_generator.py` 已实现 LLM 生成人设，含 internal_goals + utility_weights | ✅ 已补齐 |
-| **Memory** | 短期记忆 + 长期记忆，支持写入/检索/反思 | ⚠️ `graph_memory_updater.py` 仅做行为写入图谱，无记忆检索/反思 | 缺少 **记忆反思(reflection)** 和 **记忆检索影响决策** |
-| **Planning** | 共情规划 + 主观规划（基于内部状态驱动） | ❌ 无。Agent 行为完全由 OASIS 引擎 + persona prompt 驱动 | 缺少 **目标驱动的规划层** |
-| **Action** | 与环境的直接交互（对话/行为） | ✅ OASIS 平台已实现发帖/评论/点赞/转发等动作 | 基本满足 |
+### 1. 论文一致支持的核心闭环
 
-### 2. Scenario Simulation 层（§4）
+```text
+Profile / Persona P_i
+    ↓ compile
+Prior_i
+    ↓
+Perception_i^t = Render(W_t, T_t, C_i^t, Prior_i)
+    ↓
+Belief / Emotion Update C_i^{t+1}
+    ↓
+Action_i^t
+    ↓ aggregate
+Macro / Topic State (W_{t+1}, T_{t+1})
+```
 
-| 论文要素 | 论文描述 | 本项目现状 | 差距 |
-|---------|---------|-----------|------|
-| **Environment Configuration** | 场景基本信息、目标、外部资源 | ✅ `simulation_config_generator.py` 用 LLM 生成配置 | 基本满足 |
-| **Environment State** | 运行时环境即时状态，影响 Agent 决策 | ✅ `WorldStateEngine` 6维状态 + 文件IPC反馈闭环 + monkey-patch注入Agent prompt | ✅ 已实现 |
-| **Environment History** | 历史状态积累，Agent 可回溯 | ✅ `world_state_history.jsonl` 持久化状态序列 + `events.jsonl` 事件流 | ✅ 已实现 |
-| **Role** | 通信者/执行者/导演三类角色 | ⚠️ 所有 Agent 同质化，无功能分化 | 缺少 **特殊角色**（如观察者、干预者） |
-| **Organization** | 层次/扁平/动态组织结构 | ❌ 无组织结构 | 暂不优先 |
-| **Communication** | 受限通信协议 | ⚠️ 依赖 OASIS 平台机制 | 基本满足 |
+其中：
 
-### 3. Society Simulation 层（§5）
+- **`W_t`**：宏观世界状态
+- **`T_t`**：话题/叙事状态
+- **`C_i^t`**：agent 认知状态
 
-| 论文要素 | 论文描述 | 本项目现状 | 差距 |
-|---------|---------|-----------|------|
-| **Composition** | 人口组成多样性，含离群者建模 | ⚠️ 有实体多样性，但无 **意见领袖/离群者** 特殊建模 | 需补 |
-| **Network** | 社交网络结构（线上/线下） | ⚠️ 依赖 OASIS 内置的平台关注机制 | 基本满足 |
-| **Social Influence** | 信息级联、观点动力学、群体涌现 | ❌ **完全缺失**。无法追踪影响传播链 | **核心缺口** |
-| **Evaluation (Macro)** | 宏观指标：传播规模、观点分布趋势 | ❌ 无宏观评估指标 | 需补 |
+这意味着真正的 world model 不是单个全局 JSON，而是 **macro + topic + per-agent cognition** 的耦合系统。
+
+### 2. 对 NexusMind 的直接含义
+
+- **[人设定位]** `reddit_profiles.json` 生成的人设不是附属信息，而是 world model 的微观参数来源。
+- **[共享快照]** 当前 `world_state_current.json` 不应只承载全局态摘要，后续应扩展为共享的 world-model snapshot，至少包含 `macro_state`、`topic_state` 与轻量 `agent_cognitive_state`。
+- **[因果图谱顺序]** 因果图谱不宜前置；若没有个体认知层，只能解释“行为之后热度变了”，难以解释“哪类 agent 推动了叙事扩散”。
+- **[宏观状态角色]** 现有 6 维状态仍有价值，但其角色应从“完整世界模型”调整为“宏观聚合层”。
 
 ---
 
-## 二、核心结论：本项目要补什么
+## 二、现状诊断与核心缺口
 
-基于上述对标，本项目要真正成为"世界模型"，**最关键的三个缺口**是：
+| 模块 | 当前实现 | 论文对齐情况 | 主要问题 |
+|------|----------|--------------|----------|
+| **人设生成** | `oasis_profile_generator.py` 已生成 `internal_goals`、`utility_weights`、`initial_stance`、`emotional_tendency`、`susceptibility` 等字段 | 与 SocioVerse / POSIM / MOSAIC 的 persona 思想基本一致 | 这些字段仍主要停留在 profile JSON，尚未被编译成运行时微观参数 |
+| **宏观世界状态** | `WorldStateEngine` 已实现 6 维状态、历史记录、文件 IPC 反馈闭环 | 与 Environment State 思想部分一致 | 目前主要依赖动作摘要和规则统计，对“谁在发声、以何种认知状态发声”建模不足 |
+| **个性化感知** | `run_parallel_simulation.py` 已有基于 `entity_type/stance` 的轻量差异化 world-state prompt | 与 OASIS / MOSAIC 的 personalized perception 方向一致，但深度不够 | 差异化尚未接入 `reddit_profiles.json` 中更丰富的人设字段 |
+| **个体认知状态** | 暂无显式 `belief / emotion / trust / attention` 状态层 | 与 POSIM / Rumor / Generative Agents 差距大 | 缺少“agent 如何理解世界”的运行时建模 |
+| **记忆/反思** | `graph_memory_updater.py` 主要记录行为写入图谱 | 与 Generative Agents 的 memory/reflection 只局部对齐 | 缺少 reflection 与认知更新闭环 |
+| **社会影响追踪** | `causal_edges.jsonl` 已有文件占位，但暂无论文一致的 micro→macro 因果解释层 | 与 SocioVerse / POSIM / World Model 可解释性要求不一致 | 需要建立在 agent cognition + topic state 之上，而不是只对宏观曲线连边 |
 
-1. **Environment State（环境状态层）** — 论文 §4.1.1 State
-2. **Social Influence Tracking（社会影响追踪）** — 论文 §5.1.3
-3. **Agent Internal Goal & Planning（Agent 目标与规划）** — 论文 §3.1.3
+基于以上诊断，当前最需要优先补的不是更复杂的宏观指标，而是以下四项：
 
-次要缺口：
-4. Memory Reflection（记忆反思）
-5. Macro-level Evaluation（宏观评估）
-6. Special Role Modeling（特殊角色建模）
+1. **Persona Prior Compiler**：把 profile 文本编译为可计算先验
+2. **Agent Cognitive State**：显式维护 per-agent belief / emotion / trust / attention
+3. **Personalized Perception**：让同一世界状态对不同 agent 呈现不同解释
+4. **Profile-aware Aggregation**：让宏观状态更新考虑角色、立场、易感性差异
+
+第二优先级再做：
+
+5. **Causal Graph / Social Influence Tracking**
+6. **Reflection / Evaluation Ladder / Visualization**
 
 ---
 
 ## 三、分阶段实施方案
 
-### 第一阶段：环境状态引擎（World State Engine）
+> 实施顺序按论文思想重排：**先把 agent 人设编译为可计算先验，再补个体认知状态与个性化感知，最后再做因果图谱与解释层**。  
+> 原因是：若没有 micro-level cognition，宏观因果图谱只能解释“帖子之后发生了什么”，不能解释“为什么是这类人推动了传播”。
 
-**论文依据**：§4.1.1 指出 "environment states record instant information from the environment during the scenario. They directly influence the agents' decision-making and behavior."
+### 第一阶段：Persona Prior Compiler（P0）
 
-**目标**：让系统每轮产出一个可量化的世界状态快照。
+**论文依据**：
 
-#### 新增文件
-- `backend/app/services/world_state.py`
+- SocioVerse / AgentSociety：profile 是行为引擎输入，而不是一次性 prompt 装饰
+- MOSAIC / POSIM：persona 需要转换为稳定的 role identity 与心理先验
+- OASIS：profile 还应影响 perception / recommendation，而非只影响 action wording
 
-#### 数据结构
+**目标**：把 `reddit_profiles.json` 与 `simulation_config.json` 编译成可计算的 `AgentPrior` 映射，作为模拟运行期的微观先验层。
 
-```python
-@dataclass
-class WorldStateSnapshot:
-    """世界状态快照 — 对应论文 §4.1.1 Environment State"""
-    round_num: int
-    timestamp: str
-    
-    # 核心状态变量（6 维）
-    attention_level: float      # 关注度/热度 [0, 1]
-    panic_level: float          # 恐慌/负面情绪 [0, 1]
-    trust_level: float          # 对权威的信任度 [0, 1]
-    polarization_level: float   # 立场极化程度 [0, 1]
-    risk_level: float           # 综合风险等级 [0, 1]
-    stability_level: float      # 系统稳定性 [0, 1]
-    
-    # 观测信号（用于推导状态变量）
-    total_posts: int = 0
-    total_comments: int = 0
-    total_reposts: int = 0
-    active_agent_count: int = 0
-    top_keywords: List[str] = field(default_factory=list)
-    sentiment_distribution: Dict[str, float] = field(default_factory=dict)  # positive/negative/neutral
+**建议结构**：
 
+- **[稳定身份]** `name`、`source_entity_type`、`role_type`
+- **[兴趣偏好]** `interested_topics`
+- **[目标价值]** `internal_goals`、`utility_weights`
+- **[认知先验]** `initial_stance`、`emotional_tendency`、`susceptibility`
+- **[行为配置映射]** 来自 `simulation_config.json` 的活跃度/影响力等平台配置，统一放入 `config_traits`
 
-@dataclass 
-class WorldEvent:
-    """世界事件 — 对应论文 §5.1.3 Social Influence 中的信息级联"""
-    event_id: str
-    round_num: int
-    timestamp: str
-    event_type: str     # topic_outbreak / heat_spike / sentiment_shift / 
-                        # official_response / trust_drop / stabilization
-    description: str
-    severity: float     # [0, 1]
-    source_actions: List[str] = field(default_factory=list)  # 触发该事件的动作 ID
-    affected_variables: Dict[str, float] = field(default_factory=dict)  # 对状态变量的影响量
+**建议修改文件**：
 
+- **[修改]** `backend/app/services/oasis_profile_generator.py` — 保持现有人设字段稳定、可校验、可序列化
+- **[建议新增]** `backend/app/services/agent_prior.py` — 编译 profile + config 到 `AgentPrior` 映射
+- **[修改]** `backend/scripts/run_parallel_simulation.py` — 启动时加载 prior map
 
-class WorldStateEngine:
-    """世界状态引擎"""
-    
-    def update_state(self, round_num: int, actions: List[AgentAction], 
-                     prev_state: Optional[WorldStateSnapshot]) -> WorldStateSnapshot:
-        """基于本轮动作和上一轮状态，计算新的世界状态"""
-        ...
-    
-    def detect_events(self, prev_state: WorldStateSnapshot, 
-                      curr_state: WorldStateSnapshot, 
-                      actions: List[AgentAction]) -> List[WorldEvent]:
-        """检测本轮是否发生了关键事件"""
-        ...
-    
-    def get_state_summary_for_agents(self, state: WorldStateSnapshot) -> str:
-        """生成可注入 Agent prompt 的状态摘要文本"""
-        ...
-```
+**建议产物**：
 
-#### 状态更新逻辑（规则 + LLM 混合）
+- `{sim_dir}/agent_priors.json`
 
-第一版采用**规则为主、LLM 为辅**的策略：
+**落地原则**：
 
-1. **规则层**（快速、确定性）：
-   - `attention_level` ← 本轮发帖数/评论数相对均值的偏移
-   - `panic_level` ← 负面关键词占比 + 转发加速度
-   - `polarization_level` ← 正面与负面 sentiment 比例的方差
+- **[不新增重型推理]** 第一版不增加新的逐 agent LLM 调用，只做字段归一化与衍生特征编译
+- **[先用已有字段]** 优先消费当前已经存在的 `internal_goals`、`utility_weights`、`initial_stance`、`emotional_tendency`、`susceptibility`
 
-2. **LLM 层**（每 N 轮调用一次，做深层判断）：
-   - 输入：本轮动作摘要 + 上一轮状态
-   - 输出：`trust_level`、`risk_level`、`stability_level` 的调整量
-   - 同时输出：是否触发关键事件
+### 第二阶段：Agent 认知状态 + 个性化感知（P0，前移）
 
-#### 挂载点
-- **`simulation_runner.py` → `_read_action_log()`**：在 `round_end` 事件处触发 `world_state_engine.update_state()`
-- **`simulation_runner.py` → `_monitor_simulation()`**：每轮保存状态到 `world_state_history.jsonl`
-- **`SimulationRunState.to_dict()`**：增加 `current_world_state` 字段
+**论文依据**：
 
-#### 持久化
-- `{sim_dir}/world_state_history.jsonl` — 每轮一行，JSONL 格式
-- `{sim_dir}/events.jsonl` — 关键事件记录
+- POSIM：显式维护 `belief / desire / intention`
+- Rumor Spreading：显式记录 agent 对 rumor / topic 的 belief
+- OASIS / MOSAIC：环境感知必须个性化
+- Generative Agents：perception → memory → reflection → action 是完整闭环
 
----
+**目标**：新增最小可行的 `AgentCognitiveState`，让 agent 不再只是“带人设发帖”，而是“带内部状态理解世界并行动”。
 
-### 第二阶段：动态因果图谱 MVP（Causal Event Graph）
+**建议维护的状态**：
 
-**论文依据**：§5.1.3 指出社会影响包含 "information cascades"、"opinion dynamics"、"group emergence"，且 §8.3 Challenge (3) 明确指出 "LLM interpretability poses difficulty: the black-box nature of LLMs makes it hard to provide rigorous causal explanations for individual behaviors or collective outcomes"。
+- **[话题信念]** `topic_beliefs: Dict[str, float]`
+- **[情绪唤起]** `emotion_arousal: float`
+- **[信任对象]** `trust_targets: Dict[str, float]`
+- **[注意力焦点]** `attention_focus: List[str]`
+- **[高层反思]** `last_reflection: str`
+- **[更新时间]** `updated_round: int`
 
-**目标**：让系统能表达"什么事件导致了什么状态变化"，提供**可解释性**。
+**建议修改文件**：
 
-#### 新增文件
-- `backend/app/services/causal_graph.py`
+- **[建议新增]** `backend/app/services/agent_cognition.py` — 维护 per-agent 认知状态更新逻辑
+- **[修改]** `backend/app/services/simulation_runner.py` — 在 `round_end` 后从动作日志更新活跃 agent 的认知状态
+- **[修改]** `backend/scripts/run_parallel_simulation.py` — 在 `build_world_state_prompt()` 中联合 `AgentPrior + AgentCognitiveState` 生成 personalized perception
 
-#### 数据结构
+**共享状态文件策略**：
 
-```python
-@dataclass
-class CausalEdge:
-    """因果边"""
-    source_event_id: str        # 原因事件
-    target_event_id: str        # 结果事件
-    relation_type: str          # triggered / amplified / suppressed / shifted
-    strength: float             # 因果强度 [0, 1]
-    evidence: str               # 推断依据（文本）
-    round_num: int
-    timestamp: str
+- **[沿用现有文件]** 继续使用 `world_state_current.json`
+- **[扩展 schema]** 新增 `macro_state`、`topic_state`、`agent_cognitive_state` 三部分
+- **[保持现有 monkey-patch]** 仍通过 `patch_oasis_environment()` 注入 prompt，不推翻当前 OASIS 接入路径
 
+**首版个性化渲染规则**：
 
-class CausalGraphEngine:
-    """动态因果图谱引擎"""
-    
-    def infer_causal_edges(self, events: List[WorldEvent], 
-                           state_history: List[WorldStateSnapshot]) -> List[CausalEdge]:
-        """从事件序列和状态变化中推断因果关系"""
-        ...
-    
-    def get_causal_chain(self, event_id: str) -> List[CausalEdge]:
-        """获取某个事件的因果链条"""
-        ...
-    
-    def get_influence_path(self, from_round: int, to_round: int) -> Dict:
-        """获取两轮之间的影响传播路径"""
-        ...
-```
+- **[高易感性]** `susceptibility` 高的 agent，更强调不确定性和情绪化信号
+- **[高求真倾向]** `utility_weights.truth_seeking` 高的 agent，更强调证据缺口和事实澄清
+- **[机构/媒体角色]** 更强调稳定、澄清、程序与权威信息
+- **[话题不匹配]** 与 `interested_topics` 低相关的 topic，降低感知权重
 
-#### 因果推断逻辑
+**建议产物**：
 
-第一版只做**三类因果边**：
+- `{sim_dir}/agent_cognitive_current.json`
+- `{sim_dir}/agent_cognitive_history.jsonl`
 
-| 类型 | 触发条件 | 示例 |
-|------|---------|------|
-| `triggered` | 事件 A 发生后 1-2 轮内出现事件 B，且 B 的 affected_variables 与 A 相关 | `topic_outbreak` → `heat_spike` |
-| `amplified` | 状态变量在事件后加速上升 | `influencer_repost` → `panic_level` 加速 |
-| `suppressed` | 状态变量在事件后显著下降 | `official_response` → `panic_level` 下降 |
+### 第三阶段：宏观世界状态 / 话题状态重构（P1）
 
-#### 持久化
+**论文依据**：
+
+- SocioVerse / AgentSociety：环境不仅是总热度，还包含 social environment 与 behavior engine 的耦合结果
+- POSIM：公共舆论模拟需要 event/topic 层面的动态状态
+- World Models Survey：world model 的核心是理解外部 dynamics 并支持未来状态推演
+
+**目标**：保留现有 6 维宏观状态，但把它下沉为 `macro_state`，同时补上更贴近公共舆论事件的 `topic_state`。
+
+**建议状态分层**：
+
+| 层级 | 建议字段 | 说明 |
+|------|----------|------|
+| **Macro State** | `attention`、`panic`、`trust`、`polarization`、`risk`、`stability` | 保留现有 6 维，继续服务 dashboard 与全局反馈 |
+| **Topic State** | `salience`、`uncertainty`、`hostility`、`official_trust`、`rumor_pressure`、`narrative_divergence` | 面向事件/叙事推演，更贴近公共舆论模拟语义 |
+
+**核心改造点**：
+
+- **[聚合输入升级]** 从“动作文本 + 全局统计”升级为“动作文本 + agent prior + agent cognition”
+- **[群体摘要升级]** LLM refine prompt 不只看动作摘要，还看角色分布、立场簇、belief shift 摘要
+- **[事件检测升级]** `WorldEvent` 不只描述热度变化，还描述话题级别的叙事转折
+
+**建议修改文件**：
+
+- **[修改]** `backend/app/services/world_state.py` — 从单一 6 维状态引擎扩展为 `macro_state + topic_state` 聚合器
+- **[修改]** `backend/app/services/simulation_runner.py` — 每轮写入完整 snapshot 到共享文件与历史文件
+
+**建议产物**：
+
+- 继续沿用 `{sim_dir}/world_state_history.jsonl`，但改为嵌套保存 `macro_state` 与 `topic_state`
+- 继续沿用 `{sim_dir}/events.jsonl`
+
+### 第四阶段：社会影响追踪与因果图谱（P1）
+
+**论文依据**：
+
+- SocioVerse：社会影响包含 information cascades、opinion dynamics、group emergence
+- POSIM：需要从 mechanism → phenomenon → statistics 逐层解释
+- World Models Survey：世界模型不仅要表达现状，还要支持更强的可解释预测
+
+**目标**：构建真正的 micro→macro 解释层，回答“什么人、以什么信念状态、通过什么动作路径，触发了哪类叙事变化”。
+
+**第一版因果边建议**：
+
+| 类型 | 示例 |
+|------|------|
+| `triggered` | `official_response` → `official_trust` 上升 |
+| `amplified` | 高易感群体的负面转发 → `hostility` 放大 |
+| `shifted` | 媒体澄清 → 某一簇 agent 的 `topic_beliefs` 反转 |
+| `suppressed` | 机构声明 → susceptible cluster 的 `rumor_pressure` 下降 |
+
+**建议修改文件**：
+
+- **[建议新增]** `backend/app/services/causal_graph.py`
+- **[修改]** `backend/app/api/simulation.py` — 暴露 `world-state / events / causal-graph` 查询接口
+
+**前提说明**：
+
+- **[必须后置]** 这一阶段必须建立在 `AgentPrior + AgentCognitiveState + TopicState` 已存在的基础上
+- **[避免伪解释]** 若仍只有宏观曲线，因果图谱会退化成“帖子后面热度升高”的表面连边
+
+**建议产物**：
+
 - `{sim_dir}/causal_edges.jsonl`
 
-#### 挂载点
-- 在 `WorldStateEngine.detect_events()` 之后调用 `CausalGraphEngine.infer_causal_edges()`
-- API: 新增 `GET /simulation/<id>/causal-graph` 接口
-
----
-
-### 第三阶段：Agent 认知升级（Goal-Driven Agent）
+### 第五阶段：记忆反思、评估与可视化（P2）
 
 **论文依据**：
-- §3.1.3 Planning: "subjective planning involves an agent acting based on its own thoughts and feelings, in line with its role or identity"
-- §3.1.2 Memory Reflection: "agents can synthesize fragmented experiences into coherent knowledge"
-- §5.1.1 Composition: "outliers, i.e., individuals with highly distinct attributes, often exert significant influence"
 
-**目标**：让 Agent 从"有人设的语言角色"升级为"有目标、有偏好、可评分的认知体"。
+- Generative Agents：memory / reflection / planning 是 believable agent 的关键链路
+- POSIM：机制层、现象层、统计层的 validation ladder
+- World Models Survey：world model 最终要同时支持理解与预测
 
-#### 修改文件
-- `backend/app/services/oasis_profile_generator.py`
+**目标**：让系统不只“能跑”，还要“能解释、能展示、能评估”。
 
-#### 扩展 OasisAgentProfile
+**建议内容**：
 
-```python
-# 新增字段（追加到现有 OasisAgentProfile）
-internal_goal: str = ""              # 内部目标（如 "扩大自身影响力"、"维护校园稳定"）
-utility_weights: Dict[str, float] = field(default_factory=dict)
-    # 示例: {"influence": 0.4, "safety": 0.3, "conformity": 0.2, "truth": 0.1}
-risk_tolerance: float = 0.5         # 风险容忍度 [0, 1]
-authority_trust: float = 0.5        # 对权威信任度 [0, 1]
-emotion_sensitivity: float = 0.5    # 情绪敏感度 [0, 1]
-is_opinion_leader: bool = False     # 是否为意见领袖（对应论文 outlier modeling）
-```
+- **[记忆反思]** 在 `agent_cognition.py` 或 `graph_memory_updater.py` 中加入定期反思摘要，更新 `last_reflection`
+- **[机制层评估]** 记录曝光、激活、belief shift、群体差异
+- **[现象层评估]** 记录 cascade、polarization、official response 效果
+- **[统计层评估]** 对比宏观曲线、topic 曲线与真实事件证据或人工标注
+- **[可视化]** 前端展示 macro/topic state、belief cluster、事件时间线、因果链
 
-#### Profile 生成 Prompt 改造
-
-在 `generate_profile_from_entity()` 的 LLM prompt 中增加：
-
-```
-除了基本人设外，请为该角色生成以下认知属性：
-1. internal_goal: 该角色在社交讨论中的核心目标（一句话）
-2. utility_weights: 该角色在行动时的价值权重分配（influence/safety/conformity/truth，总和为 1）
-3. risk_tolerance: 该角色愿意承担多大的社会风险（0-1）
-4. authority_trust: 该角色对官方/权威信息的信任程度（0-1）
-5. emotion_sensitivity: 该角色受情绪化内容影响的程度（0-1）
-6. is_opinion_leader: 该角色是否具备意见领袖特征（true/false）
-```
-
-#### Agent 评分机制（轻量版 RLAIF）
-
-每轮结束后，基于世界状态变化和 Agent 行为，给每个活跃 Agent 一个 `round_score`：
-
-```python
-@dataclass
-class AgentRoundScore:
-    agent_id: int
-    round_num: int
-    influence_score: float    # 本轮发帖被互动的程度
-    goal_alignment: float     # 行为是否符合 internal_goal
-    risk_taken: float         # 本轮行为的风险程度
-    total_score: float        # 加权总分
-```
-
-#### 持久化
-- `{sim_dir}/agent_scores.jsonl`
-
----
-
-### 第四阶段：宏观观测与可视化（Multimodal Observer）
-
-**论文依据**：
-- §5.3 Evaluation: "macro-level outcomes show patterns and trends consistent with the real world"
-- §8.3 Challenge (3): "developing more transparent and robust approaches at the intersection of LLMs and social science"
-
-**目标**：让前端能展示世界状态演化、事件时间线、因果链。
-
-#### 后端 API 新增
+**建议后端接口**：
 
 | 接口 | 返回内容 |
 |------|---------|
-| `GET /simulation/<id>/world-state` | 当前世界状态 + 状态历史列表 |
+| `GET /simulation/<id>/world-state` | 当前 world-model snapshot + 历史 |
 | `GET /simulation/<id>/events` | 事件时间线 |
 | `GET /simulation/<id>/causal-graph` | 因果边列表 |
-| `GET /simulation/<id>/agent-scores` | Agent 评分排行 |
+| `GET /simulation/<id>/agent-cognition` | 认知状态摘要 / cluster 统计 |
 
-#### 前端组件新增
+**建议前端组件**：
 
-1. **世界状态仪表盘** — 6 个指标的实时卡片 + 雷达图
-2. **状态趋势图** — 每轮 6 维状态的折线图
-3. **事件时间线** — 按轮次展示关键事件
-4. **因果链视图** — 从某个事件出发，展示上下游影响链
-5. **Agent 排行榜** — 按影响力/风险/目标达成度排序
+1. **世界状态仪表盘** — `macro_state + topic_state` 卡片与趋势图
+2. **认知簇视图** — 按角色/立场/易感性聚类展示 belief shift
+3. **事件时间线** — 关键事件与叙事转折
+4. **因果链视图** — 从事件、群体或状态变量出发查看影响路径
+5. **评估面板** — mechanism / phenomenon / statistics 三层指标
 
 ---
 
 ## 四、文件清单与优先级
 
-### P0 — 必做（世界状态引擎）
-| 操作 | 文件 |
-|------|------|
-| 新建 | `backend/app/services/world_state.py` |
-| 修改 | `backend/app/services/simulation_runner.py` — 在 round_end 挂载状态更新 |
-| 修改 | `backend/app/services/__init__.py` — 导出新模块 |
-| 修改 | `backend/app/api/simulation.py` — 新增 world-state API |
+### P0 — 必做（让 agent 人设真正进入 world model）
 
-### P1 — 强烈建议做（动态因果图谱 + Agent 认知）
-| 操作 | 文件 |
-|------|------|
-| 新建 | `backend/app/services/causal_graph.py` |
-| 修改 | `backend/app/services/oasis_profile_generator.py` — 扩展 profile 字段 |
-| 修改 | `backend/app/api/simulation.py` — 新增 causal-graph / events API |
+| 操作 | 文件 | 作用 |
+|------|------|------|
+| 建议新增 | `backend/app/services/agent_prior.py` | 编译 `reddit_profiles.json + simulation_config.json` 为结构化 prior |
+| 建议新增 | `backend/app/services/agent_cognition.py` | 维护 per-agent `belief / emotion / trust / attention` |
+| 修改 | `backend/scripts/run_parallel_simulation.py` | 读取 prior / cognition，并渲染 personalized perception |
+| 修改 | `backend/app/services/simulation_runner.py` | 在 `round_end` 后更新认知状态并写入共享 world-model snapshot |
+| 修改 | `backend/app/services/world_state.py` | 从单一 6 维状态引擎扩展为 `macro_state + topic_state` 聚合器 |
 
-### P2 — 建议做（前端可视化）
-| 操作 | 文件 |
-|------|------|
-| 新建 | `frontend/src/components/WorldStatePanel.vue` |
-| 修改 | `frontend/src/views/SimulationRunView.vue` — 集成状态面板 |
+### P1 — 强烈建议做（解释层与因果层）
 
-### P3 — 可后做
+| 操作 | 文件 | 作用 |
+|------|------|------|
+| 建议新增 | `backend/app/services/causal_graph.py` | 构建 micro→macro 因果解释层 |
+| 修改 | `backend/app/api/simulation.py` | 暴露 `world-state / events / causal-graph / agent-cognition` API |
+| 修改 | `backend/app/services/oasis_profile_generator.py` | 强化现有人设字段的稳定性、默认值与可校验性 |
+
+### P2 — 建议做（可视化与评估）
+
+| 操作 | 文件 | 作用 |
+|------|------|------|
+| 建议新增 | `frontend/src/components/WorldStatePanel.vue` | 展示 `macro_state + topic_state` |
+| 建议新增 | `frontend/src/components/AgentCognitionPanel.vue` | 展示 belief cluster / role cluster |
+| 修改 | `frontend/src/views/SimulationRunView.vue` | 集成 world model 可视化与评估面板 |
+
+### P3 — 可后做（增强项）
+
 | 操作 | 说明 |
 |------|------|
-| 记忆反思 | 在 graph_memory_updater 中增加 reflection 逻辑 |
-| 宏观评估 | 报告生成时引用世界状态历史 |
+| 记忆反思增强 | 在 `graph_memory_updater.py` 或 `agent_cognition.py` 中加入周期性 reflection |
+| 角色分化增强 | 逐步补充媒体、机构、意见领袖等特殊角色建模 |
+| 组织结构增强 | 若后续需要，再引入更复杂的层次/组织关系 |
 
 ---
 
 ## 五、论文引用建议
 
-在答辩/文档中可这样引用本论文：
+在答辩或文档中，更建议使用“多论文统一框架”的说法，而不是只引用单篇综述：
 
-> 本系统的世界模型化改造参考了 Mou et al. (2026) 提出的 "Individual → Scenario → Society" 三层社会模拟框架。在 **Environment State**（§4.1.1）层面，我们实现了多维世界状态引擎，使模拟环境具备可量化的即时状态；在 **Social Influence**（§5.1.3）层面，我们构建了轻量级动态因果图谱，为 LLM 驱动的社会模拟提供可解释的因果链条，回应了论文 §8.3 中提出的 "LLM 可解释性" 挑战；在 **Individual Architecture**（§3.1）层面，我们扩展了 Agent 的认知架构，增加了内部目标与效用权重，使 Agent 行为从 prompt-driven 升级为 goal-driven。
+> 本系统的世界模型化改造综合吸收了多篇社会模拟研究的共同思想：SocioVerse 与 AgentSociety 将社会模拟理解为 **用户/agent 建模、社会环境建模、行为引擎耦合** 的统一系统；OASIS 与 MOSAIC 强调 **动态环境与个性化感知**；Rumor Spreading 与 POSIM 强调 **agent belief state 的显式建模**；Generative Agents 强调 **perception → memory → reflection → planning → action** 的内部闭环；World Models Survey 则将 world model 归纳为 **对外部 dynamics 的理解与对未来状态的推演能力**。基于这些论文，本项目将 world model 从单一宏观状态机，升级为 **persona prior + agent cognitive state + macro/topic state + personalized perception** 的耦合系统。
 
-同时可引用的其他论文：
-- **Park et al., 2023** [157] — Generative Agents（Agent 架构基线）
-- **Gao et al., 2023** [56] — S³ Social-Network Simulation（OASIS 基础）
-- **Ha & Schmidhuber, 2018** — World Models（世界模型概念来源）
-- **Yang et al., 2024** [256] — OASIS（本项目使用的模拟框架）
+建议优先引用的论文方向：
+
+- **[总体框架]** SocioVerse、AgentSociety
+- **[平台与环境]** OASIS、MOSAIC、GenSim
+- **[认知与信念]** POSIM、Rumor Spreading、Generative Agents
+- **[世界模型总定义]** *World Models Survey*
 
 ---
 
 ## 六、一句话总结
 
-**把 NexusMind 从 "GraphRAG + 多 Agent 模拟器" 升级为 "具备环境状态感知、事件因果追踪、目标驱动认知的可解释社会世界模型"，核心改造集中在 4 个本地文件（world_state.py, causal_graph.py, simulation_runner.py, oasis_profile_generator.py），不依赖 Neo4j，全部本地存储。**
+**把 NexusMind 从“全局 `world_state` + persona prompt”的系统，升级为“persona prior + agent cognitive state + macro/topic state + personalized perception”的耦合社会世界模型；先补微观认知，再做宏观解释，才符合论文思想。**

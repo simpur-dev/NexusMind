@@ -20,7 +20,7 @@ from queue import Queue
 
 from ..config import Config
 from ..utils.logger import get_logger
-from .graph_memory_updater import GraphMemoryManager
+from .graph_memory_updater import GraphMemoryManager, GraphMemoryUpdater
 from .simulation_ipc import SimulationIPCClient, CommandType, IPCResponse
 from .world_state import WorldStateEngine
 
@@ -228,6 +228,9 @@ class SimulationRunner:
     
     # 图谱记忆更新配置
     _graph_memory_enabled: Dict[str, bool] = {}  # simulation_id -> enabled
+    
+    # 模拟后批量导入图谱配置  simulation_id -> graph_id
+    _post_sim_graph_import: Dict[str, str] = {}
     
     # 世界状态引擎（World State Engine）
     _world_state_engines: Dict[str, WorldStateEngine] = {}
@@ -481,7 +484,9 @@ class SimulationRunner:
         platform: str = "parallel",  # twitter / reddit / parallel
         max_rounds: int = None,  # 最大模拟轮数（可选，用于截断过长的模拟）
         enable_graph_memory_update: bool = False,  # 是否将活动更新到图谱
-        graph_id: str = None  # 图谱ID（启用图谱更新时必需）
+        graph_id: str = None,  # 图谱ID（启用图谱更新时必需）
+        start_round: int = 0,  # 续跑起始轮次（0=从头开始）
+        post_sim_graph_import: bool = False  # 模拟结束后批量导入图谱
     ) -> SimulationRunState:
         """
         启动模拟
@@ -533,11 +538,23 @@ class SimulationRunner:
             if total_rounds < original_rounds:
                 logger.info(f"轮数已截断: {original_rounds} -> {total_rounds} (max_rounds={max_rounds})")
         
+        # 续跑模式：保留已有的 action counts 和进度
+        old_twitter_actions = 0
+        old_reddit_actions = 0
+        if start_round > 0:
+            old_state = cls._load_run_state(simulation_id)
+            if old_state:
+                old_twitter_actions = old_state.twitter_actions_count
+                old_reddit_actions = old_state.reddit_actions_count
+        
         state = SimulationRunState(
             simulation_id=simulation_id,
             runner_status=RunnerStatus.STARTING,
+            current_round=start_round,
             total_rounds=total_rounds,
             total_simulation_hours=total_hours,
+            twitter_actions_count=old_twitter_actions,
+            reddit_actions_count=old_reddit_actions,
             started_at=datetime.now().isoformat(),
         )
         
@@ -560,6 +577,11 @@ class SimulationRunner:
                 cls._graph_memory_enabled[simulation_id] = False
         else:
             cls._graph_memory_enabled[simulation_id] = False
+        
+        # 记录模拟后批量导入标志
+        if post_sim_graph_import and graph_id:
+            cls._post_sim_graph_import[simulation_id] = graph_id
+            logger.info(f"已注册模拟后批量图谱导入: simulation_id={simulation_id}, graph_id={graph_id}")
         
         # 初始化世界状态引擎
         try:
@@ -609,15 +631,21 @@ class SimulationRunner:
             if max_rounds is not None and max_rounds > 0:
                 cmd.extend(["--max-rounds", str(max_rounds)])
             
+            # 续跑模式：从指定轮次开始
+            if start_round > 0:
+                cmd.extend(["--start-round", str(start_round)])
+            
             # 创建主日志文件，避免 stdout/stderr 管道缓冲区满导致进程阻塞
             main_log_path = os.path.join(sim_dir, "simulation.log")
-            main_log_file = open(main_log_path, 'w', encoding='utf-8')
+            log_mode = 'a' if start_round > 0 else 'w'
+            main_log_file = open(main_log_path, log_mode, encoding='utf-8')
             
             # 设置子进程环境变量，确保 Windows 上使用 UTF-8 编码
             # 这可以修复第三方库（如 OASIS）读取文件时未指定编码的问题
             env = os.environ.copy()
             env['PYTHONUTF8'] = '1'  # Python 3.7+ 支持，让所有 open() 默认使用 UTF-8
             env['PYTHONIOENCODING'] = 'utf-8'  # 确保 stdout/stderr 使用 UTF-8
+            env['HF_HUB_OFFLINE'] = '1'  # HuggingFace 离线模式，使用本地缓存避免网络超时
             
             # 设置工作目录为模拟目录（数据库等文件会生成在此）
             # 使用 start_new_session=True 创建新的进程组，确保可以通过 os.killpg 终止所有子进程
@@ -642,10 +670,18 @@ class SimulationRunner:
             cls._processes[simulation_id] = process
             cls._save_run_state(state)
             
-            # 启动监控线程
+            # 启动监控线程（续跑时跳过已有日志，避免重复计数）
+            monitor_kwargs = {}
+            if start_round > 0:
+                twitter_log = os.path.join(sim_dir, "twitter", "actions.jsonl")
+                reddit_log = os.path.join(sim_dir, "reddit", "actions.jsonl")
+                monitor_kwargs['start_twitter_position'] = os.path.getsize(twitter_log) if os.path.exists(twitter_log) else 0
+                monitor_kwargs['start_reddit_position'] = os.path.getsize(reddit_log) if os.path.exists(reddit_log) else 0
+            
             monitor_thread = threading.Thread(
                 target=cls._monitor_simulation,
                 args=(simulation_id,),
+                kwargs=monitor_kwargs,
                 daemon=True
             )
             monitor_thread.start()
@@ -822,6 +858,16 @@ class SimulationRunner:
                     logger.error(f"停止图谱记忆更新器失败: {e}")
                 cls._graph_memory_enabled.pop(simulation_id, None)
             
+            # 模拟后批量导入图谱（在新线程中异步执行，不阻塞清理）
+            post_graph_id = cls._post_sim_graph_import.pop(simulation_id, None)
+            if post_graph_id and state.runner_status == RunnerStatus.COMPLETED:
+                threading.Thread(
+                    target=cls._do_post_sim_graph_import,
+                    args=(simulation_id, post_graph_id, sim_dir),
+                    daemon=True,
+                    name=f"PostSimGraphImport-{simulation_id[:12]}"
+                ).start()
+            
             # 清理进程资源
             cls._processes.pop(simulation_id, None)
             cls._action_queues.pop(simulation_id, None)
@@ -840,6 +886,120 @@ class SimulationRunner:
                     pass
                 cls._stderr_files.pop(simulation_id, None)
     
+    # 不写入图谱的 action 类型
+    _SKIP_ACTIONS = {'DO_NOTHING', 'INTERVIEW'}
+    _IMPORT_BATCH_SIZE = 50
+
+    @classmethod
+    def _do_post_sim_graph_import(cls, simulation_id: str, graph_id: str, sim_dir: str):
+        """
+        模拟结束后用轻量 Cypher 将 actions.jsonl 批量写入 Neo4j。
+        不走 Graphiti（太慢 / 超时 / 吃内存），直接 MERGE 节点和关系。
+        在独立线程中运行，避免阻塞监控线程。
+        """
+        logger.info(f"开始模拟后图谱批量导入（Cypher）: simulation_id={simulation_id}, graph_id={graph_id}")
+        
+        # 1. 读取所有有意义的 action
+        actions = []
+        for platform in ("twitter", "reddit"):
+            log_path = os.path.join(sim_dir, platform, "actions.jsonl")
+            if not os.path.exists(log_path):
+                continue
+            with open(log_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                        if "event_type" in data:
+                            continue
+                        if data.get("action_type", "") in cls._SKIP_ACTIONS:
+                            continue
+                        data["platform"] = platform
+                        actions.append(data)
+                    except json.JSONDecodeError:
+                        continue
+        
+        if not actions:
+            logger.info(f"没有可导入的 action 数据: {simulation_id}")
+            return
+        
+        logger.info(f"读取到 {len(actions)} 条有意义的 Agent 行为，开始写入 Neo4j...")
+        
+        # 2. 连接 Neo4j
+        try:
+            from neo4j import GraphDatabase
+            driver = GraphDatabase.driver(
+                Config.NEO4J_URI or 'bolt://localhost:7687',
+                auth=(Config.NEO4J_USERNAME or 'neo4j', Config.NEO4J_PASSWORD or 'neo4jneo4j')
+            )
+        except Exception as e:
+            logger.error(f"连接 Neo4j 失败，跳过图谱导入: {e}")
+            return
+        
+        try:
+            # 3. 创建约束和索引（幂等）
+            with driver.session() as session:
+                session.run("CREATE CONSTRAINT sim_action_id IF NOT EXISTS FOR (a:SimAction) REQUIRE a.uid IS UNIQUE")
+                session.run("CREATE INDEX sim_action_round IF NOT EXISTS FOR (a:SimAction) ON (a.round)")
+                session.run("CREATE INDEX sim_agent_name IF NOT EXISTS FOR (a:SimAgent) ON (a.name)")
+            
+            # 4. 批量写入 Agent + Action 节点
+            total = 0
+            with driver.session() as session:
+                for i in range(0, len(actions), cls._IMPORT_BATCH_SIZE):
+                    batch = actions[i:i + cls._IMPORT_BATCH_SIZE]
+                    params = []
+                    for act in batch:
+                        content = ''
+                        args = act.get('action_args', {})
+                        if isinstance(args, dict):
+                            content = args.get('content', '') or args.get('post_content', '') or ''
+                        params.append({
+                            'uid': f"{graph_id}_{act.get('platform','?')}_{act.get('round',0)}_{act.get('agent_id',0)}_{act.get('action_type','')}",
+                            'agent_name': act.get('agent_name', ''),
+                            'action_type': act.get('action_type', ''),
+                            'content': content[:500],
+                            'round': act.get('round', 0),
+                            'platform': act.get('platform', ''),
+                            'timestamp': act.get('timestamp', ''),
+                            'graph_id': graph_id,
+                        })
+                    session.run("""
+                        UNWIND $batch AS row
+                        MERGE (agent:SimAgent {name: row.agent_name, graph_id: row.graph_id})
+                        MERGE (action:SimAction {uid: row.uid})
+                        SET action.action_type = row.action_type,
+                            action.content = row.content,
+                            action.round = row.round,
+                            action.platform = row.platform,
+                            action.timestamp = row.timestamp,
+                            action.graph_id = row.graph_id
+                        MERGE (agent)-[:PERFORMED]->(action)
+                    """, batch=params)
+                    total += len(batch)
+            
+            # 5. 关联 SimAgent → 已有知识图谱实体（按名称）
+            with driver.session() as session:
+                result = session.run("""
+                    MATCH (sa:SimAgent {graph_id: $gid})
+                    MATCH (entity) WHERE entity.name = sa.name
+                      AND NOT entity:SimAgent AND NOT entity:SimAction
+                    MERGE (sa)-[:CORRESPONDS_TO]->(entity)
+                    RETURN count(*) as linked
+                """, gid=graph_id)
+                linked = result.single()['linked']
+            
+            logger.info(
+                f"模拟后图谱导入完成: simulation_id={simulation_id}, "
+                f"写入 {total} 条 SimAction, 关联已有实体 {linked} 条"
+            )
+        except Exception as e:
+            logger.error(f"图谱批量导入失败: {e}")
+        finally:
+            driver.close()
+
     @classmethod
     def _read_action_log(
         cls, 

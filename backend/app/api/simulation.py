@@ -432,6 +432,26 @@ def prepare_simulation():
         resume = data.get('resume', False)  # 续生成：保留已有 profiles，只生成缺失的
         logger.info(f"开始处理 /prepare 请求: simulation_id={simulation_id}, force_regenerate={force_regenerate}, resume={resume}")
         
+        # 检查是否已有正在运行的 prepare 任务（防止重复启动）
+        if not force_regenerate:
+            task_manager_check = TaskManager()
+            running_task = task_manager_check.find_running_task(
+                task_type="simulation_prepare",
+                metadata_filter={"simulation_id": simulation_id}
+            )
+            if running_task:
+                logger.info(f"模拟 {simulation_id} 已有正在运行的 prepare 任务: {running_task['task_id']}，跳过重复启动")
+                return jsonify({
+                    "success": True,
+                    "data": {
+                        "simulation_id": simulation_id,
+                        "task_id": running_task["task_id"],
+                        "status": "preparing",
+                        "message": "已有正在运行的准备任务",
+                        "already_preparing": True
+                    }
+                })
+        
         # 检查是否已经准备完成（避免重复生成）
         if not force_regenerate and not resume:
             logger.debug(f"检查模拟 {simulation_id} 是否已准备完成...")
@@ -486,10 +506,18 @@ def prepare_simulation():
                 defined_entity_types=entity_types_list,
                 enrich_with_edges=False  # 不获取边信息，加快速度
             )
-            # 保存实体数量到状态（供前端立即获取）
-            state.entities_count = filtered_preview.filtered_count
+            # 按名称去重（图谱可能存在同名实体）
+            seen = set()
+            unique_count = 0
+            for e in filtered_preview.entities:
+                key = (e.name or '').lower()
+                if key and key not in seen:
+                    seen.add(key)
+                    unique_count += 1
+            # 保存去重后的实体数量到状态（供前端立即获取）
+            state.entities_count = unique_count
             state.entity_types = list(filtered_preview.entity_types)
-            logger.info(f"预期实体数量: {filtered_preview.filtered_count}, 类型: {filtered_preview.entity_types}")
+            logger.info(f"预期实体数量: {unique_count}（原始 {filtered_preview.filtered_count}）, 类型: {filtered_preview.entity_types}")
         except Exception as e:
             logger.warning(f"同步获取实体数量失败（将在后台任务中重试）: {e}")
             # 失败不影响后续流程，后台任务会重新获取
@@ -679,8 +707,35 @@ def get_prepare_status():
         task_id = data.get('task_id')
         simulation_id = data.get('simulation_id')
         
-        # 如果提供了simulation_id，先检查是否已准备完成
+        task_manager = TaskManager()
+        
+        # 优先返回显式 task_id 对应的任务状态。
+        # 否则在“续生成”场景下，simulation_id 会被旧的 prepared 状态提前短路，
+        # 前端误以为任务已经 ready，从而看起来像“继续生成没反应”。
+        if task_id:
+            task = task_manager.get_task(task_id)
+            if task:
+                task_dict = task.to_dict()
+                task_dict["already_prepared"] = False
+                return jsonify({
+                    "success": True,
+                    "data": task_dict
+                })
+
+        # 如果没有可用的显式 task_id，再检查当前 simulation 是否存在运行中的 prepare 任务
         if simulation_id:
+            running_task = task_manager.find_running_task(
+                task_type="simulation_prepare",
+                metadata_filter={"simulation_id": simulation_id}
+            )
+            if running_task:
+                running_task["already_prepared"] = False
+                return jsonify({
+                    "success": True,
+                    "data": running_task
+                })
+
+            # 只有在没有运行中任务时，才回退到“是否已准备完成”的静态判断
             is_prepared, prepare_info = _check_simulation_prepared(simulation_id)
             if is_prepared:
                 return jsonify({
@@ -714,7 +769,6 @@ def get_prepare_status():
                 "error": "请提供 task_id 或 simulation_id"
             }), 400
         
-        task_manager = TaskManager()
         task = task_manager.get_task(task_id)
         
         if not task:
@@ -1538,7 +1592,8 @@ def start_simulation():
             "platform": "parallel",                // 可选: twitter / reddit / parallel (默认)
             "max_rounds": 100,                     // 可选: 最大模拟轮数，用于截断过长的模拟
             "enable_graph_memory_update": false,   // 可选: 是否将Agent活动动态更新到图谱记忆
-            "force": false                         // 可选: 强制重新开始（会停止运行中的模拟并清理日志）
+            "force": false,                        // 可选: 强制重新开始（会停止运行中的模拟并清理日志）
+            "resume": false                        // 可选: 续跑模式，从已有轮次继续跑到 max_rounds
         }
 
     关于 force 参数：
@@ -1581,7 +1636,9 @@ def start_simulation():
         platform = data.get('platform', 'parallel')
         max_rounds = data.get('max_rounds')  # 可选：最大模拟轮数
         enable_graph_memory_update = data.get('enable_graph_memory_update', False)  # 可选：是否启用图谱记忆更新
+        post_sim_graph_import = data.get('post_sim_graph_import', False)  # 可选：模拟结束后批量导入图谱
         force = data.get('force', False)  # 可选：强制重新开始
+        resume = data.get('resume', False)  # 可选：续跑模式
 
         # 验证 max_rounds 参数
         if max_rounds is not None:
@@ -1615,6 +1672,16 @@ def start_simulation():
             }), 404
 
         force_restarted = False
+        start_round = 0  # 默认从第 0 轮开始
+        
+        # 续跑模式：读取已有轮次，从断点继续
+        if resume:
+            run_state = SimulationRunner.get_run_state(simulation_id)
+            if run_state and run_state.current_round > 0:
+                start_round = run_state.current_round
+                logger.info(f"续跑模式：从第 {start_round} 轮继续，目标 {max_rounds} 轮")
+            else:
+                logger.warning(f"续跑模式：未找到已有进度，将从头开始")
         
         # 智能处理状态：如果准备工作已完成，允许重新启动
         if state.status != SimulationStatus.READY:
@@ -1641,8 +1708,8 @@ def start_simulation():
                                 "error": f"模拟正在运行中，请先调用 /stop 接口停止，或使用 force=true 强制重新开始"
                             }), 400
 
-                # 如果是强制模式，清理运行日志
-                if force:
+                # 如果是强制模式（且非续跑），清理运行日志
+                if force and not resume:
                     logger.info(f"强制模式：清理模拟日志 {simulation_id}")
                     cleanup_result = SimulationRunner.cleanup_simulation_logs(simulation_id)
                     if not cleanup_result.get("success"):
@@ -1659,17 +1726,17 @@ def start_simulation():
                     "success": False,
                     "error": f"模拟未准备好，当前状态: {state.status.value}，请先调用 /prepare 接口"
                 }), 400
-        elif force:
-            # 状态已是 READY 但用户请求 force：仍需清理旧的运行日志
+        elif force and not resume:
+            # 状态已是 READY 但用户请求 force（非续跑）：清理旧的运行日志
             logger.info(f"强制模式（状态已 READY）：清理旧模拟日志 {simulation_id}")
             cleanup_result = SimulationRunner.cleanup_simulation_logs(simulation_id)
             if not cleanup_result.get("success"):
                 logger.warning(f"清理日志时出现警告: {cleanup_result.get('errors')}")
             force_restarted = True
         
-        # 获取图谱ID（用于图谱记忆更新）
+        # 获取图谱ID（用于图谱记忆更新 或 模拟后批量导入）
         graph_id = None
-        if enable_graph_memory_update:
+        if enable_graph_memory_update or post_sim_graph_import:
             # 从模拟状态或项目中获取 graph_id
             graph_id = state.graph_id
             if not graph_id:
@@ -1679,12 +1746,20 @@ def start_simulation():
                     graph_id = project.graph_id
             
             if not graph_id:
-                return jsonify({
-                    "success": False,
-                    "error": "启用图谱记忆更新需要有效的 graph_id，请确保项目已构建图谱"
-                }), 400
+                if enable_graph_memory_update:
+                    return jsonify({
+                        "success": False,
+                        "error": "启用图谱记忆更新需要有效的 graph_id，请确保项目已构建图谱"
+                    }), 400
+                else:
+                    # post_sim_graph_import 没有 graph_id 时降级为不导入
+                    post_sim_graph_import = False
+                    logger.warning(f"无 graph_id，跳过模拟后图谱导入")
             
-            logger.info(f"启用图谱记忆更新: simulation_id={simulation_id}, graph_id={graph_id}")
+            if enable_graph_memory_update:
+                logger.info(f"启用图谱记忆更新: simulation_id={simulation_id}, graph_id={graph_id}")
+            if post_sim_graph_import:
+                logger.info(f"注册模拟后批量图谱导入: simulation_id={simulation_id}, graph_id={graph_id}")
         
         # 启动模拟
         run_state = SimulationRunner.start_simulation(
@@ -1692,7 +1767,9 @@ def start_simulation():
             platform=platform,
             max_rounds=max_rounds,
             enable_graph_memory_update=enable_graph_memory_update,
-            graph_id=graph_id
+            graph_id=graph_id,
+            start_round=start_round,
+            post_sim_graph_import=post_sim_graph_import
         )
         
         # 更新模拟状态

@@ -418,10 +418,11 @@ class GraphMemoryUpdater:
                 
             except Exception as e:
                 if attempt < self.MAX_RETRIES - 1:
-                    logger.warning(f"批量发送到图谱失败 (尝试 {attempt + 1}/{self.MAX_RETRIES}): {e}")
+                    logger.warning(f"批量发送到图谱失败 (尝试 {attempt + 1}/{self.MAX_RETRIES}): {type(e).__name__}: {e}")
                     time.sleep(self.RETRY_DELAY * (attempt + 1))
                 else:
-                    logger.error(f"批量发送到图谱失败，已重试{self.MAX_RETRIES}次: {e}")
+                    import traceback
+                    logger.error(f"批量发送到图谱失败，已重试{self.MAX_RETRIES}次: {type(e).__name__}: {e}\n{traceback.format_exc()}")
                     self._failed_count += 1
     
     def _flush_remaining(self):

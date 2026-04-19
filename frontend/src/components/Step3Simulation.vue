@@ -162,11 +162,12 @@
               <button class="choice-btn secondary" @click="handleChoiceKeepOld">查看已有数据 ({{ oldRunRounds }} 轮)</button>
             </div>
           </template>
-          <!-- 旧轮次 < 新设定：数据不足，是否继续跑 -->
+          <!-- 旧轮次 < 新设定：数据不足，可以续跑 -->
           <template v-else>
             <p class="run-choice-hint">已有数据少于本次设定轮数。</p>
             <div class="run-choice-actions">
-              <button class="choice-btn primary" @click="handleChoiceRestart">重新运行 ({{ props.maxRounds }} 轮)</button>
+              <button class="choice-btn primary" @click="handleChoiceResume">续跑到 {{ props.maxRounds }} 轮</button>
+              <button class="choice-btn secondary" @click="handleChoiceRestart">重新运行 ({{ props.maxRounds }} 轮)</button>
               <button class="choice-btn secondary" @click="handleChoiceKeepOld">查看已有数据 ({{ oldRunRounds }} 轮)</button>
             </div>
           </template>
@@ -429,7 +430,8 @@ const doStartSimulation = async () => {
       simulation_id: props.simulationId,
       platform: 'parallel',
       force: true,  // 强制重新开始
-      enable_graph_memory_update: true  // 开启动态图谱更新
+      enable_graph_memory_update: false,  // 模拟期间关闭实时更新（节省内存）
+      post_sim_graph_import: true           // 模拟结束后批量导入图谱
     }
     
     if (props.maxRounds) {
@@ -437,7 +439,7 @@ const doStartSimulation = async () => {
       addLog(`设置最大模拟轮数: ${props.maxRounds}`)
     }
     
-    addLog('已开启动态图谱更新模式')
+    addLog('图谱更新将在模拟结束后批量执行')
     
     const res = await startSimulation(params)
     
@@ -461,6 +463,58 @@ const doStartSimulation = async () => {
   } catch (err) {
     startError.value = err.message
     addLog(`✗ 启动异常: ${err.message}`)
+    emit('update-status', 'error')
+  } finally {
+    isStarting.value = false
+  }
+}
+
+// 续跑模拟：从已有轮次继续跑到目标轮数
+const doResumeSimulation = async () => {
+  if (!props.simulationId) {
+    addLog('错误：缺少 simulationId')
+    return
+  }
+  
+  isStarting.value = true
+  startError.value = null
+  addLog(`正在续跑模拟（从第 ${oldRunRounds.value + 1} 轮开始）...`)
+  emit('update-status', 'processing')
+  
+  try {
+    const params = {
+      simulation_id: props.simulationId,
+      platform: 'parallel',
+      force: true,   // 需要 force 绕过状态检查
+      resume: true,  // 续跑模式：不清理日志，从断点继续
+      enable_graph_memory_update: false,   // 模拟期间关闭实时更新
+      post_sim_graph_import: true            // 模拟结束后批量导入
+    }
+    
+    if (props.maxRounds) {
+      params.max_rounds = props.maxRounds
+      addLog(`目标轮数: ${props.maxRounds}`)
+    }
+    
+    const res = await startSimulation(params)
+    
+    if (res.success && res.data) {
+      addLog('✓ 续跑模式启动成功')
+      addLog(`  ├─ PID: ${res.data.process_pid || '-'}`)
+      
+      phase.value = 1
+      runStatus.value = res.data
+      
+      startStatusPolling()
+      startDetailPolling()
+    } else {
+      startError.value = res.error || '续跑失败'
+      addLog(`✗ 续跑失败: ${res.error || '未知错误'}`)
+      emit('update-status', 'error')
+    }
+  } catch (err) {
+    startError.value = err.message
+    addLog(`✗ 续跑异常: ${err.message}`)
     emit('update-status', 'error')
   } finally {
     isStarting.value = false
@@ -857,6 +911,13 @@ watch(() => props.systemLogs?.length, () => {
     }
   })
 })
+
+// 用户选择：续跑
+const handleChoiceResume = () => {
+  showRunChoice.value = false
+  addLog(`→ 用户选择续跑：从第 ${oldRunRounds.value + 1} 轮继续到 ${props.maxRounds} 轮`)
+  doResumeSimulation()
+}
 
 // 用户选择：重新运行
 const handleChoiceRestart = () => {

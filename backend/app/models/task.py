@@ -169,6 +169,33 @@ class TaskManager:
                 tasks = [t for t in tasks if t.task_type == task_type]
             return [t.to_dict() for t in sorted(tasks, key=lambda x: x.created_at, reverse=True)]
     
+    def find_running_task(self, task_type: str, metadata_filter: Optional[Dict] = None) -> Optional[Dict]:
+        """
+        查找正在运行的任务（PENDING 或 PROCESSING）
+        
+        Args:
+            task_type: 任务类型
+            metadata_filter: 元数据过滤条件（键值需完全匹配）
+            
+        Returns:
+            匹配的任务字典，未找到则返回 None
+        """
+        with self._task_lock:
+            for task in self._tasks.values():
+                if task.task_type != task_type:
+                    continue
+                if task.status not in (TaskStatus.PENDING, TaskStatus.PROCESSING):
+                    continue
+                if metadata_filter:
+                    match = all(
+                        task.metadata.get(k) == v
+                        for k, v in metadata_filter.items()
+                    )
+                    if not match:
+                        continue
+                return task.to_dict()
+        return None
+    
     def cleanup_old_tasks(self, max_age_hours: int = 24):
         """清理旧任务"""
         from datetime import timedelta

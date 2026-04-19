@@ -988,42 +988,62 @@ class OasisProfileGenerator:
         total = len(entities)
         profiles = [None] * total  # 预分配列表保持顺序
         completed_count = [0]  # 使用列表以便在闭包中修改
+        skipped_count = 0  # 续生成时跳过的实体数
         lock = Lock()
+        
+        # 保留旧 profiles 的原始数据（dict 格式），用于写文件时合并
+        preserved_profiles_data = list(existing_profiles) if existing_profiles else []
+        # 已保留的 profile 名称集合（用于去重合并）
+        preserved_names = set(n for n in existing_names)  # copy
         
         # 实时写入文件的辅助函数
         def save_profiles_realtime():
-            """实时保存已生成的 profiles 到文件"""
+            """实时保存已生成的 profiles 到文件（合并旧 profiles + 新 profiles）"""
             if not realtime_output_path:
                 return
             
             with lock:
-                # 过滤出已生成的 profiles
-                existing_profiles = [p for p in profiles if p is not None]
-                if not existing_profiles:
+                # 过滤出本次新生成的 profiles
+                new_profiles = [p for p in profiles if p is not None]
+                if not new_profiles and not preserved_profiles_data:
                     return
                 
                 try:
                     if output_platform == "reddit":
-                        # Reddit JSON 格式
-                        profiles_data = [p.to_reddit_format() for p in existing_profiles]
+                        # 合并：旧 profiles（dict）+ 新 profiles（转 dict）
+                        new_data = [p.to_reddit_format() for p in new_profiles]
+                        # 去重：如果新生成的 profile 名字与旧的重复，用新的替换旧的
+                        new_names = set()
+                        for p in new_data:
+                            name = (p.get('name') or '').lower()
+                            if name:
+                                new_names.add(name)
+                        merged = [p for p in preserved_profiles_data
+                                  if (p.get('name') or '').lower() not in new_names]
+                        merged.extend(new_data)
                         with open(realtime_output_path, 'w', encoding='utf-8') as f:
-                            json.dump(profiles_data, f, ensure_ascii=False, indent=2)
+                            json.dump(merged, f, ensure_ascii=False, indent=2)
                     else:
                         # Twitter CSV 格式
                         import csv
-                        profiles_data = [p.to_twitter_format() for p in existing_profiles]
-                        if profiles_data:
-                            fieldnames = list(profiles_data[0].keys())
+                        new_data = [p.to_twitter_format() for p in new_profiles]
+                        merged = list(preserved_profiles_data) + new_data
+                        if merged:
+                            fieldnames = list(merged[0].keys())
                             with open(realtime_output_path, 'w', encoding='utf-8', newline='') as f:
                                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                                 writer.writeheader()
-                                writer.writerows(profiles_data)
+                                writer.writerows(merged)
                 except Exception as e:
                     logger.warning(f"实时保存 profiles 失败: {e}")
         
         def generate_single_profile(idx: int, entity: EntityNode) -> tuple:
             """生成单个profile的工作函数"""
             entity_type = entity.get_entity_type() or "Entity"
+            
+            # 续生成：跳过已有 profile 的实体
+            if entity.name and entity.name.lower() in existing_names:
+                return idx, None, "skipped"
             
             try:
                 profile = self.generate_profile_from_entity(
@@ -1071,26 +1091,37 @@ class OasisProfileGenerator:
                 
                 try:
                     result_idx, profile, error = future.result()
+                    
+                    # 跳过已有 profile 的实体
+                    if error == "skipped":
+                        with lock:
+                            completed_count[0] += 1
+                        continue
+                    
                     profiles[result_idx] = profile
                     
                     with lock:
                         completed_count[0] += 1
                         current = completed_count[0]
                     
-                    # 实时写入文件
+                    # 实时写入文件（合并旧 + 新）
                     save_profiles_realtime()
                     
                     if progress_callback:
+                        generated = len([p for p in profiles if p is not None])
+                        total_with_existing = generated + len(preserved_profiles_data)
                         progress_callback(
-                            current, 
+                            total_with_existing, 
                             total, 
-                            f"已完成 {current}/{total}: {entity.name}（{entity_type}）"
+                            f"已完成 {total_with_existing}/{total}: {entity.name}（{entity_type}）"
                         )
                     
                     if error:
                         logger.warning(f"[{current}/{total}] {entity.name} 使用备用人设: {error}")
                     else:
-                        logger.info(f"[{current}/{total}] 成功生成人设: {entity.name} ({entity_type})")
+                        generated = len([p for p in profiles if p is not None])
+                        total_with_existing = generated + len(preserved_profiles_data)
+                        logger.info(f"[{total_with_existing}/{total}] 成功生成人设: {entity.name} ({entity_type})")
                         
                 except Exception as e:
                     logger.error(f"处理实体 {entity.name} 时发生异常: {str(e)}")

@@ -320,22 +320,39 @@ class SimulationManager:
                 enrich_with_edges=True
             )
             
-            state.entities_count = filtered.filtered_count
             state.entity_types = list(filtered.entity_types)
-            
-            if progress_callback:
-                progress_callback(
-                    "reading", 100, 
-                    f"完成，共 {filtered.filtered_count} 个实体",
-                    current=filtered.filtered_count,
-                    total=filtered.filtered_count
-                )
             
             if filtered.filtered_count == 0:
                 state.status = SimulationStatus.FAILED
                 state.error = "没有找到符合条件的实体，请检查图谱是否正确构建"
                 self._save_simulation_state(state)
                 return state
+            
+            # 按名称去重（图谱中可能存在同名实体），保留首次出现的实体
+            seen_names = set()
+            unique_entities = []
+            for entity in filtered.entities:
+                key = (entity.name or '').lower()
+                if key and key in seen_names:
+                    continue
+                seen_names.add(key)
+                unique_entities.append(entity)
+            
+            if len(unique_entities) < len(filtered.entities):
+                logger.info(
+                    f"实体去重: {len(filtered.entities)} -> {len(unique_entities)} "
+                    f"（{len(filtered.entities) - len(unique_entities)} 个同名实体被合并）"
+                )
+            filtered.entities = unique_entities
+            state.entities_count = len(unique_entities)
+            
+            if progress_callback:
+                progress_callback(
+                    "reading", 100, 
+                    f"完成，共 {state.entities_count} 个实体",
+                    current=state.entities_count,
+                    total=state.entities_count
+                )
             
             # ========== 阶段2: 生成Agent Profile ==========
             total_entities = len(filtered.entities)
@@ -397,39 +414,51 @@ class SimulationManager:
                 existing_profiles=existing_profiles_data  # 续生成时传入已有 profiles
             )
             
-            state.profiles_count = len(profiles)
+            # 过滤掉 None（续生成时被 skip 的槽位为 None）
+            valid_profiles = [p for p in profiles if p is not None]
+            state.profiles_count = len(valid_profiles)
             
-            # 保存Profile文件（注意：Twitter使用CSV格式，Reddit使用JSON格式）
-            # Reddit 已经在生成过程中实时保存了，这里再保存一次确保完整性
-            if progress_callback:
-                progress_callback(
-                    "generating_profiles", 95, 
-                    "保存Profile文件...",
-                    current=total_entities,
-                    total=total_entities
-                )
-            
-            if state.enable_reddit:
-                generator.save_profiles(
-                    profiles=profiles,
-                    file_path=os.path.join(sim_dir, "reddit_profiles.json"),
-                    platform="reddit"
-                )
-            
-            if state.enable_twitter:
-                # Twitter使用CSV格式！这是OASIS的要求
-                generator.save_profiles(
-                    profiles=profiles,
-                    file_path=os.path.join(sim_dir, "twitter_profiles.csv"),
-                    platform="twitter"
-                )
+            # 保存Profile文件
+            # 续生成模式下，realtime_output 已经合并了旧+新 profiles，
+            # 这里只在非续生成时执行最终保存，避免用不完整列表覆盖已合并的文件。
+            if not resume:
+                if progress_callback:
+                    progress_callback(
+                        "generating_profiles", 95, 
+                        "保存Profile文件...",
+                        current=total_entities,
+                        total=total_entities
+                    )
+                
+                if state.enable_reddit:
+                    generator.save_profiles(
+                        profiles=valid_profiles,
+                        file_path=os.path.join(sim_dir, "reddit_profiles.json"),
+                        platform="reddit"
+                    )
+                
+                if state.enable_twitter:
+                    # Twitter使用CSV格式！这是OASIS的要求
+                    generator.save_profiles(
+                        profiles=valid_profiles,
+                        file_path=os.path.join(sim_dir, "twitter_profiles.csv"),
+                        platform="twitter"
+                    )
+            else:
+                # 续生成模式：统计实际文件中的 profile 数量
+                reddit_path = os.path.join(sim_dir, "reddit_profiles.json")
+                if os.path.exists(reddit_path):
+                    import json as _json
+                    with open(reddit_path, 'r', encoding='utf-8') as f:
+                        state.profiles_count = len(_json.load(f))
+                logger.info(f"续生成模式：跳过最终保存，文件已由实时写入维护（共 {state.profiles_count} 个）")
             
             if progress_callback:
                 progress_callback(
                     "generating_profiles", 100, 
-                    f"完成，共 {len(profiles)} 个Profile",
-                    current=len(profiles),
-                    total=len(profiles)
+                    f"完成，共 {state.profiles_count} 个Profile",
+                    current=state.profiles_count,
+                    total=total_entities
                 )
             
             # ========== 阶段3: LLM智能生成模拟配置 ==========
