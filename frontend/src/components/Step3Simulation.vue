@@ -138,6 +138,13 @@
           查看模拟图谱
         </button>
         <button
+          v-if="phase === 2"
+          class="action-btn secondary"
+          @click="openEvaluation"
+        >
+          量化评估报告
+        </button>
+        <button
           class="action-btn primary"
           :disabled="phase !== 2 || isGeneratingReport"
           @click="handleNextStep"
@@ -538,6 +545,14 @@ const scrollToSimGraph = () => {
       graph_id: props.projectData?.graph_id,
       project_id: props.projectData?.project_id
     }
+  })
+}
+
+// 打开量化评估报告页面
+const openEvaluation = () => {
+  vueRouter.push({
+    name: 'Evaluation',
+    params: { simulationId: props.simulationId }
   })
 }
 

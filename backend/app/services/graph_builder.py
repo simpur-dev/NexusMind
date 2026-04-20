@@ -12,6 +12,7 @@ from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from pydantic import BaseModel, Field, create_model
 from graphiti_core import Graphiti
 from graphiti_core.nodes import EpisodeType
 
@@ -42,7 +43,7 @@ class GraphInfo:
 class GraphBuilderService:
     """
     图谱构建服务
-    负责调用 Graphiti + FalkorDB 构建知识图谱
+    负责调用 Graphiti + Neo4j 构建知识图谱
     """
     
     def __init__(self, api_key: Optional[str] = None):
@@ -226,24 +227,93 @@ class GraphBuilderService:
         
         return graph_id
     
+    # 中文抽取指令，注入到每个 add_episode 调用
+    CHINESE_EXTRACTION_INSTRUCTIONS = (
+        "## 语言要求\n"
+        "所有提取的实体名称（entity name）和关系名称（edge name / fact）都必须使用简体中文。"
+        "如果原文是英文，请将实体名翻译为中文。"
+        "例如：'Harvard University' → '哈佛大学'，'Donald Trump' → '唐纳德·特朗普'，'FBI' → '美国联邦调查局'。"
+        "关系描述（fact）也使用中文。实体名称应尽量使用完整的中文名称，不要截断。\n\n"
+        "## 实体质量要求（极其重要）\n"
+        "只提取以下类型的实体——即现实世界中具体存在的、可以在社交媒体上发声或被提及的主体：\n"
+        "✅ 可以提取：具体的人名（如'张三'、'马克·扎克伯格'）、具体组织（如'北京大学'、'美国教育部'、'纽约时报'）、"
+        "具体平台（如'微博'、'Twitter'）、具体国家/地区（如'美国'、'欧盟'）、具体政党/团体（如'共和党'、'绿色和平'）\n"
+        "❌ 绝对不能提取：抽象概念、主题词、话题、情感、态度、趋势、价值观。"
+        "以下类型的词语绝对不能作为实体：'学术诚信'、'校园氛围'、'职业'、'教学'、'分歧'、"
+        "'行动呼吁'、'多样性'、'公平性'、'包容性'、'舆论'、'情绪'、'观点'、"
+        "'政策'、'分歧'、'招生'、'海外留学'、'档案'、'文件'、'调查'、'教育'等。"
+        "这些是主题/概念，不是可以独立存在的实体。\n\n"
+        "## 判断标准\n"
+        "提取实体前请自问：'这个词在现实中是否指一个具体的人、机构或组织？能否有自己的社交媒体账号？'"
+        "如果答案是否，则不要提取为实体。"
+    )
+
+    @staticmethod
+    def _build_pydantic_entity_types(ontology: Dict[str, Any]) -> Dict[str, type]:
+        """
+        将本体 entity_types 转为 Graphiti 所需的 Pydantic 模型字典。
+        每个 key 是实体类型名（PascalCase），value 是动态生成的 BaseModel 子类。
+        """
+        entity_models: Dict[str, type] = {}
+        for entity_def in ontology.get("entity_types", []):
+            name = entity_def["name"]
+            desc = entity_def.get("description", name)
+            fields: Dict[str, Any] = {}
+            for attr in entity_def.get("attributes", []):
+                attr_name = attr["name"]
+                attr_desc = attr.get("description", attr_name)
+                fields[attr_name] = (Optional[str], Field(default=None, description=attr_desc))
+            model = create_model(name, __doc__=desc, **fields)
+            entity_models[name] = model
+        return entity_models
+
+    @staticmethod
+    def _build_pydantic_edge_types(ontology: Dict[str, Any]):
+        """
+        将本体 edge_types 转为 Graphiti 所需的 Pydantic 模型字典及 edge_type_map。
+        """
+        edge_models: Dict[str, type] = {}
+        edge_type_map: Dict[tuple, List[str]] = {}
+        for edge_def in ontology.get("edge_types", []):
+            name = edge_def["name"]
+            desc = edge_def.get("description", name)
+            fields: Dict[str, Any] = {}
+            for attr in edge_def.get("attributes", []):
+                attr_name = attr["name"]
+                attr_desc = attr.get("description", attr_name)
+                fields[attr_name] = (Optional[str], Field(default=None, description=attr_desc))
+            model = create_model(name, __doc__=desc, **fields)
+            edge_models[name] = model
+            for st in edge_def.get("source_targets", []):
+                src = st.get("source", "Entity")
+                tgt = st.get("target", "Entity")
+                key = (src, tgt)
+                edge_type_map.setdefault(key, [])
+                if name not in edge_type_map[key]:
+                    edge_type_map[key].append(name)
+        return edge_models, edge_type_map
+
     def set_ontology(self, graph_id: str, ontology: Dict[str, Any]):
         """
         设置图谱本体。
         
-        Graphiti 支持 prescribed ontology（通过 Pydantic 模型）和 learned ontology。
-        这里将本体信息序列化为描述文本，作为首个 episode 注入，
-        让 Graphiti 自动学习本体结构。
+        使用 Graphiti 的 prescribed ontology（Pydantic 模型）精确约束实体和关系类型，
+        并将本体文本作为首个 episode 注入以提供上下文。
         """
-        # 构建本体描述文本
+        # 构建 Pydantic 模型，缓存在实例上供 add_text_batches 复用
+        self._entity_types = self._build_pydantic_entity_types(ontology)
+        self._edge_types, self._edge_type_map = self._build_pydantic_edge_types(ontology)
+        
+        # 仍然构建文本描述用于首个 episode 的上下文
         ontology_text_parts = ["=== 本体定义 (Ontology) ===\n"]
         
         for entity_def in ontology.get("entity_types", []):
             name = entity_def["name"]
             desc = entity_def.get("description", "")
-            attrs = entity_def.get("attributes", [])
-            attr_str = ", ".join([a["name"] for a in attrs]) if attrs else "无"
+            examples = entity_def.get("examples", [])
+            examples_str = ", ".join(examples[:3]) if examples else "无"
             ontology_text_parts.append(
-                f"实体类型 [{name}]: {desc}. 属性: {attr_str}"
+                f"实体类型 [{name}]: {desc}. 示例: {examples_str}"
             )
         
         for edge_def in ontology.get("edge_types", []):
@@ -257,15 +327,19 @@ class GraphBuilderService:
         
         ontology_text = "\n".join(ontology_text_parts)
         
-        # 作为首个 episode 注入
+        # 作为首个 episode 注入（带 prescribed 类型约束）
         graphiti = get_graphiti(graph_id)
         run_async(graphiti.add_episode(
             name="ontology_definition",
             episode_body=ontology_text,
             source=EpisodeType.text,
-            source_description="Knowledge graph ontology definition",
+            source_description="知识图谱本体定义",
             reference_time=datetime.now(timezone.utc),
-        ))
+            entity_types=self._entity_types,
+            edge_types=self._edge_types,
+            edge_type_map=self._edge_type_map,
+            custom_extraction_instructions=self.CHINESE_EXTRACTION_INSTRUCTIONS,
+        ), timeout=120)
     
     def add_text_batches(
         self,
@@ -309,8 +383,12 @@ class GraphBuilderService:
                     name=episode_name,
                     episode_body=chunk,
                     source=EpisodeType.text,
-                    source_description=f"Document chunk {idx + 1}/{total_chunks}",
+                    source_description=f"文档片段 {idx + 1}/{total_chunks}",
                     reference_time=datetime.now(timezone.utc),
+                    entity_types=getattr(self, '_entity_types', None),
+                    edge_types=getattr(self, '_edge_types', None),
+                    edge_type_map=getattr(self, '_edge_type_map', None),
+                    custom_extraction_instructions=self.CHINESE_EXTRACTION_INSTRUCTIONS,
                 ))
             
             try:

@@ -443,7 +443,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { generateOntology, getProject, buildGraph, getTaskStatus, getGraphData } from '../api/graph'
+import { generateOntology, generateOntologyFromWeb, getProject, buildGraph, getTaskStatus, getGraphData } from '../api/graph'
 import { getPendingUpload, clearPendingUpload } from '../store/pendingUpload'
 import Step1GraphBuild from '../components/Step1GraphBuild.vue'
 import Step2EnvSetup from '../components/Step2EnvSetup.vue'
@@ -854,12 +854,24 @@ const initProject = async () => {
   }
 }
 
-// 处理新建项目 - 调用 ontology/generate API
+// 处理新建项目 - 调用 ontology/generate 或 generate-from-web API
 const handleNewProject = async () => {
   const pending = getPendingUpload()
   
-  if (!pending.isPending || pending.files.length === 0) {
+  if (!pending.isPending) {
+    error.value = '没有待处理的数据，请返回首页重新操作'
+    loading.value = false
+    return
+  }
+  
+  // 根据模式验证输入
+  if (pending.mode === 'file' && pending.files.length === 0) {
     error.value = '没有待上传的文件，请返回首页重新操作'
+    loading.value = false
+    return
+  }
+  if (pending.mode === 'web' && !pending.webQuery) {
+    error.value = '没有搜索关键词，请返回首页重新操作'
     loading.value = false
     return
   }
@@ -867,17 +879,26 @@ const handleNewProject = async () => {
   try {
     loading.value = true
     currentPhase.value = 0 // 本体生成阶段
-    ontologyProgress.value = { message: '正在上传文件并分析文档...' }
     
-    // 构建 FormData
-    const formDataObj = new FormData()
-    pending.files.forEach(file => {
-      formDataObj.append('files', file)
-    })
-    formDataObj.append('simulation_requirement', pending.simulationRequirement)
+    let response
     
-    // 调用本体生成 API
-    const response = await generateOntology(formDataObj)
+    if (pending.mode === 'web') {
+      // 网络搜索模式
+      ontologyProgress.value = { message: '正在搜索网络舆情信息...' }
+      response = await generateOntologyFromWeb({
+        query: pending.webQuery,
+        simulation_requirement: pending.simulationRequirement,
+      })
+    } else {
+      // 文件上传模式
+      ontologyProgress.value = { message: '正在上传文件并分析文档...' }
+      const formDataObj = new FormData()
+      pending.files.forEach(file => {
+        formDataObj.append('files', file)
+      })
+      formDataObj.append('simulation_requirement', pending.simulationRequirement)
+      response = await generateOntology(formDataObj)
+    }
     
     if (response.success) {
       // 清除待上传数据
@@ -1181,7 +1202,7 @@ const loadGraph = async (graphId) => {
   }
 }
 
-// 渲染图谱 (D3.js)
+// 渲染图谱 (D3.js) — 高级可视化版
 const renderGraph = () => {
   if (!graphSvg.value || !graphData.value) {
     console.log('Cannot render: svg or data missing')
@@ -1194,15 +1215,11 @@ const renderGraph = () => {
     return
   }
   
-  // 获取容器尺寸
   const rect = container.getBoundingClientRect()
   const width = rect.width || 800
   const height = (rect.height || 600) - 60
   
-  if (width <= 0 || height <= 0) {
-    console.log('Cannot render: invalid dimensions', width, height)
-    return
-  }
+  if (width <= 0 || height <= 0) return
   
   console.log('Rendering graph:', width, 'x', height)
   
@@ -1213,36 +1230,28 @@ const renderGraph = () => {
   
   svg.selectAll('*').remove()
 
-  // 处理节点数据
   const nodesData = graphData.value.nodes || []
   const edgesData = graphData.value.edges || []
   
   if (nodesData.length === 0) {
-    console.log('No nodes to render')
-    // 显示空状态
     svg.append('text')
-      .attr('x', width / 2)
-      .attr('y', height / 2)
-      .attr('text-anchor', 'middle')
-      .attr('fill', '#999')
+      .attr('x', width / 2).attr('y', height / 2)
+      .attr('text-anchor', 'middle').attr('fill', '#64748b')
+      .attr('font-size', '14px')
       .text('等待图谱数据...')
     return
   }
   
-  // 创建节点映射用于查找名称
   const nodeMap = {}
-  nodesData.forEach(n => {
-    nodeMap[n.uuid] = n
-  })
+  nodesData.forEach(n => { nodeMap[n.uuid] = n })
   
   const nodes = nodesData.map(n => ({
     id: n.uuid,
     name: n.name || '未命名',
     type: n.labels?.find(l => l !== 'Entity' && l !== 'Node') || 'Entity',
-    rawData: n // 保存原始数据
+    rawData: n
   }))
   
-  // 创建节点ID集合用于过滤有效边
   const nodeIds = new Set(nodes.map(n => n.id))
   
   const edges = edgesData
@@ -1258,120 +1267,282 @@ const renderGraph = () => {
       }
     }))
   
-  console.log('Nodes:', nodes.length, 'Edges:', edges.length)
+  // ── 计算每个节点的度数（连接数），用于决定大小 ──
+  const degreeMap = {}
+  nodes.forEach(n => { degreeMap[n.id] = 0 })
+  edges.forEach(e => {
+    const sid = typeof e.source === 'object' ? e.source.id : e.source
+    const tid = typeof e.target === 'object' ? e.target.id : e.target
+    if (degreeMap[sid] !== undefined) degreeMap[sid]++
+    if (degreeMap[tid] !== undefined) degreeMap[tid]++
+  })
+  nodes.forEach(n => { n.degree = degreeMap[n.id] || 0 })
   
-  // 颜色映射
+  // ── 视觉主题 ──
+  const PALETTE = {
+    // 鲜明、高饱和度、深色背景友好的配色
+    'Person':          { fill: '#6366f1', glow: '#818cf8' },
+    'Organization':    { fill: '#f59e0b', glow: '#fbbf24' },
+    'Government':      { fill: '#ef4444', glow: '#f87171' },
+    'Location':        { fill: '#10b981', glow: '#34d399' },
+    'Event':           { fill: '#f43f5e', glow: '#fb7185' },
+    'Policy':          { fill: '#8b5cf6', glow: '#a78bfa' },
+    'MediaOutlet':     { fill: '#ec4899', glow: '#f472b6' },
+    'AcademicLead':    { fill: '#14b8a6', glow: '#2dd4bf' },
+    'University':      { fill: '#0ea5e9', glow: '#38bdf8' },
+    'Entity':          { fill: '#64748b', glow: '#94a3b8' },
+  }
+  const FALLBACK_COLORS = [
+    { fill: '#6366f1', glow: '#818cf8' },
+    { fill: '#f59e0b', glow: '#fbbf24' },
+    { fill: '#8b5cf6', glow: '#a78bfa' },
+    { fill: '#10b981', glow: '#34d399' },
+    { fill: '#ef4444', glow: '#f87171' },
+    { fill: '#ec4899', glow: '#f472b6' },
+    { fill: '#0ea5e9', glow: '#38bdf8' },
+    { fill: '#14b8a6', glow: '#2dd4bf' },
+  ]
   const types = [...new Set(nodes.map(n => n.type))]
-  const colorScale = d3.scaleOrdinal()
-    .domain(types)
-    .range(['#FF6B35', '#004E89', '#7B2D8E', '#1A936F', '#C5283D', '#E9724C', '#2D3436', '#6C5CE7'])
+  const typeColorMap = {}
+  let fallbackIdx = 0
+  types.forEach(t => {
+    if (PALETTE[t]) {
+      typeColorMap[t] = PALETTE[t]
+    } else {
+      typeColorMap[t] = FALLBACK_COLORS[fallbackIdx % FALLBACK_COLORS.length]
+      fallbackIdx++
+    }
+  })
+  const getColor = (type) => typeColorMap[type] || { fill: '#64748b', glow: '#94a3b8' }
   
-  // 力导向布局
+  // ── 节点半径：基于度数，高连接度的节点更大更醒目 ──
+  const maxDeg = Math.max(...nodes.map(n => n.degree), 1)
+  const nodeRadius = (d) => {
+    const base = 7
+    const scale = 18
+    return base + scale * Math.sqrt(d.degree / maxDeg)
+  }
+  
+  // ── SVG Defs: 径向渐变 + 辉光 + 箭头 ──
+  const defs = svg.append('defs')
+  
+  // 每种类型创建渐变和辉光
+  types.forEach(t => {
+    const c = getColor(t)
+    // 径向渐变
+    const grad = defs.append('radialGradient')
+      .attr('id', `grad-${t.replace(/\s+/g, '_')}`)
+      .attr('cx', '35%').attr('cy', '35%').attr('r', '65%')
+    grad.append('stop').attr('offset', '0%').attr('stop-color', '#fff').attr('stop-opacity', 0.45)
+    grad.append('stop').attr('offset', '50%').attr('stop-color', c.fill).attr('stop-opacity', 1)
+    grad.append('stop').attr('offset', '100%').attr('stop-color', d3.color(c.fill).darker(0.6)).attr('stop-opacity', 1)
+    
+    // 辉光滤镜
+    const filter = defs.append('filter')
+      .attr('id', `glow-${t.replace(/\s+/g, '_')}`)
+      .attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%')
+    filter.append('feGaussianBlur').attr('in', 'SourceGraphic').attr('stdDeviation', '3.5').attr('result', 'blur')
+    filter.append('feColorMatrix').attr('in', 'blur').attr('type', 'matrix')
+      .attr('values', `0 0 0 0 ${parseInt(c.glow.slice(1, 3), 16) / 255}  0 0 0 0 ${parseInt(c.glow.slice(3, 5), 16) / 255}  0 0 0 0 ${parseInt(c.glow.slice(5, 7), 16) / 255}  0 0 0 0.55 0`)
+      .attr('result', 'colorBlur')
+    const merge = filter.append('feMerge')
+    merge.append('feMergeNode').attr('in', 'colorBlur')
+    merge.append('feMergeNode').attr('in', 'SourceGraphic')
+  })
+  
+  // 箭头标记
+  defs.append('marker')
+    .attr('id', 'arrow')
+    .attr('viewBox', '0 -4 8 8')
+    .attr('refX', 20).attr('refY', 0)
+    .attr('markerWidth', 6).attr('markerHeight', 6)
+    .attr('orient', 'auto')
+    .append('path')
+    .attr('d', 'M0,-3.5L7,0L0,3.5')
+    .attr('fill', 'rgba(100,116,139,0.35)')
+  
+  // ── 力导向布局（优化参数） ──
   const simulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(edges).id(d => d.id).distance(100).strength(0.5))
-    .force('charge', d3.forceManyBody().strength(-300))
-    .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('collision', d3.forceCollide().radius(40))
-    .force('x', d3.forceX(width / 2).strength(0.05))
-    .force('y', d3.forceY(height / 2).strength(0.05))
+    .force('link', d3.forceLink(edges).id(d => d.id)
+      .distance(d => {
+        const sr = nodeRadius({ degree: degreeMap[typeof d.source === 'object' ? d.source.id : d.source] || 0 })
+        const tr = nodeRadius({ degree: degreeMap[typeof d.target === 'object' ? d.target.id : d.target] || 0 })
+        return sr + tr + 60
+      })
+      .strength(0.4))
+    .force('charge', d3.forceManyBody().strength(d => -120 - d.degree * 30))
+    .force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
+    .force('collision', d3.forceCollide().radius(d => nodeRadius(d) + 16).strength(0.7))
+    .force('x', d3.forceX(width / 2).strength(0.03))
+    .force('y', d3.forceY(height / 2).strength(0.03))
+    .alphaDecay(0.028)
+    .velocityDecay(0.35)
   
-  // 添加缩放功能
   const g = svg.append('g')
   
   svg.call(d3.zoom()
     .extent([[0, 0], [width, height]])
-    .scaleExtent([0.2, 4])
+    .scaleExtent([0.15, 6])
     .on('zoom', (event) => {
       g.attr('transform', event.transform)
     }))
   
-  // 绘制边（包含可点击的透明宽线）
-  const linkGroup = g.append('g')
-    .attr('class', 'links')
-    .selectAll('g')
-    .data(edges)
-    .enter()
-    .append('g')
+  // ── 绘制边：曲线 + 可选箭头 ──
+  const linkGroup = g.append('g').attr('class', 'links')
+    .selectAll('g').data(edges).enter().append('g')
     .style('cursor', 'pointer')
-    .on('click', (event, d) => {
-      event.stopPropagation()
-      selectEdge(d.rawData)
+    .on('click', (event, d) => { event.stopPropagation(); selectEdge(d.rawData) })
+  
+  // 曲线路径
+  const linkPath = linkGroup.append('path')
+    .attr('fill', 'none')
+    .attr('stroke', d => {
+      const c = getColor(typeof d.source === 'object' ? (nodes.find(n => n.id === d.source.id) || {}).type : 'Entity')
+      return c.glow || '#475569'
+    })
+    .attr('stroke-width', 1.2)
+    .attr('stroke-opacity', 0.2)
+    .attr('marker-end', 'url(#arrow)')
+  
+  // 透明宽路径用于点击
+  const linkHit = linkGroup.append('path')
+    .attr('fill', 'none')
+    .attr('stroke', 'transparent')
+    .attr('stroke-width', 12)
+  
+  // 边标签（默认隐藏，hover 显示）
+  const linkLabel = g.append('g').attr('class', 'link-labels')
+    .selectAll('text').data(edges).enter().append('text')
+    .attr('font-size', '8px')
+    .attr('fill', 'rgba(148,163,184,0.6)')
+    .attr('text-anchor', 'middle')
+    .attr('font-family', "'Noto Sans SC', 'JetBrains Mono', sans-serif")
+    .attr('opacity', 0)
+    .text(d => {
+      const t = d.type.replace(/_/g, ' ')
+      return t.length > 18 ? t.substring(0, 15) + '...' : t
     })
   
-  // 可见的细线
-  const link = linkGroup.append('line')
-    .attr('stroke', '#ccc')
-    .attr('stroke-width', 1.5)
-    .attr('stroke-opacity', 0.6)
-  
-  // 透明的宽线用于点击
-  linkGroup.append('line')
-    .attr('stroke', 'transparent')
-    .attr('stroke-width', 10)
-  
-  // 边标签
-  const linkLabel = g.append('g')
-    .attr('class', 'link-labels')
-    .selectAll('text')
-    .data(edges)
-    .enter()
-    .append('text')
-    .attr('font-size', '9px')
-    .attr('fill', '#999')
-    .attr('text-anchor', 'middle')
-    .text(d => d.type.length > 15 ? d.type.substring(0, 12) + '...' : d.type)
-  
-  // 绘制节点
-  const node = g.append('g')
-    .attr('class', 'nodes')
-    .selectAll('g')
-    .data(nodes)
-    .enter()
-    .append('g')
+  // ── 绘制节点 ──
+  const node = g.append('g').attr('class', 'nodes')
+    .selectAll('g').data(nodes).enter().append('g')
     .style('cursor', 'pointer')
     .on('click', (event, d) => {
       event.stopPropagation()
-      selectNode(d.rawData, colorScale(d.type))
+      selectNode(d.rawData, getColor(d.type).fill)
     })
     .call(d3.drag()
       .on('start', dragstarted)
       .on('drag', dragged)
       .on('end', dragended))
   
+  // 外层辉光圈（仅高度数节点）
+  node.filter(d => d.degree >= 3).append('circle')
+    .attr('r', d => nodeRadius(d) + 6)
+    .attr('fill', 'none')
+    .attr('stroke', d => getColor(d.type).glow)
+    .attr('stroke-width', 1)
+    .attr('stroke-opacity', 0.25)
+    .attr('stroke-dasharray', '3 3')
+  
+  // 主圆：径向渐变 + 辉光滤镜
   node.append('circle')
-    .attr('r', 10)
-    .attr('fill', d => colorScale(d.type))
-    .attr('stroke', 'rgba(15, 23, 42, 0.14)')
-    .attr('stroke-width', 2)
+    .attr('r', nodeRadius)
+    .attr('fill', d => `url(#grad-${d.type.replace(/\s+/g, '_')})`)
+    .attr('filter', d => d.degree >= 2 ? `url(#glow-${d.type.replace(/\s+/g, '_')})` : null)
+    .attr('stroke', d => d3.color(getColor(d.type).fill).brighter(0.3))
+    .attr('stroke-width', d => d.degree >= 5 ? 2 : 1.2)
+    .attr('stroke-opacity', 0.7)
     .attr('class', 'node-circle')
   
-  node.append('text')
-    .attr('dx', 14)
-    .attr('dy', 4)
-    .text(d => d.name?.substring(0, 12) || '')
-    .attr('font-size', '11px')
-    .attr('fill', '#333')
-    .attr('font-family', 'JetBrains Mono, monospace')
+  // 节点标签：居中在节点下方，重要节点有背景药丸
+  const labelG = g.append('g').attr('class', 'node-labels')
   
-  // 点击空白处关闭详情面板
-  svg.on('click', () => {
-    closeDetailPanel()
+  // 只显示度数 >= 1 的节点标签（避免孤立点标签干扰）
+  const labelData = nodes.filter(d => d.degree >= 1)
+  const labelItem = labelG.selectAll('g').data(labelData).enter().append('g')
+    .attr('pointer-events', 'none')
+  
+  // 标签文字
+  labelItem.append('text')
+    .attr('text-anchor', 'middle')
+    .attr('dy', d => nodeRadius(d) + 14)
+    .attr('font-size', d => d.degree >= 5 ? '11px' : d.degree >= 2 ? '10px' : '9px')
+    .attr('font-family', "'Noto Sans SC', 'JetBrains Mono', sans-serif")
+    .attr('font-weight', d => d.degree >= 5 ? 600 : 400)
+    .attr('fill', d => {
+      const c = getColor(d.type)
+      return d.degree >= 3 ? c.glow : 'rgba(148,163,184,0.85)'
+    })
+    .attr('paint-order', 'stroke')
+    .attr('stroke', 'rgba(10,10,26,0.7)')
+    .attr('stroke-width', d => d.degree >= 3 ? 3 : 2)
+    .attr('stroke-linejoin', 'round')
+    .text(d => {
+      const maxLen = d.degree >= 5 ? 16 : d.degree >= 2 ? 12 : 8
+      return d.name.length > maxLen ? d.name.substring(0, maxLen) + '...' : d.name
+    })
+  
+  // ── Hover 交互：高亮连通子图，边标签显示 ──
+  node.on('mouseover', (event, d) => {
+    const connected = new Set([d.id])
+    const connectedEdges = new Set()
+    edges.forEach((e, i) => {
+      const sid = typeof e.source === 'object' ? e.source.id : e.source
+      const tid = typeof e.target === 'object' ? e.target.id : e.target
+      if (sid === d.id) { connected.add(tid); connectedEdges.add(i) }
+      if (tid === d.id) { connected.add(sid); connectedEdges.add(i) }
+    })
+    
+    // 节点淡入淡出
+    node.select('.node-circle')
+      .transition().duration(200)
+      .attr('opacity', n => connected.has(n.id) ? 1 : 0.12)
+    
+    // 边高亮
+    linkPath.transition().duration(200)
+      .attr('stroke-opacity', (e, i) => connectedEdges.has(i) ? 0.7 : 0.04)
+      .attr('stroke-width', (e, i) => connectedEdges.has(i) ? 2.5 : 1.2)
+    
+    // 标签显隐
+    labelItem.select('text')
+      .transition().duration(200)
+      .attr('opacity', n => connected.has(n.id) ? 1 : 0.08)
+    
+    // 边标签：只显示关联的
+    linkLabel.transition().duration(200)
+      .attr('opacity', (e, i) => connectedEdges.has(i) ? 0.85 : 0)
+  })
+  .on('mouseout', () => {
+    node.select('.node-circle').transition().duration(300).attr('opacity', 1)
+    linkPath.transition().duration(300).attr('stroke-opacity', 0.2).attr('stroke-width', 1.2)
+    labelItem.select('text').transition().duration(300).attr('opacity', 1)
+    linkLabel.transition().duration(300).attr('opacity', 0)
   })
   
+  // 点击空白关闭
+  svg.on('click', () => { closeDetailPanel() })
+  
+  // ── 曲线路径计算 ──
+  function linkArc(d) {
+    const sx = d.source.x, sy = d.source.y
+    const tx = d.target.x, ty = d.target.y
+    const dx = tx - sx, dy = ty - sy
+    const dr = Math.sqrt(dx * dx + dy * dy) * 1.5
+    return `M${sx},${sy}A${dr},${dr} 0 0,1 ${tx},${ty}`
+  }
+  
+  // ── tick ──
   simulation.on('tick', () => {
-    // 更新所有边的位置（包括可见线和透明点击区域）
-    linkGroup.selectAll('line')
-      .attr('x1', d => d.source.x)
-      .attr('y1', d => d.source.y)
-      .attr('x2', d => d.target.x)
-      .attr('y2', d => d.target.y)
+    linkPath.attr('d', linkArc)
+    linkHit.attr('d', linkArc)
     
-    // 更新边标签位置
     linkLabel
       .attr('x', d => (d.source.x + d.target.x) / 2)
-      .attr('y', d => (d.source.y + d.target.y) / 2 - 5)
+      .attr('y', d => (d.source.y + d.target.y) / 2 - 6)
     
     node.attr('transform', d => `translate(${d.x},${d.y})`)
+    labelItem.attr('transform', d => `translate(${d.x},${d.y})`)
   })
   
   function dragstarted(event) {
@@ -1379,17 +1550,42 @@ const renderGraph = () => {
     event.subject.fx = event.subject.x
     event.subject.fy = event.subject.y
   }
-  
   function dragged(event) {
     event.subject.fx = event.x
     event.subject.fy = event.y
   }
-  
   function dragended(event) {
     if (!event.active) simulation.alphaTarget(0)
     event.subject.fx = null
     event.subject.fy = null
   }
+  
+  // ── 内嵌图例（左下角） ──
+  const legendG = svg.append('g')
+    .attr('transform', `translate(16, ${height - types.length * 22 - 16})`)
+  
+  const legendBg = legendG.append('rect')
+    .attr('x', -8).attr('y', -8)
+    .attr('width', 140)
+    .attr('height', types.length * 22 + 12)
+    .attr('rx', 6)
+    .attr('fill', 'rgba(10,10,26,0.6)')
+    .attr('stroke', 'rgba(100,116,139,0.2)')
+    .attr('stroke-width', 1)
+  
+  types.forEach((t, i) => {
+    const row = legendG.append('g').attr('transform', `translate(0, ${i * 22})`)
+    row.append('circle')
+      .attr('r', 5)
+      .attr('cx', 6).attr('cy', 0)
+      .attr('fill', getColor(t).fill)
+    row.append('text')
+      .attr('x', 18).attr('dy', 4)
+      .attr('font-size', '10px')
+      .attr('fill', 'rgba(203,213,225,0.85)')
+      .attr('font-family', "'Noto Sans SC', sans-serif")
+      .text(t)
+  })
 }
 
 // 监听图谱数据变化
@@ -1596,7 +1792,7 @@ onUnmounted(() => {
   z-index: 2;
 }
 
-/* 图谱区：中心略亮的径向高光 + 浅青灰底；+/× 在 .graph-symbol-decor（HTML）避免与 SVG transform 冲突 */
+/* 图谱区：深色背景，让辉光节点更醒目 */
 .graph-view {
   position: relative;
   width: 100%;
@@ -1604,8 +1800,8 @@ onUnmounted(() => {
   min-height: 280px;
   min-width: 240px;
   background:
-    radial-gradient(ellipse 72% 58% at 50% 44%, rgba(255, 255, 255, 0.88) 0%, rgba(244, 249, 251, 0.35) 42%, transparent 68%),
-    linear-gradient(180deg, #f0f7f9 0%, #e8f2f5 55%, #e2edf1 100%);
+    radial-gradient(ellipse 60% 50% at 50% 46%, rgba(25, 35, 55, 0.6) 0%, transparent 70%),
+    linear-gradient(160deg, #0c1220 0%, #0e1629 45%, #101a2e 100%);
   border-radius: 0 0 12px 0;
 }
 
@@ -1966,8 +2162,8 @@ onUnmounted(() => {
   height: 64px;
   background: linear-gradient(
     to top,
-    rgba(255, 255, 255, 0.55) 0%,
-    rgba(244, 249, 251, 0.2) 50%,
+    rgba(10, 16, 30, 0.6) 0%,
+    rgba(12, 18, 32, 0.2) 50%,
     transparent 100%
   );
   pointer-events: none;
@@ -2069,8 +2265,8 @@ onUnmounted(() => {
 
 .graph-container .loading-text,
 .graph-container .waiting-text {
-  color: #1e3a5f;
-  text-shadow: none;
+  color: #94a3b8;
+  text-shadow: 0 0 12px rgba(99, 102, 241, 0.3);
 }
 
 .waiting-hint {
@@ -2081,6 +2277,7 @@ onUnmounted(() => {
 
 .graph-container .waiting-hint {
   color: #64748b;
+  text-shadow: none;
 }
 
 .waiting-icon {
@@ -2132,13 +2329,15 @@ onUnmounted(() => {
   right: 16px;
   width: 320px;
   max-height: calc(100% - 32px);
-  background: #fff;
-  border: 1px solid #E0E0E0;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  background: rgba(12, 18, 32, 0.92);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 16px rgba(99, 102, 241, 0.1);
+  backdrop-filter: blur(16px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   z-index: 100;
+  border-radius: 8px;
 }
 
 .detail-panel-header {
@@ -2146,14 +2345,14 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   padding: 12px 16px;
-  background: #FAFAFA;
-  border-bottom: 1px solid #E0E0E0;
+  background: rgba(15, 23, 42, 0.8);
+  border-bottom: 1px solid rgba(99, 102, 241, 0.15);
 }
 
 .detail-title {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #333;
+  color: #e2e8f0;
 }
 
 .detail-badge {
@@ -2179,7 +2378,7 @@ onUnmounted(() => {
 }
 
 .detail-close:hover {
-  color: #333;
+  color: #e2e8f0;
 }
 
 .detail-content {
@@ -2196,21 +2395,21 @@ onUnmounted(() => {
 
 .detail-label {
   font-size: 0.8rem;
-  color: #999;
+  color: #64748b;
   min-width: 70px;
   flex-shrink: 0;
 }
 
 .detail-value {
   font-size: 0.85rem;
-  color: #333;
+  color: #cbd5e1;
   word-break: break-word;
 }
 
 .detail-value.uuid {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.75rem;
-  color: #666;
+  color: #94a3b8;
 }
 
 .detail-section {
@@ -2220,11 +2419,11 @@ onUnmounted(() => {
 .detail-summary {
   margin: 8px 0 0 0;
   font-size: 0.85rem;
-  color: #333;
+  color: #cbd5e1;
   line-height: 1.6;
   padding: 10px;
-  background: #F9F9F9;
-  border-left: 3px solid #FF6B35;
+  background: rgba(15, 23, 42, 0.6);
+  border-left: 3px solid #6366f1;
 }
 
 .detail-labels {
@@ -2236,9 +2435,10 @@ onUnmounted(() => {
 .label-tag {
   padding: 2px 8px;
   font-size: 0.75rem;
-  background: #F0F0F0;
-  border: 1px solid #E0E0E0;
-  color: #666;
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  color: #a5b4fc;
+  border-radius: 3px;
 }
 
 /* 边详情关系展示 */
@@ -2249,48 +2449,51 @@ onUnmounted(() => {
   gap: 8px;
   margin-bottom: 16px;
   padding: 12px;
-  background: #F9F9F9;
-  border: 1px solid #E0E0E0;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 6px;
 }
 
 .edge-source,
 .edge-target {
   font-size: 0.85rem;
   font-weight: 500;
-  color: #333;
+  color: #e2e8f0;
 }
 
 .edge-arrow {
-  color: #999;
+  color: #64748b;
 }
 
 .edge-type {
   padding: 2px 8px;
   font-size: 0.75rem;
-  background: #FF6B35;
+  background: #6366f1;
   color: #fff;
+  border-radius: 3px;
 }
 
 .detail-value.highlight {
   font-weight: 600;
-  color: #000;
+  color: #f1f5f9;
 }
 
 .detail-subtitle {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #333;
+  color: #e2e8f0;
   margin: 16px 0 12px 0;
   padding-bottom: 8px;
-  border-bottom: 1px solid #E0E0E0;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.15);
 }
 
 /* Properties 属性列表 */
 .properties-list {
   margin-top: 8px;
   padding: 10px;
-  background: #F9F9F9;
-  border: 1px solid #E0E0E0;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 6px;
 }
 
 .property-item {
@@ -2304,13 +2507,13 @@ onUnmounted(() => {
 }
 
 .property-key {
-  color: #666;
+  color: #64748b;
   margin-right: 8px;
   font-family: 'JetBrains Mono', monospace;
 }
 
 .property-value {
-  color: #333;
+  color: #cbd5e1;
   word-break: break-word;
 }
 
@@ -2327,10 +2530,11 @@ onUnmounted(() => {
   padding: 6px 10px;
   font-size: 0.75rem;
   font-family: 'JetBrains Mono', monospace;
-  background: #F0F0F0;
-  border: 1px solid #E0E0E0;
-  color: #666;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  color: #94a3b8;
   word-break: break-all;
+  border-radius: 4px;
 }
 
 .error-icon {

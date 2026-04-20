@@ -218,39 +218,74 @@
             <div class="console-section">
               <div class="console-header">
                 <span class="console-label">01 / 现实种子</span>
-                <span class="console-meta">支持格式: PDF, MD, TXT</span>
               </div>
 
-              <div
-                class="upload-zone"
-                :class="{ 'drag-over': isDragOver, 'has-files': files.length > 0 }"
-                @dragover.prevent="handleDragOver"
-                @dragleave.prevent="handleDragLeave"
-                @drop.prevent="handleDrop"
-                @click="triggerFileInput"
-              >
-                <input
-                  ref="fileInput"
-                  type="file"
-                  multiple
-                  accept=".pdf,.md,.txt"
-                  @change="handleFileSelect"
-                  style="display: none"
+              <div class="source-tabs">
+                <button
+                  class="source-tab"
+                  :class="{ active: sourceMode === 'file' }"
+                  @click="sourceMode = 'file'"
                   :disabled="loading"
-                />
+                >
+                  文件上传
+                </button>
+                <button
+                  class="source-tab"
+                  :class="{ active: sourceMode === 'web' }"
+                  @click="sourceMode = 'web'"
+                  :disabled="loading"
+                >
+                  网络抓取
+                </button>
+              </div>
 
-                <div v-if="files.length === 0" class="upload-placeholder">
-                  <div class="upload-icon">↑</div>
-                  <div class="upload-title">拖拽文件上传</div>
-                  <div class="upload-hint">或点击浏览文件系统</div>
-                </div>
+              <div v-if="sourceMode === 'file'" class="source-panel">
+                <div class="console-meta" style="margin-bottom: 8px;">支持格式: PDF, MD, TXT</div>
+                <div
+                  class="upload-zone"
+                  :class="{ 'drag-over': isDragOver, 'has-files': files.length > 0 }"
+                  @dragover.prevent="handleDragOver"
+                  @dragleave.prevent="handleDragLeave"
+                  @drop.prevent="handleDrop"
+                  @click="triggerFileInput"
+                >
+                  <input
+                    ref="fileInput"
+                    type="file"
+                    multiple
+                    accept=".pdf,.md,.txt"
+                    @change="handleFileSelect"
+                    style="display: none"
+                    :disabled="loading"
+                  />
 
-                <div v-else class="file-list">
-                  <div v-for="(file, index) in files" :key="index" class="file-item">
-                    <span class="file-icon">FILE</span>
-                    <span class="file-name">{{ file.name }}</span>
-                    <button @click.stop="removeFile(index)" class="remove-btn">x</button>
+                  <div v-if="files.length === 0" class="upload-placeholder">
+                    <div class="upload-icon">↑</div>
+                    <div class="upload-title">拖拽文件上传</div>
+                    <div class="upload-hint">或点击浏览文件系统</div>
                   </div>
+
+                  <div v-else class="file-list">
+                    <div v-for="(file, index) in files" :key="index" class="file-item">
+                      <span class="file-icon">FILE</span>
+                      <span class="file-name">{{ file.name }}</span>
+                      <button @click.stop="removeFile(index)" class="remove-btn">x</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-else class="source-panel">
+                <div class="console-meta" style="margin-bottom: 8px;">输入关键词，自动搜索公开舆情信息作为种子</div>
+                <div class="web-search-input">
+                  <input
+                    v-model="webQuery"
+                    class="code-input web-query-input"
+                    placeholder="// 输入舆情话题关键词，例如：某某事件 舆论 社交媒体"
+                    :disabled="loading"
+                    @keyup.enter="startSimulation"
+                  />
+                  <div class="search-badge">Tavily Search</div>
                 </div>
               </div>
             </div>
@@ -306,13 +341,20 @@ const formData = ref({
   simulationRequirement: ''
 })
 
+const sourceMode = ref('file') // 'file' | 'web'
+const webQuery = ref('')
 const files = ref([])
 const loading = ref(false)
 const isDragOver = ref(false)
 const fileInput = ref(null)
 
 const canSubmit = computed(() => {
-  return formData.value.simulationRequirement.trim() !== '' && files.value.length > 0
+  const hasRequirement = formData.value.simulationRequirement.trim() !== ''
+  if (sourceMode.value === 'file') {
+    return hasRequirement && files.value.length > 0
+  } else {
+    return hasRequirement && webQuery.value.trim() !== ''
+  }
 })
 
 const triggerFileInput = () => {
@@ -367,14 +409,17 @@ const scrollToBottom = () => {
 const startSimulation = () => {
   if (!canSubmit.value || loading.value) return
 
-  import('../store/pendingUpload.js').then(({ setPendingUpload }) => {
-    setPendingUpload(files.value, formData.value.simulationRequirement)
-
-    router.push({
-      name: 'Process',
-      params: { projectId: 'new' }
+  if (sourceMode.value === 'file') {
+    import('../store/pendingUpload.js').then(({ setPendingUpload }) => {
+      setPendingUpload(files.value, formData.value.simulationRequirement)
+      router.push({ name: 'Process', params: { projectId: 'new' } })
     })
-  })
+  } else {
+    import('../store/pendingUpload.js').then(({ setPendingWebSearch }) => {
+      setPendingWebSearch(webQuery.value.trim(), formData.value.simulationRequirement)
+      router.push({ name: 'Process', params: { projectId: 'new' } })
+    })
+  }
 }
 </script>
 
@@ -1511,6 +1556,92 @@ const startSimulation = () => {
   cursor: pointer;
   font-size: 1rem;
   color: var(--teal-secondary);
+}
+
+.source-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 12px;
+  border: 1px solid rgba(115, 168, 185, 0.25);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.source-tab {
+  flex: 1;
+  padding: 9px 0;
+  border: none;
+  background: rgba(255, 255, 255, 0.3);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.25s;
+}
+
+.source-tab + .source-tab {
+  border-left: 1px solid rgba(115, 168, 185, 0.2);
+}
+
+.source-tab.active {
+  background: rgba(115, 168, 185, 0.15);
+  color: var(--teal-deep);
+  box-shadow: inset 0 -2px 0 var(--teal-primary);
+}
+
+.source-tab:not(.active):hover {
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--text-secondary);
+}
+
+.source-panel {
+  min-height: 0;
+}
+
+.web-search-input {
+  position: relative;
+}
+
+.web-query-input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid rgba(115, 168, 185, 0.3);
+  background: rgba(255, 255, 255, 0.4);
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  transition: all 0.25s;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.web-query-input::placeholder {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.web-query-input:focus {
+  border-color: var(--teal-primary);
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 3px rgba(115, 168, 185, 0.12);
+}
+
+.search-badge {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.5px;
+  color: var(--teal-primary);
+  background: rgba(115, 168, 185, 0.1);
+  border: 1px solid rgba(115, 168, 185, 0.2);
+  padding: 3px 8px;
+  border-radius: 4px;
+  pointer-events: none;
 }
 
 .console-divider {

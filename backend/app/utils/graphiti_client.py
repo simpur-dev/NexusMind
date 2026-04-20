@@ -5,7 +5,7 @@ Graphiti 客户端工具模块
 封装 Neo4j 图数据库的连接管理。
 
 后端数据库默认使用 Neo4j（Windows 原生支持）。
-如需切换到 FalkorDB，只需修改 _get_driver() 函数即可。
+如需切换数据库，只需修改 _get_driver() 函数即可。
 
 用法:
     from ..utils.graphiti_client import get_graphiti, run_async

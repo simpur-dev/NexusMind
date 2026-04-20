@@ -201,7 +201,7 @@ class AgentActivity:
 
 class GraphMemoryUpdater:
     """
-    图谱记忆更新器（使用 Graphiti + FalkorDB）
+    图谱记忆更新器（使用 Graphiti + Neo4j）
     
     监控模拟的actions日志文件，将新的agent活动实时更新到图谱中。
     按平台分组，每累积BATCH_SIZE条活动后批量发送。
@@ -235,7 +235,7 @@ class GraphMemoryUpdater:
         
         Args:
             graph_id: 图谱ID
-            api_key: 保留用于接口兼容，Graphiti 使用 FalkorDB 本地连接
+            api_key: 保留用于接口兼容，Graphiti 使用 Neo4j 本地连接
         """
         self.graph_id = graph_id
         
@@ -405,9 +405,14 @@ class GraphMemoryUpdater:
                     name=f"sim_{platform}_{self._total_sent:04d}",
                     episode_body=combined_text,
                     source=EpisodeType.text,
-                    source_description=f"Agent activities on {platform}",
+                    source_description=f"{platform} 平台上的智能体活动",
                     reference_time=datetime.now(timezone.utc),
-                ))
+                    custom_extraction_instructions=(
+                        "重要：所有提取的实体名称（entity name）和关系名称（edge name / fact）"
+                        "都必须使用简体中文。如果原文是英文，请将实体名翻译为中文。"
+                        "实体名称应尽量使用完整的中文名称，不要截断。"
+                    ),
+                ), timeout=120)
                 
                 self._total_sent += 1
                 self._total_items_sent += len(activities)

@@ -631,6 +631,33 @@ _world_model_enabled: bool = True  # 可通过 --no-world-model 禁用
 _agent_role_map: Dict[int, Dict[str, str]] = {}
 
 
+def patch_agent_memory_limit(window_size: int = 20):
+    """
+    Monkey-patch OASIS SocialAgent，限制 Agent 记忆窗口大小。
+    
+    解决问题：默认 ChatHistoryMemory 无 window_size 限制，导致随模拟轮次增长，
+    Agent 的聊天记录无限膨胀（可达数百万 tokens），最终内存爆炸进程崩溃。
+    
+    修复方式：在 SocialAgent.__init__ 的 super().__init__() 调用中注入
+    message_window_size 参数，仅保留最近 N 条消息。
+    
+    Args:
+        window_size: 保留的最近消息条数，默认 20（约覆盖最近 3-5 轮交互）
+    """
+    from oasis.social_agent.agent import SocialAgent
+    
+    _original_init = SocialAgent.__init__
+    
+    def _patched_init(self, *args, **kwargs):
+        _original_init(self, *args, **kwargs)
+        # 覆写 memory 的 window_size，限制聊天记录长度
+        if hasattr(self, '_memory') and hasattr(self._memory, '_window_size'):
+            self._memory._window_size = window_size
+    
+    SocialAgent.__init__ = _patched_init
+    print(f"[MemoryLimit] 已限制 Agent 记忆窗口为最近 {window_size} 条消息")
+
+
 def patch_oasis_environment():
     """
     Monkey-patch OASIS SocialEnvironment.to_text_prompt，
@@ -2171,6 +2198,9 @@ async def main():
             s = r.get("stance", "neutral")
             stances[s] = stances.get(s, 0) + 1
         log_manager.info(f"  - 差异化感知: 已加载 {len(_agent_role_map)} 个Agent角色, 立场分布={stances}")
+    
+    # 限制 Agent 记忆窗口，防止长模拟内存爆炸
+    patch_agent_memory_limit(window_size=20)
     
     # 安装世界状态注入补丁（论文 §4.1.1 Environment State 反馈闭环）
     global _world_model_enabled

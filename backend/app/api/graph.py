@@ -17,6 +17,7 @@ from ..utils.file_parser import FileParser
 from ..utils.logger import get_logger
 from ..models.task import TaskManager, TaskStatus
 from ..models.project import ProjectManager, ProjectStatus
+from ..services.web_scraper import WebScraperService
 
 # 获取日志器
 logger = get_logger('nexusmind.api')
@@ -260,6 +261,132 @@ def generate_ontology():
         })
         
     except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
+# ============== 接口1b：从网络搜索生成本体 ==============
+
+@graph_bp.route('/ontology/generate-from-web', methods=['POST'])
+def generate_ontology_from_web():
+    """
+    接口1b：通过关键词搜索网络，自动抓取舆情信息并生成本体定义
+    
+    请求（JSON）：
+        {
+            "query": "搜索关键词",           // 必填
+            "simulation_requirement": "模拟需求描述",  // 必填
+            "max_results": 8,               // 可选，默认8
+            "project_name": "项目名称"       // 可选
+        }
+        
+    返回：与 /ontology/generate 相同格式
+    """
+    try:
+        logger.info("=== 从网络搜索生成本体定义 ===")
+        
+        data = request.get_json() or {}
+        
+        query = data.get('query', '').strip()
+        simulation_requirement = data.get('simulation_requirement', '').strip()
+        max_results = data.get('max_results', 8)
+        project_name = data.get('project_name', 'Web Search Project')
+        
+        if not query:
+            return jsonify({
+                "success": False,
+                "error": "请提供搜索关键词 (query)"
+            }), 400
+        
+        if not simulation_requirement:
+            return jsonify({
+                "success": False,
+                "error": "请提供模拟需求描述 (simulation_requirement)"
+            }), 400
+        
+        # 执行网络搜索
+        scraper = WebScraperService()
+        if not scraper.is_available():
+            return jsonify({
+                "success": False,
+                "error": "网络搜索服务未配置，请在 .env 中设置 TAVILY_API_KEY"
+            }), 503
+        
+        logger.info(f"搜索关键词: {query}, 最大结果数: {max_results}")
+        search_result = scraper.search_to_document_texts(
+            query=query,
+            max_results=max_results,
+            simulation_requirement=simulation_requirement,
+        )
+        
+        if not search_result["success"]:
+            return jsonify({
+                "success": False,
+                "error": search_result.get("error", "网络搜索失败")
+            }), 400
+        
+        document_texts = search_result["document_texts"]
+        all_text = search_result["all_text"]
+        sources = search_result["sources"]
+        
+        logger.info(f"搜索完成: {len(document_texts)} 篇文档, {len(all_text)} 字符")
+        
+        # 创建项目
+        project = ProjectManager.create_project(name=project_name)
+        project.simulation_requirement = simulation_requirement
+        logger.info(f"创建项目: {project.project_id}")
+        
+        # 保存搜索来源信息作为文件记录
+        project.files = [
+            {"filename": f"[网络] {s['title']}", "size": 0, "url": s.get("url", "")}
+            for s in sources
+        ]
+        
+        # 保存提取的文本
+        project.total_text_length = len(all_text)
+        ProjectManager.save_extracted_text(project.project_id, all_text)
+        logger.info(f"文本保存完成，共 {len(all_text)} 字符")
+        
+        # 生成本体（复用现有逻辑）
+        logger.info("调用 LLM 生成本体定义...")
+        generator = OntologyGenerator()
+        ontology = generator.generate(
+            document_texts=document_texts,
+            simulation_requirement=simulation_requirement,
+        )
+        
+        entity_count = len(ontology.get("entity_types", []))
+        edge_count = len(ontology.get("edge_types", []))
+        logger.info(f"本体生成完成: {entity_count} 个实体类型, {edge_count} 个关系类型")
+        
+        project.ontology = {
+            "entity_types": ontology.get("entity_types", []),
+            "edge_types": ontology.get("edge_types", [])
+        }
+        project.analysis_summary = ontology.get("analysis_summary", "")
+        project.status = ProjectStatus.ONTOLOGY_GENERATED
+        ProjectManager.save_project(project)
+        logger.info(f"=== 网络搜索本体生成完成 === 项目ID: {project.project_id}")
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "project_id": project.project_id,
+                "project_name": project.name,
+                "ontology": project.ontology,
+                "analysis_summary": project.analysis_summary,
+                "files": project.files,
+                "total_text_length": project.total_text_length,
+                "web_sources": sources,
+                "search_query": query,
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"网络搜索本体生成失败: {str(e)}")
         return jsonify({
             "success": False,
             "error": str(e),

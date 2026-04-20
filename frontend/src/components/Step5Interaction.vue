@@ -155,7 +155,7 @@
               <div class="tools-card-avatar">R</div>
               <div class="tools-card-info">
                 <div class="tools-card-name">Report Agent - Chat</div>
-                <div class="tools-card-subtitle">报告生成智能体的快速对话版本，可调用 4 种专业工具，拥有MiroFish的完整记忆</div>
+                <div class="tools-card-subtitle">报告生成智能体的快速对话版本，可调用 4 种专业工具，拥有NexusMind的完整记忆</div>
               </div>
               <button class="tools-card-toggle" @click="showToolsDetail = !showToolsDetail">
                 <svg :class="{ 'is-expanded': showToolsDetail }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
@@ -710,7 +710,19 @@ const sendToAgent = async (message) => {
   if (!selectedAgent.value || selectedAgentIndex.value === null) {
     throw new Error('请先选择一个模拟个体')
   }
-  
+
+  // 先检查模拟环境是否存活
+  try {
+    const envRes = await import('../api/simulation').then(m => m.getEnvStatus({ simulation_id: props.simulationId }))
+    if (!envRes?.data?.status || envRes.data.status !== 'alive') {
+      throw new Error('模拟环境已停止，无法与 Agent 对话。请返回 Step 3 重新运行模拟后再试。')
+    }
+  } catch (envErr) {
+    if (envErr.message.includes('模拟环境已停止')) throw envErr
+    // env-status 接口本身失败，也视为环境不可用
+    throw new Error('模拟环境未运行或不可达，无法与 Agent 对话。请返回 Step 3 重新运行模拟。')
+  }
+
   addLog(`向 ${selectedAgent.value.username} 发送: ${message.substring(0, 50)}...`)
   
   // Build prompt with chat history

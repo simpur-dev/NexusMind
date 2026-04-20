@@ -400,7 +400,7 @@ class InterviewResult:
 
 class GraphToolsService:
     """
-    图谱检索工具服务（使用 Graphiti + FalkorDB）
+    图谱检索工具服务（使用 Graphiti + Neo4j）
     
     【核心检索工具 - 优化后】
     1. insight_forge - 深度洞察检索（最强大，自动生成子问题，多维度检索）
@@ -423,7 +423,7 @@ class GraphToolsService:
     RETRY_DELAY = 2.0
     
     def __init__(self, api_key: Optional[str] = None, llm_client: Optional[LLMClient] = None):
-        # api_key 参数保留用于接口兼容，Graphiti 使用 FalkorDB 本地连接
+        # api_key 参数保留用于接口兼容，Graphiti 使用 Neo4j 本地连接
         # LLM客户端用于InsightForge生成子问题
         self._llm_client = llm_client
         self._vector_store = VectorStore()

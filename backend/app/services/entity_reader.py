@@ -1,6 +1,6 @@
 """
 实体读取与过滤服务
-从 Graphiti + FalkorDB 图谱中读取节点，筛选出符合预定义实体类型的节点
+从 Graphiti + Neo4j 图谱中读取节点，筛选出符合预定义实体类型的节点
 """
 
 import time
@@ -68,7 +68,7 @@ class FilteredEntities:
 
 class EntityReader:
     """
-    实体读取与过滤服务（使用 Graphiti + FalkorDB）
+    实体读取与过滤服务（使用 Graphiti + Neo4j）
     
     主要功能：
     1. 从图谱读取所有节点
@@ -77,7 +77,7 @@ class EntityReader:
     """
     
     def __init__(self, api_key: Optional[str] = None):
-        # api_key 参数保留用于接口兼容，Graphiti 使用 FalkorDB 本地连接
+        # api_key 参数保留用于接口兼容，Graphiti 使用 Neo4j 本地连接
         pass
     
     def _call_with_retry(

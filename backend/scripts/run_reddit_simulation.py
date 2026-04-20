@@ -382,6 +382,18 @@ class IPCHandler:
             return True
 
 
+def patch_agent_memory_limit(window_size: int = 20):
+    """限制 Agent 记忆窗口大小，防止长模拟内存爆炸"""
+    from oasis.social_agent.agent import SocialAgent
+    _original_init = SocialAgent.__init__
+    def _patched_init(self, *args, **kwargs):
+        _original_init(self, *args, **kwargs)
+        if hasattr(self, '_memory') and hasattr(self._memory, '_window_size'):
+            self._memory._window_size = window_size
+    SocialAgent.__init__ = _patched_init
+    print(f"[MemoryLimit] 已限制 Agent 记忆窗口为最近 {window_size} 条消息")
+
+
 class RedditSimulationRunner:
     """Reddit模拟运行器"""
     
@@ -726,6 +738,8 @@ async def main():
     # 初始化日志配置（使用固定文件名，清理旧日志）
     simulation_dir = os.path.dirname(args.config) or "."
     setup_oasis_logging(os.path.join(simulation_dir, "log"))
+    
+    patch_agent_memory_limit(window_size=20)
     
     runner = RedditSimulationRunner(
         config_path=args.config,

@@ -3,15 +3,15 @@
 
 $ErrorActionPreference = "Stop"
 
-$neo4jHome = "E:\NexusMind\neo4j\neo4j-enterprise-5.24.0"
+$desktopExe = "C:\Program Files\Neo4j Desktop 2\Neo4j Desktop 2.exe"
+$desktopDbmsRoot = Join-Path $env:USERPROFILE ".Neo4jDesktop\relate-data\dbmss"
 
-if (-not (Test-Path "$neo4jHome\bin\neo4j.bat")) {
-    Write-Host "[错误] 未找到 Neo4j 安装目录: $neo4jHome" -ForegroundColor Red
-    Write-Host "       请确认 neo4j 文件夹未被移动或删除" -ForegroundColor Red
+if (-not (Test-Path $desktopExe)) {
+    Write-Host "[错误] 未找到 Neo4j Desktop: $desktopExe" -ForegroundColor Red
+    Write-Host "       请确认 Neo4j Desktop 已安装" -ForegroundColor Red
     exit 1
 }
 
-# 检查端口 7687 是否已被占用（Neo4j 已在运行）
 $existing = Get-NetTCPConnection -LocalPort 7687 -ErrorAction SilentlyContinue
 if ($existing) {
     Write-Host "[提示] 端口 7687 已被占用，Neo4j 可能已在运行" -ForegroundColor Yellow
@@ -20,14 +20,36 @@ if ($existing) {
     exit 0
 }
 
-$env:NEO4J_ACCEPT_LICENSE_AGREEMENT = "yes"
+$dbmss = @()
+if (Test-Path $desktopDbmsRoot) {
+    $dbmss = @(Get-ChildItem -Path $desktopDbmsRoot -Directory -ErrorAction SilentlyContinue)
+}
 
-Write-Host "正在启动 Neo4j (enterprise 5.24.0)..." -ForegroundColor Cyan
-Write-Host "  Home:    $neo4jHome" -ForegroundColor Gray
+Write-Host "正在打开 Neo4j Desktop..." -ForegroundColor Cyan
+Write-Host "  Desktop: $desktopExe" -ForegroundColor Gray
 Write-Host "  Bolt:    bolt://localhost:7687" -ForegroundColor Gray
 Write-Host "  Browser: http://localhost:7474" -ForegroundColor Gray
-Write-Host "  账号:    neo4j / neo4jneo4j" -ForegroundColor Gray
-Write-Host "  停止:    在此窗口按 Ctrl+C" -ForegroundColor Gray
+if ($dbmss.Count -eq 0) {
+    Write-Host "  状态:    未发现本地 DBMS，请先在 Neo4j Desktop 中创建并启动一个 Local DBMS" -ForegroundColor Yellow
+}
+else {
+    Write-Host "  状态:    请在 Neo4j Desktop 中启动你的 Local DBMS" -ForegroundColor Yellow
+}
 Write-Host ""
 
-& "$neo4jHome\bin\neo4j.bat" console
+Start-Process -FilePath $desktopExe
+
+for ($i = 0; $i -lt 30; $i++) {
+    Start-Sleep -Seconds 2
+    $existing = Get-NetTCPConnection -LocalPort 7687 -ErrorAction SilentlyContinue
+    if ($existing) {
+        Write-Host "[完成] Neo4j 已可连接" -ForegroundColor Green
+        Write-Host "       Bolt:    bolt://localhost:7687" -ForegroundColor Gray
+        Write-Host "       Browser: http://localhost:7474" -ForegroundColor Gray
+        exit 0
+    }
+}
+
+Write-Host "[提示] Neo4j Desktop 已打开，但 7687 端口尚未监听" -ForegroundColor Yellow
+Write-Host "       请在 Neo4j Desktop 中手动启动本地数据库后重试" -ForegroundColor Yellow
+exit 1

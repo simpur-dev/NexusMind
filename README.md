@@ -17,8 +17,8 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/666ghj/NexusMind)
 
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white)](http://discord.gg/ePf5aPaHnA)
-[![X](https://img.shields.io/badge/X-Follow-000000?style=flat-square&logo=x&logoColor=white)](https://x.com/mirofish_ai)
-[![Instagram](https://img.shields.io/badge/Instagram-Follow-E4405F?style=flat-square&logo=instagram&logoColor=white)](https://www.instagram.com/mirofish_ai/)
+[![X](https://img.shields.io/badge/X-Follow-000000?style=flat-square&logo=x&logoColor=white)](https://x.com/NexusMind_ai)
+[![Instagram](https://img.shields.io/badge/Instagram-Follow-E4405F?style=flat-square&logo=instagram&logoColor=white)](https://www.instagram.com/NexusMind_ai/)
 
 [English](./README-EN.md) | [中文文档](./README.md)
 
@@ -42,7 +42,7 @@ NexusMind 致力于打造映射现实的群体智能镜像，通过捕捉个体�
 
 ## 🌐 在线体验
 
-欢迎访问在线 Demo 演示环境，体验我们为你准备的一次关于热点舆情事件的推演预测：[mirofish-live-demo](https://666ghj.github.io/mirofish-demo/)
+欢迎访问在线 Demo 演示环境，体验我们为你准备的一次关于热点舆情事件的推演预测：[NexusMind-live-demo](https://666ghj.github.io/mirofish-demo/)
 
 ## 📸 系统截图
 
@@ -208,7 +208,7 @@ docker compose up -d
 
 &nbsp;
 
-NexusMind团队长期招募全职/实习，如果你对多Agent应用感兴趣，欢迎投递简历至：**mirofish@shanda.com**
+NexusMind团队长期招募全职/实习，如果你对多Agent应用感兴趣，欢迎投递简历至：**nexusmind@shanda.com**
 
 ## 📄 致谢
 
