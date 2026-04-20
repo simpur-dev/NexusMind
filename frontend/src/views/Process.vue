@@ -875,6 +875,11 @@ const handleNewProject = async () => {
     loading.value = false
     return
   }
+  if (pending.mode === 'file+web' && (pending.files.length === 0 || !pending.webQuery)) {
+    error.value = '混合模式需要同时提供文件和搜索关键词，请返回首页重新操作'
+    loading.value = false
+    return
+  }
   
   try {
     loading.value = true
@@ -890,13 +895,21 @@ const handleNewProject = async () => {
         simulation_requirement: pending.simulationRequirement,
       })
     } else {
-      // 文件上传模式
-      ontologyProgress.value = { message: '正在上传文件并分析文档...' }
+      // 文件上传模式（含可选的网络抓取）
+      const isHybrid = pending.mode === 'file+web' && pending.webQuery
+      ontologyProgress.value = {
+        message: isHybrid
+          ? '正在上传文件并搜索网络舆情信息...'
+          : '正在上传文件并分析文档...'
+      }
       const formDataObj = new FormData()
       pending.files.forEach(file => {
         formDataObj.append('files', file)
       })
       formDataObj.append('simulation_requirement', pending.simulationRequirement)
+      if (isHybrid) {
+        formDataObj.append('web_query', pending.webQuery)
+      }
       response = await generateOntology(formDataObj)
     }
     

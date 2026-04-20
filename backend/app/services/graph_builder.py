@@ -21,6 +21,7 @@ from ..models.task import TaskManager, TaskStatus
 from ..utils.graphiti_client import get_graphiti, create_fresh_graphiti, run_async, run_async_batch, remove_instance, get_neo4j_async_driver
 from .text_processor import TextProcessor
 from .vector_store import VectorStore
+from .entity_cleaner import clean_node_dicts
 
 
 @dataclass
@@ -637,6 +638,14 @@ class GraphBuilderService:
                 "expired_at": None,
                 "episodes": [],
             })
+        
+        # --- 伪实体清洗：移除抽象概念节点和本体定义节点 ---
+        nodes_data = clean_node_dicts(nodes_data)
+        valid_uuids = {n["uuid"] for n in nodes_data}
+        edges_data = [
+            e for e in edges_data
+            if e["source_node_uuid"] in valid_uuids and e["target_node_uuid"] in valid_uuids
+        ]
         
         # --- 过滤孤立节点（无任何边的节点不显示）---
         connected_uuids = set()

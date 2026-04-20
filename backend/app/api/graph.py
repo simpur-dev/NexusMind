@@ -167,6 +167,7 @@ def generate_ontology():
         simulation_requirement = request.form.get('simulation_requirement', '')
         project_name = request.form.get('project_name', 'Unnamed Project')
         additional_context = request.form.get('additional_context', '')
+        web_query = request.form.get('web_query', '').strip()  # 可选：同时启用网络抓取
         
         logger.debug(f"项目名称: {project_name}")
         logger.debug(f"模拟需求: {simulation_requirement[:100]}...")
@@ -220,6 +221,33 @@ def generate_ontology():
                 "error": "没有成功处理任何文档，请检查文件格式"
             }), 400
         
+        # 可选：同时执行网络搜索，将结果合并到文档中
+        web_sources = []
+        if web_query:
+            logger.info(f"混合模式：同时执行网络搜索 query='{web_query}'")
+            scraper = WebScraperService()
+            if scraper.is_available():
+                search_result = scraper.search_to_document_texts(
+                    query=web_query,
+                    max_results=8,
+                    simulation_requirement=simulation_requirement,
+                )
+                if search_result["success"]:
+                    web_docs = search_result["document_texts"]
+                    web_text = search_result["all_text"]
+                    web_sources = search_result.get("sources", [])
+                    document_texts.extend(web_docs)
+                    all_text += f"\n\n=== 网络搜索结果 ({web_query}) ===\n{web_text}"
+                    project.files.extend([
+                        {"filename": f"[网络] {s['title']}", "size": 0, "url": s.get("url", "")}
+                        for s in web_sources
+                    ])
+                    logger.info(f"网络搜索合并完成: +{len(web_docs)} 篇文档, +{len(web_text)} 字符")
+                else:
+                    logger.warning(f"网络搜索失败，仅使用文件内容: {search_result.get('error')}")
+            else:
+                logger.warning("网络搜索服务不可用，仅使用文件内容")
+        
         # 保存提取的文本
         project.total_text_length = len(all_text)
         ProjectManager.save_extracted_text(project.project_id, all_text)
@@ -256,7 +284,9 @@ def generate_ontology():
                 "ontology": project.ontology,
                 "analysis_summary": project.analysis_summary,
                 "files": project.files,
-                "total_text_length": project.total_text_length
+                "total_text_length": project.total_text_length,
+                "web_sources": web_sources if web_query else [],
+                "web_query": web_query or None,
             }
         })
         

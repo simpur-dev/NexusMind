@@ -273,6 +273,28 @@
                     </div>
                   </div>
                 </div>
+
+                <div class="web-toggle-section">
+                  <label class="web-toggle-label">
+                    <input
+                      type="checkbox"
+                      v-model="enableWebSearch"
+                      :disabled="loading"
+                      class="web-toggle-checkbox"
+                    />
+                    <span class="web-toggle-text">同时启用网络抓取</span>
+                    <span class="web-toggle-hint">（补充公开舆情信息）</span>
+                  </label>
+                  <div v-if="enableWebSearch" class="web-search-input" style="margin-top: 8px;">
+                    <input
+                      v-model="webQueryForFile"
+                      class="code-input web-query-input"
+                      placeholder="// 输入搜索关键词，例如：武汉大学 舆论"
+                      :disabled="loading"
+                    />
+                    <div class="search-badge">Tavily Search</div>
+                  </div>
+                </div>
               </div>
 
               <div v-else class="source-panel">
@@ -343,6 +365,8 @@ const formData = ref({
 
 const sourceMode = ref('file') // 'file' | 'web'
 const webQuery = ref('')
+const webQueryForFile = ref('') // 文件上传模式下的可选网络搜索关键词
+const enableWebSearch = ref(false) // 文件上传模式下是否同时启用网络抓取
 const files = ref([])
 const loading = ref(false)
 const isDragOver = ref(false)
@@ -351,7 +375,12 @@ const fileInput = ref(null)
 const canSubmit = computed(() => {
   const hasRequirement = formData.value.simulationRequirement.trim() !== ''
   if (sourceMode.value === 'file') {
-    return hasRequirement && files.value.length > 0
+    const hasFiles = files.value.length > 0
+    // 如果启用了网络抓取，还需要填写搜索关键词
+    if (enableWebSearch.value) {
+      return hasRequirement && hasFiles && webQueryForFile.value.trim() !== ''
+    }
+    return hasRequirement && hasFiles
   } else {
     return hasRequirement && webQuery.value.trim() !== ''
   }
@@ -409,7 +438,13 @@ const scrollToBottom = () => {
 const startSimulation = () => {
   if (!canSubmit.value || loading.value) return
 
-  if (sourceMode.value === 'file') {
+  if (sourceMode.value === 'file' && enableWebSearch.value) {
+    // 混合模式：文件 + 网络抓取
+    import('../store/pendingUpload.js').then(({ setPendingFileAndWeb }) => {
+      setPendingFileAndWeb(files.value, webQueryForFile.value.trim(), formData.value.simulationRequirement)
+      router.push({ name: 'Process', params: { projectId: 'new' } })
+    })
+  } else if (sourceMode.value === 'file') {
     import('../store/pendingUpload.js').then(({ setPendingUpload }) => {
       setPendingUpload(files.value, formData.value.simulationRequirement)
       router.push({ name: 'Process', params: { projectId: 'new' } })
@@ -1642,6 +1677,42 @@ const startSimulation = () => {
   padding: 3px 8px;
   border-radius: 4px;
   pointer-events: none;
+}
+
+.web-toggle-section {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: rgba(115, 168, 185, 0.06);
+  border: 1px solid rgba(115, 168, 185, 0.15);
+  border-radius: 6px;
+}
+
+.web-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.web-toggle-checkbox {
+  accent-color: var(--teal-primary);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.web-toggle-text {
+  font-family: var(--font-cn);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.web-toggle-hint {
+  font-family: var(--font-cn);
+  font-size: 0.75rem;
+  color: var(--text-muted);
 }
 
 .console-divider {

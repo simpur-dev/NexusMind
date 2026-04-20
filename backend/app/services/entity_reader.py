@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.graphiti_client import run_async, get_neo4j_async_driver
+from .entity_cleaner import clean_entities
 
 logger = get_logger('nexusmind.entity_reader')
 
@@ -316,8 +317,8 @@ class EntityReader:
             elif custom_labels:
                 entity_type = custom_labels[0]
             else:
-                # 无自定义标签时，使用通用类型（不跳过）
-                entity_type = "Entity"
+                # 无自定义标签 → 跳过（伪实体清洗：纯 Entity 节点不进入模拟）
+                continue
             
             entity_types_found.add(entity_type)
             
@@ -371,8 +372,11 @@ class EntityReader:
             
             filtered_entities.append(entity)
         
-        logger.info(f"筛选完成: 总节点 {total_count}, 符合条件 {len(filtered_entities)}, "
+        logger.info(f"筛选完成: 总节点 {total_count}, 类型过滤后 {len(filtered_entities)}, "
                    f"实体类型: {entity_types_found}")
+        
+        # 二次过滤：伪实体清洗（黑名单 + 本体定义节点 + 低质量节点）
+        filtered_entities = clean_entities(filtered_entities)
         
         return FilteredEntities(
             entities=filtered_entities,
