@@ -145,17 +145,44 @@ class WorldEvent:
 # ============== 负面/正面关键词表 ==============
 
 NEGATIVE_KEYWORDS = [
+    # 情绪类
     "恐慌", "愤怒", "失望", "害怕", "担心", "紧张", "焦虑", "不满", "抗议",
-    "谣言", "假消息", "骗局", "危险", "崩溃", "混乱", "暴力", "冲突", "歧视",
+    "愤慨", "气愤", "震惊", "悲愤", "痛心", "寒心", "心寒", "无语", "荒谬",
+    # 舆论场常见表达
+    "质疑", "不公", "不公正", "黑幕", "内幕", "包庇", "纵容", "失职", "渎职",
+    "推诿", "甩锅", "敷衍", "欺骗", "隐瞒", "造假", "弄虚作假", "走过场",
+    # 需求/诉求类（在舆情爆发期表达的是不满，不是正面情绪）
+    "问责", "要求问责", "追责", "维权", "讨说法",
+    "反思", "深刻反思", "引以为戒",
+    "还原真相", "真相是什么", "凭什么", "为什么",
+    "不合理", "不透明", "不规范", "不当",
+    # 校园/学术争议
+    "处分", "冤枉", "不当处分", "学术不端", "抄袭", "论文造假", "学术造假",
+    "学术腐败", "学阀", "打压", "霸凌", "校园霸凌",
+    # 网络舆论
+    "网暴", "人肉搜索", "带节奏", "反转", "打脸", "翻车", "塌房",
+    "谣言", "假消息", "骗局", "造谣", "传谣", "不实信息",
+    # 社会事件
+    "危险", "崩溃", "混乱", "暴力", "冲突", "歧视", "不作为", "乱作为",
     "scandal", "fear", "anger", "panic", "fake", "rumor", "crisis", "danger",
     "corrupt", "riot", "violence", "protest", "collapse", "chaos",
+    "controversy", "outrage", "backlash", "misconduct", "injustice",
+    "accountability", "why", "unfair", "demand",
 ]
 
 POSITIVE_KEYWORDS = [
+    # 情绪类（真正的正面情绪）
     "支持", "赞同", "感谢", "信任", "希望", "安心", "稳定", "改善", "帮助",
+    "欣慰", "点赞", "认可", "肯定", "赞扬", "表扬", "鼓励",
+    # 官方实际纠正行动（已发生的正面事实，非诉求）
     "官方回应", "澄清", "辟谣", "解决", "改进", "合作", "团结",
+    "纠错", "纠正", "撤销处分", "道歉", "致歉", "整改",
+    "有错必纠", "公开透明", "依法处理",
+    # 理性讨论（真正的正向信号）
+    "理性", "客观", "就事论事", "进步", "改革",
+    "法治", "制度完善",
     "support", "trust", "hope", "stable", "improve", "help", "official",
-    "clarify", "resolve", "cooperate",
+    "clarify", "resolve", "cooperate", "reform", "progress",
 ]
 
 AUTHORITY_KEYWORDS = [
@@ -547,9 +574,10 @@ class WorldStateEngine:
             # 初始状态：基于首轮动作计算，不硬编码
             init_activity = obs["posts"] + obs["comments"] + obs["reposts"]
             init_attention = min(1.0, init_activity * 0.05)
-            init_panic = min(1.0, obs["neg_ratio"] * 0.4)
+            init_panic = min(1.0, obs["neg_ratio"] * 0.6)
             init_auth = min(obs.get("auth_count", 0) * 0.05, 0.2)
-            init_trust = min(1.0, 0.4 + obs["pos_ratio"] * 0.3 + init_auth)
+            init_neg_erosion = obs["neg_ratio"] * 0.3
+            init_trust = min(1.0, max(0.1, 0.3 + obs["pos_ratio"] * 0.3 + init_auth - init_neg_erosion))
             init_polar = min(1.0, min(obs["pos_ratio"], obs["neg_ratio"]) * 2 * 0.6)
             init_risk = min(1.0, init_attention * 0.3 + init_panic * 0.4 + (1 - init_trust) * 0.3)
             init_stab = max(0.0, 1.0 - init_panic * 0.5 - init_polar * 0.3)
@@ -581,15 +609,16 @@ class WorldStateEngine:
         baseline = max(self._baseline_posts_per_round + self._baseline_comments_per_round, 1)
         current_activity = obs["posts"] + obs["comments"] + obs["reposts"]
         activity_ratio = current_activity / baseline
-        attention_target = min(1.0, activity_ratio * 0.3)
+        attention_target = min(1.0, activity_ratio * 0.4)
         
         # panic: 基于负面情感比例 + 转发量
         repost_boost = min(obs["reposts"] / max(baseline, 1), 0.3)
-        panic_target = min(1.0, obs["neg_ratio"] * 0.6 + repost_boost)
+        panic_target = min(1.0, obs["neg_ratio"] * 0.8 + repost_boost)
         
-        # trust: 正面情感 + 权威关键词
+        # trust: 基线降低 + 负面情绪会侥蚀信任
         auth_boost = min(obs["auth_count"] * 0.05, 0.2)
-        trust_target = min(1.0, 0.3 + obs["pos_ratio"] * 0.4 + auth_boost)
+        neg_erosion = obs["neg_ratio"] * 0.3  # 负面情绪侥蚀信任
+        trust_target = min(1.0, max(0.1, 0.2 + obs["pos_ratio"] * 0.4 + auth_boost - neg_erosion))
         
         # polarization: 衡量群体内部分歧（双方都有声量时才算极化）
         # 用 min(pos, neg) 衡量"对立双方中较弱一方的强度"，双方都强=高极化

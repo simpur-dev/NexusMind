@@ -1,0 +1,83 @@
+﻿{
+    "data":  {
+                 "action_type_distribution":  {
+                                                  "CREATE_POST":  0.3523,
+                                                  "DO_NOTHING":  0.2386,
+                                                  "LIKE_POST":  0.0455,
+                                                  "QUOTE_POST":  0.2841,
+                                                  "REPOST":  0.0795
+                                              },
+                 "agent_activity_gini":  0.4375,
+                 "per_round_active_agents":  [
+                                                 {
+                                                     "active_agents":  8,
+                                                     "round":  1
+                                                 },
+                                                 {
+                                                     "active_agents":  4,
+                                                     "round":  2
+                                                 },
+                                                 {
+                                                     "active_agents":  5,
+                                                     "round":  3
+                                                 },
+                                                 {
+                                                     "active_agents":  6,
+                                                     "round":  4
+                                                 },
+                                                 {
+                                                     "active_agents":  1,
+                                                     "round":  5
+                                                 },
+                                                 {
+                                                     "active_agents":  1,
+                                                     "round":  6
+                                                 },
+                                                 {
+                                                     "active_agents":  8,
+                                                     "round":  7
+                                                 },
+                                                 {
+                                                     "active_agents":  6,
+                                                     "round":  8
+                                                 },
+                                                 {
+                                                     "active_agents":  4,
+                                                     "round":  9
+                                                 },
+                                                 {
+                                                     "active_agents":  0,
+                                                     "round":  10
+                                                 },
+                                                 {
+                                                     "active_agents":  3,
+                                                     "round":  11
+                                                 },
+                                                 {
+                                                     "active_agents":  4,
+                                                     "round":  12
+                                                 },
+                                                 {
+                                                     "active_agents":  5,
+                                                     "round":  13
+                                                 },
+                                                 {
+                                                     "active_agents":  7,
+                                                     "round":  14
+                                                 },
+                                                 {
+                                                     "active_agents":  4,
+                                                     "round":  15
+                                                 },
+                                                 {
+                                                     "active_agents":  1,
+                                                     "round":  16
+                                                 }
+                                             ],
+                 "total_actions":  88,
+                 "total_agents":  31,
+                 "unique_active_agents":  28,
+                 "unique_active_ratio":  0.9032
+             },
+    "success":  true
+}

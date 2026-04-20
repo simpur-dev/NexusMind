@@ -1818,7 +1818,10 @@ async def run_twitter_simulation(
                 _current_world_state_data = ws_data
                 _current_world_state_prompt = build_world_state_prompt(ws_data)
         
-        simulated_minutes = round_num * minutes_per_round
+        # 支持 simulation_start_hour：将模拟时钟偏移到指定起始小时
+        # 默认从 8:00 开始，避免前 N 轮全在深夜导致无 Agent 活跃
+        start_hour = time_config.get("simulation_start_hour", 8)
+        simulated_minutes = round_num * minutes_per_round + start_hour * 60
         simulated_hour = (simulated_minutes // 60) % 24
         simulated_day = simulated_minutes // (60 * 24) + 1
         
@@ -2036,7 +2039,10 @@ async def run_reddit_simulation(
                 _current_world_state_data = ws_data
                 _current_world_state_prompt = build_world_state_prompt(ws_data)
         
-        simulated_minutes = round_num * minutes_per_round
+        # 支持 simulation_start_hour：将模拟时钟偏移到指定起始小时
+        # 默认从 8:00 开始，避免前 N 轮全在深夜导致无 Agent 活跃
+        start_hour = time_config.get("simulation_start_hour", 8)
+        simulated_minutes = round_num * minutes_per_round + start_hour * 60
         simulated_hour = (simulated_minutes // 60) % 24
         simulated_day = simulated_minutes // (60 * 24) + 1
         

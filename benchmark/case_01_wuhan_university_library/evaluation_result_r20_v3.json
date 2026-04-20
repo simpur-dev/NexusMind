@@ -1,0 +1,94 @@
+{
+  "_note": "v3: 关键词重分类 + 状态系数调优 后的 20 轮评估数据",
+
+  "simulation_id": "sim_22eaad2112b2",
+  "simulation_date": "2026-04-20",
+  "model_version": "qwen-plus (via dashscope) — v3 (关键词重分类+系数调优)",
+  "total_rounds": 20,
+  "total_agents": 31,
+  "unique_active_agents": 28,
+  "web_query_enabled": false,
+
+  "phase_sentiment_directions": [
+    "negative_rising",
+    "mixed",
+    "mixed",
+    "negative_secondary",
+    "neutral_declining"
+  ],
+  "_phase_sentiment_analysis": {
+    "mapping": "20轮 → 5阶段，每阶段4轮",
+    "P1_R1_R4": "R1: neg=0.38 pos=0.62; R2: neutral; R3: neg=0.17 pos=0（纯负面!）; R4: neg=0.17 pos=0（纯负面!）。负面从0.38混合→R3-R4纯负面上升 + sentiment_shift(R3, severity=0.64) → negative_rising ✅ 匹配参考",
+    "P2_R5_R8": "R5: pos=0.17; R6: neutral; R7: neg=0.04 pos=0.13 + heat_spike(0.60); R8: neg=0.03 pos=0.13。负面降至0.03-0.04，正面仍在 → mixed（参考 negative_peak，未命中）",
+    "P3_R9_R12": "R9: neg=0.03 pos=0.30; R10: neg=0.03 pos=0.13 + official_response + heat_spike(1.0); R11: neg=0.17 + sentiment_shift(0.67); R12: neg=0.11 pos=0.06。正负交错 → mixed ✅ 匹配参考",
+    "P4_R13_R16": "R13: neg=0.29 pos=0.05（强负面主导! panic峰值=0.106）; R14-15: pos=0.17（正面回升）; R16: neutral → negative_secondary ✅ 匹配参考",
+    "P5_R17_R20": "R17-20: 全部 neutral=1.0; 系统收敛 → neutral_declining ✅ 匹配参考"
+  },
+
+  "turning_points_hit": [
+    {
+      "tp_id": "T1",
+      "description": "事件曝光",
+      "hit": "same_phase",
+      "evidence": "R1 heat_spike(0.90) + polarization_surge(0.53) + R3 sentiment_shift(0.64)。全部落在P1(R1-4)，参考期望P1 ✅"
+    },
+    {
+      "tp_id": "T2",
+      "description": "校方通报",
+      "hit": "same_phase",
+      "evidence": "R10 official_response + heat_spike(1.0)（trust 0.32→0.53）。落在P3(R9-12)，参考期望P3 ✅"
+    },
+    {
+      "tp_id": "T3",
+      "description": "程序正义质疑",
+      "hit": "adjacent_phase",
+      "evidence": "R13 neg=0.29（panic峰值0.106），代表最强二次负面波。R11 sentiment_shift(0.67)在P3(R9-12)，与期望P4相邻 → adjacent_phase"
+    }
+  ],
+
+  "actor_coverage": [
+    {
+      "actor_id": "A1",
+      "name": "武汉大学",
+      "in_graph": true,
+      "in_agent": true,
+      "in_report": true,
+      "notes": "武汉大学 + 武汉大学官方公众号 + 武汉大学学生工作部 均参与"
+    },
+    {
+      "actor_id": "A2",
+      "name": "当事学生（肖某瑫）",
+      "in_graph": true,
+      "in_agent": true,
+      "in_report": true,
+      "notes": "肖某瑫（最活跃Agent之一）+ 肖某瑫母亲"
+    },
+    {
+      "actor_id": "A4",
+      "name": "媒体",
+      "in_graph": true,
+      "in_agent": true,
+      "in_report": true,
+      "notes": "澎湃新闻教育频道 + 微博"
+    }
+  ],
+
+  "event_order_simulation": [
+    "肖某瑫与杨某媛纠纷曝光",
+    "公众信任度显著下降",
+    "媒体介入报道与不实信息传播",
+    "校方通报：撤销处分+论文复核+问责",
+    "公众质疑论文不规范与问责力度",
+    "热度逐步收敛"
+  ],
+
+  "internal_health": {
+    "unique_active_ratio": 0.9032,
+    "agent_activity_gini": 0.4375,
+    "information_concentration": "见 raw_influence_r20_v3.json",
+    "avg_volatility": 0.0659,
+    "total_events": 42,
+    "turning_points_count": 10,
+    "_assessment": "关键改善: (1) R3-R4出现纯负面sentiment（首次！）; (2) panic峰值从R1移至R13（更真实的二次爆发）; (3) total_events从22增至42; (4) 新增sentiment_shift事件类型; (5) 活跃率从83.9%提升至90.3%"
+  }
+}

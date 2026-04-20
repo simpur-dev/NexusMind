@@ -1,0 +1,204 @@
+﻿{
+    "data":  {
+                 "summary":  {
+                                 "average":  {
+                                                 "negative":  0.0472,
+                                                 "neutral":  0.8889,
+                                                 "positive":  0.0639
+                                             },
+                                 "negative_dominant_ratio":  0.0,
+                                 "negative_peak":  {
+                                                       "round":  1,
+                                                       "value":  0.3767
+                                                   },
+                                 "positive_peak":  {
+                                                       "round":  1,
+                                                       "value":  0.6233
+                                                   },
+                                 "total_rounds":  30
+                             },
+                 "timeline":  [
+                                  {
+                                      "negative":  0.3767,
+                                      "neutral":  0.0,
+                                      "positive":  0.6233,
+                                      "round_num":  1
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  1.0,
+                                      "positive":  0.0,
+                                      "round_num":  2
+                                  },
+                                  {
+                                      "negative":  0.1667,
+                                      "neutral":  0.8333,
+                                      "positive":  0.0,
+                                      "round_num":  3
+                                  },
+                                  {
+                                      "negative":  0.1667,
+                                      "neutral":  0.8333,
+                                      "positive":  0.0,
+                                      "round_num":  4
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  0.8333,
+                                      "positive":  0.1667,
+                                      "round_num":  5
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  1.0,
+                                      "positive":  0.0,
+                                      "round_num":  6
+                                  },
+                                  {
+                                      "negative":  0.0417,
+                                      "neutral":  0.8333,
+                                      "positive":  0.125,
+                                      "round_num":  7
+                                  },
+                                  {
+                                      "negative":  0.0333,
+                                      "neutral":  0.8333,
+                                      "positive":  0.1333,
+                                      "round_num":  8
+                                  },
+                                  {
+                                      "negative":  0.0333,
+                                      "neutral":  0.6667,
+                                      "positive":  0.3,
+                                      "round_num":  9
+                                  },
+                                  {
+                                      "negative":  0.0333,
+                                      "neutral":  0.8333,
+                                      "positive":  0.1333,
+                                      "round_num":  10
+                                  },
+                                  {
+                                      "negative":  0.1667,
+                                      "neutral":  0.8333,
+                                      "positive":  0.0,
+                                      "round_num":  11
+                                  },
+                                  {
+                                      "negative":  0.1111,
+                                      "neutral":  0.8333,
+                                      "positive":  0.0556,
+                                      "round_num":  12
+                                  },
+                                  {
+                                      "negative":  0.2857,
+                                      "neutral":  0.6667,
+                                      "positive":  0.0476,
+                                      "round_num":  13
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  0.8333,
+                                      "positive":  0.1667,
+                                      "round_num":  14
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  0.8333,
+                                      "positive":  0.1667,
+                                      "round_num":  15
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  1.0,
+                                      "positive":  0.0,
+                                      "round_num":  16
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  1.0,
+                                      "positive":  0.0,
+                                      "round_num":  17
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  1.0,
+                                      "positive":  0.0,
+                                      "round_num":  18
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  1.0,
+                                      "positive":  0.0,
+                                      "round_num":  19
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  1.0,
+                                      "positive":  0.0,
+                                      "round_num":  20
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  1.0,
+                                      "positive":  0.0,
+                                      "round_num":  21
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  1.0,
+                                      "positive":  0.0,
+                                      "round_num":  22
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  1.0,
+                                      "positive":  0.0,
+                                      "round_num":  23
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  1.0,
+                                      "positive":  0.0,
+                                      "round_num":  24
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  1.0,
+                                      "positive":  0.0,
+                                      "round_num":  25
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  1.0,
+                                      "positive":  0.0,
+                                      "round_num":  26
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  1.0,
+                                      "positive":  0.0,
+                                      "round_num":  27
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  1.0,
+                                      "positive":  0.0,
+                                      "round_num":  28
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  1.0,
+                                      "positive":  0.0,
+                                      "round_num":  29
+                                  },
+                                  {
+                                      "negative":  0.0,
+                                      "neutral":  1.0,
+                                      "positive":  0.0,
+                                      "round_num":  30
+                                  }
+                              ]
+             },
+    "success":  true
+}
