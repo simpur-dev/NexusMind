@@ -221,11 +221,11 @@
 
     <!-- 底部图例 (Bottom Left) -->
     <div v-if="graphData && entityTypes.length" class="graph-legend">
-      <span class="legend-title">Entity Types</span>
+      <span class="legend-title">实体类型</span>
       <div class="legend-items">
         <div class="legend-item" v-for="type in entityTypes" :key="type.name">
           <span class="legend-dot" :style="{ background: type.color }"></span>
-          <span class="legend-label">{{ type.name }}</span>
+          <span class="legend-label">{{ type.label || type.name }}</span>
         </div>
       </div>
     </div>
@@ -287,6 +287,28 @@ const toggleSelfLoop = (id) => {
   expandedSelfLoops.value = newSet
 }
 
+// 实体类型中文翻译映射
+const entityTypeChinese = {
+  'Student': '学生',
+  'FacultyMember': '教职人员',
+  'UniversityAdministrator': '校方管理者',
+  'Court': '法院',
+  'ExpertPanel': '专家委员会',
+  'Organization': '组织机构',
+  'GovernmentAgency': '政府机构',
+  'Person': '人物',
+  'Media': '媒体',
+  'Event': '事件',
+  'Policy': '政策',
+  'PublicFigure': '公众人物',
+  'Platform': '平台',
+  'Company': '企业',
+  'Location': '地点',
+  'Document': '文件',
+  'Entity': '实体',
+}
+const translateType = (type) => entityTypeChinese[type] || type
+
 // 计算实体类型用于图例
 const entityTypes = computed(() => {
   if (!props.graphData?.nodes) return []
@@ -297,7 +319,7 @@ const entityTypes = computed(() => {
   props.graphData.nodes.forEach(node => {
     const type = node.labels?.find(l => l !== 'Entity') || 'Entity'
     if (!typeMap[type]) {
-      typeMap[type] = { name: type, count: 0, color: colors[Object.keys(typeMap).length % colors.length] }
+      typeMap[type] = { name: type, label: translateType(type), count: 0, color: colors[Object.keys(typeMap).length % colors.length] }
     }
     typeMap[type].count++
   })

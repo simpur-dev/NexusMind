@@ -439,6 +439,40 @@ const isSending = ref(false)
 const chatMessages = ref(null)
 const chatInputRef = ref(null)
 
+// --- sessionStorage 持久化 ---
+const storageKey = computed(() => `nexusmind_step5_chat_${props.simulationId || 'default'}`)
+
+const persistToStorage = () => {
+  try {
+    const payload = {
+      chatHistoryCache: chatHistoryCache.value,
+      activeTarget: chatTarget.value,
+      selectedAgentIdx: selectedAgentIndex.value,
+      surveyResults: surveyResults.value
+    }
+    localStorage.setItem(storageKey.value, JSON.stringify(payload))
+  } catch { /* quota exceeded, ignore */ }
+}
+
+const restoreFromStorage = () => {
+  try {
+    const raw = localStorage.getItem(storageKey.value)
+    if (!raw) return
+    const payload = JSON.parse(raw)
+    if (payload.chatHistoryCache) {
+      chatHistoryCache.value = payload.chatHistoryCache
+    }
+    if (payload.surveyResults) {
+      surveyResults.value = payload.surveyResults
+    }
+    // 恢复当前对话目标的历史
+    const targetKey = payload.activeTarget === 'agent' && payload.selectedAgentIdx !== null
+      ? `agent_${payload.selectedAgentIdx}`
+      : 'report_agent'
+    chatHistory.value = chatHistoryCache.value[targetKey] || []
+  } catch { /* parse error, ignore */ }
+}
+
 // Survey State
 const selectedAgents = ref(new Set())
 const surveyQuestion = ref('')
@@ -493,6 +527,7 @@ const saveChatHistory = () => {
   } else if (selectedAgentIndex.value !== null) {
     chatHistoryCache.value[`agent_${selectedAgentIndex.value}`] = [...chatHistory.value]
   }
+  persistToStorage()
 }
 
 const selectReportAgentChat = () => {
@@ -948,12 +983,14 @@ const handleClickOutside = (e) => {
 // Lifecycle
 onMounted(() => {
   addLog('Step5 深度互动初始化')
+  restoreFromStorage()
   loadReportData()
   loadProfiles()
   document.addEventListener('click', handleClickOutside)
 })
 
 onUnmounted(() => {
+  saveChatHistory()
   document.removeEventListener('click', handleClickOutside)
 })
 
