@@ -46,6 +46,13 @@ from .causal_graph import (
     CausalEdge,
     CausalChain
 )
+from .agent_brain import (
+    AgentBrain,
+    AgentBrainRuntime,
+    AgentPrior,
+    AgentCognitiveState,
+    create_agent_brain_profile,
+)
 
 __all__ = [
     'OntologyGenerator', 
@@ -85,5 +92,10 @@ __all__ = [
     'CausalGraphEngine',
     'CausalEdge',
     'CausalChain',
+    'AgentBrain',
+    'AgentBrainRuntime',
+    'AgentPrior',
+    'AgentCognitiveState',
+    'create_agent_brain_profile',
 ]
 

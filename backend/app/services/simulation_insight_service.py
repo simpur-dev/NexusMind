@@ -92,6 +92,8 @@ class SimulationInsightService:
         self._events: Optional[List[Dict]] = None
         self._causal_edges: Optional[List[Dict]] = None
         self._actions: Optional[List[Dict]] = None
+        self._cognition_history: Optional[List[Dict]] = None
+        self._cognition_summary: Optional[Dict] = None
 
     # ════════════════ 数据加载（带缓存） ════════════════
 
@@ -126,6 +128,26 @@ class SimulationInsightService:
                     acts.append(item)
             self._actions = acts
         return self._actions
+
+    @property
+    def cognition_history(self) -> List[Dict]:
+        if self._cognition_history is None:
+            self._cognition_history = _load_jsonl(os.path.join(self.sim_dir, "agent_cognition_history.jsonl"))
+        return self._cognition_history
+
+    @property
+    def cognition_summary(self) -> Dict:
+        if self._cognition_summary is None:
+            path = os.path.join(self.sim_dir, "agent_cognition_summary.json")
+            if os.path.exists(path):
+                try:
+                    with open(path, 'r', encoding='utf-8') as f:
+                        self._cognition_summary = json.load(f)
+                except (json.JSONDecodeError, OSError):
+                    self._cognition_summary = {}
+            else:
+                self._cognition_summary = {}
+        return self._cognition_summary
 
     # ════════════════ 1. 世界模型简报 ════════════════
 
@@ -693,6 +715,25 @@ class SimulationInsightService:
                     "strength": edge.get("strength", 0),
                 })
 
+        # 搜索 Agent 认知轨迹（策略转换、动作摘要）
+        for record in self.cognition_history:
+            rn = record.get("round_num", 0)
+            for agent in record.get("agents", []):
+                name = agent.get("entity_name", "")
+                action_summary = agent.get("last_action_summary", "")
+                focus = agent.get("attention_focus", "")
+                text = f"{name} {action_summary} {focus}"
+                if query_lower in text.lower() or query_lower in name.lower():
+                    results.append({
+                        "type": "cognition",
+                        "round": rn,
+                        "content": f"{name}: 策略={agent.get('strategy', '?')}, "
+                                   f"情绪={agent.get('emotional_arousal', 0):.2f}, "
+                                   f"信任={agent.get('trust_in_authority', 0):.2f}, "
+                                   f"动作={action_summary}",
+                        "agent_name": name,
+                    })
+
         results.sort(key=lambda x: x.get("severity", 0) or 0, reverse=True)
         results = results[:limit]
 
@@ -708,7 +749,122 @@ class SimulationInsightService:
             "text": "\n".join(lines),
         }
 
-    # ════════════════ 8. 报告规划上下文包 ════════════════
+    # ════════════════ 8. Agent 认知动态分析 ════════════════
+
+    def get_agent_cognition_analysis(self) -> Dict[str, Any]:
+        """
+        分析 Agent 群体认知动态：情绪轨迹、策略转换、立场分化、信任演变。
+        ReportAgent 工具: agent_cognition_analysis
+        """
+        history = self.cognition_history
+        summary = self.cognition_summary
+
+        if not history and not summary:
+            return {"error": "无Agent认知数据", "text": "无Agent认知数据（模拟未启用Agent Brain或数据缺失）。"}
+
+        total_rounds = len(history)
+        agents_data = summary.get("agents", []) if summary else []
+        total_agents = len(agents_data)
+
+        # 从历史中提取策略转换和情绪峰值
+        strategy_shifts = []  # (轮次, agent_name, old_strategy, new_strategy)
+        emotion_peaks = []    # (轮次, agent_name, arousal)
+        trust_drops = []      # (轮次, agent_name, trust_in_authority)
+
+        prev_strategies = {}  # agent_id -> strategy
+        for record in history:
+            rn = record.get("round_num", 0)
+            for agent in record.get("agents", []):
+                aid = agent.get("agent_id")
+                name = agent.get("entity_name", f"Agent_{aid}")
+                strat = agent.get("strategy", "observe")
+                ea = agent.get("emotional_arousal", 0)
+                ta = agent.get("trust_in_authority", 0.5)
+
+                # 策略转换
+                if aid in prev_strategies and prev_strategies[aid] != strat:
+                    strategy_shifts.append({
+                        "round": rn, "agent_name": name,
+                        "from": prev_strategies[aid], "to": strat,
+                    })
+                prev_strategies[aid] = strat
+
+                # 情绪峰值
+                if ea >= 0.7:
+                    emotion_peaks.append({"round": rn, "agent_name": name, "arousal": ea})
+
+                # 信任下降
+                if ta <= 0.3:
+                    trust_drops.append({"round": rn, "agent_name": name, "trust": ta})
+
+        # 统计策略分布（最后一轮）
+        final_strategy_dist = defaultdict(int)
+        final_emotion_mean = 0.0
+        final_trust_mean = 0.0
+        if history:
+            last_round = history[-1]
+            for agent in last_round.get("agents", []):
+                final_strategy_dist[agent.get("strategy", "observe")] += 1
+                final_emotion_mean += agent.get("emotional_arousal", 0)
+                final_trust_mean += agent.get("trust_in_authority", 0.5)
+            n = max(len(last_round.get("agents", [])), 1)
+            final_emotion_mean /= n
+            final_trust_mean /= n
+
+        # 文本生成
+        lines = [f"## Agent 认知动态分析（{total_agents} 个 Agent，{total_rounds} 轮）\n"]
+
+        lines.append("**最终策略分布**")
+        for strat, count in sorted(final_strategy_dist.items(), key=lambda x: -x[1]):
+            lines.append(f"  - {strat}: {count} 个 Agent")
+
+        lines.append(f"\n**群体情绪均值**: {final_emotion_mean:.2f} | **群体权威信任均值**: {final_trust_mean:.2f}")
+
+        if strategy_shifts:
+            lines.append(f"\n**策略转换事件**（共 {len(strategy_shifts)} 次，展示前 10）")
+            for ss in strategy_shifts[:10]:
+                lines.append(f"  - 第 {ss['round']} 轮: {ss['agent_name']} {ss['from']} → {ss['to']}")
+
+        if emotion_peaks:
+            lines.append(f"\n**情绪峰值事件**（共 {len(emotion_peaks)} 次，展示前 5）")
+            for ep in sorted(emotion_peaks, key=lambda x: -x["arousal"])[:5]:
+                lines.append(f"  - 第 {ep['round']} 轮: {ep['agent_name']} 情绪 {ep['arousal']:.2f}")
+
+        if trust_drops:
+            lines.append(f"\n**信任崩塌事件**（共 {len(trust_drops)} 次，展示前 5）")
+            for td in sorted(trust_drops, key=lambda x: x["trust"])[:5]:
+                lines.append(f"  - 第 {td['round']} 轮: {td['agent_name']} 信任度 {td['trust']:.2f}")
+
+        # 代表性 Agent 摘要（从 summary 中提取）
+        if agents_data:
+            lines.append("\n**代表性 Agent 最终状态**")
+            for ag in agents_data[:8]:
+                fs = ag.get("final_state", {})
+                lines.append(
+                    f"  - {ag.get('entity_name', '?')}({ag.get('entity_type', '?')}/{ag.get('stance', '?')}): "
+                    f"情绪 {fs.get('emotional_arousal', 0):.2f}, "
+                    f"信任 {fs.get('trust_in_authority', 0):.2f}, "
+                    f"策略={fs.get('strategy', '?')}, "
+                    f"目标={'\u3001'.join(fs.get('active_goals', []))}"
+                )
+
+        result = {
+            "total_agents": total_agents,
+            "total_rounds": total_rounds,
+            "final_strategy_distribution": dict(final_strategy_dist),
+            "final_emotion_mean": round(final_emotion_mean, 3),
+            "final_trust_mean": round(final_trust_mean, 3),
+            "strategy_shifts_count": len(strategy_shifts),
+            "emotion_peaks_count": len(emotion_peaks),
+            "trust_drops_count": len(trust_drops),
+            "strategy_shifts": strategy_shifts[:20],
+            "emotion_peaks": sorted(emotion_peaks, key=lambda x: -x["arousal"])[:10],
+            "trust_drops": sorted(trust_drops, key=lambda x: x["trust"])[:10],
+        }
+        result["text"] = "\n".join(lines)
+        return result
+
+    # ════════════════ 9. 报告规划上下文包 ════════════════
 
     def get_report_context_bundle(self) -> Dict[str, Any]:
         """
@@ -756,6 +912,14 @@ class SimulationInsightService:
             for edge in top_edges:
                 lines.append(f"  {edge.get('evidence', '')[:60]}")
 
+        # Agent 认知概览
+        cognition = self.get_agent_cognition_analysis()
+        if "error" not in cognition:
+            lines.append(f"\nAgent 认知动态: {cognition.get('total_agents', 0)} 个 Agent, "
+                         f"情绪均值 {cognition.get('final_emotion_mean', 0):.2f}, "
+                         f"信任均值 {cognition.get('final_trust_mean', 0):.2f}, "
+                         f"策略转换 {cognition.get('strategy_shifts_count', 0)} 次")
+
         return {
             "scorecard": scorecard,
             "brief": brief,
@@ -765,6 +929,12 @@ class SimulationInsightService:
                 "turning_points": tps,
             },
             "causal_summary": {"total_edges": total_edges},
+            "cognition_summary": {
+                "total_agents": cognition.get("total_agents", 0),
+                "emotion_mean": cognition.get("final_emotion_mean", 0),
+                "trust_mean": cognition.get("final_trust_mean", 0),
+                "strategy_shifts": cognition.get("strategy_shifts_count", 0),
+            } if "error" not in cognition else {},
             "text": "\n".join(lines),
         }
 

@@ -508,6 +508,7 @@ class SimulationManager:
                 simulation_requirement=simulation_requirement,
                 document_text=document_text,
                 entities=filtered.entities,
+                agent_profiles=valid_profiles,
                 enable_twitter=state.enable_twitter,
                 enable_reddit=state.enable_reddit
             )

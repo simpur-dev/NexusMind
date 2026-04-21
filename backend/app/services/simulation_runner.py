@@ -647,6 +647,9 @@ class SimulationRunner:
                     os.path.join(sim_dir, "actions.jsonl"),
                     os.path.join(sim_dir, "twitter_simulation.db"),
                     os.path.join(sim_dir, "reddit_simulation.db"),
+                    os.path.join(sim_dir, "agent_cognition_history.jsonl"),
+                    os.path.join(sim_dir, "agent_cognition_summary.json"),
+                    os.path.join(sim_dir, "agent_brain_state.json"),
                 ]
                 for f in stale_files:
                     if os.path.exists(f):

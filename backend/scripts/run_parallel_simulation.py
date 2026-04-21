@@ -102,6 +102,8 @@ else:
         load_dotenv(_backend_env)
         print(f"已加载环境配置: {_backend_env}")
 
+from app.services.agent_brain import AgentBrainRuntime
+
 
 class MaxTokensWarningFilter(logging.Filter):
     """过滤掉 camel-ai 关于 max_tokens 的警告（我们故意不设置 max_tokens，让模型自行决定）"""
@@ -630,6 +632,10 @@ _world_model_enabled: bool = True  # 可通过 --no-world-model 禁用
 # 在主循环开始前从 simulation_config 加载
 _agent_role_map: Dict[int, Dict[str, str]] = {}
 
+# Agent Brain 运行时：管理所有 Agent 的认知状态，每轮更新
+# 在主循环开始前从 simulation_config 加载或从 agent_brain_state.json 恢复
+_agent_brain_runtime = None  # type: Optional[AgentBrainRuntime]
+
 
 def patch_agent_memory_limit(window_size: int = 20):
     """
@@ -691,14 +697,26 @@ def patch_oasis_environment():
         if _current_world_state_data is not None:
             personalized_prompt = build_world_state_prompt(_current_world_state_data, agent_role)
             if personalized_prompt:
-                return original + "\n" + personalized_prompt
+                original = original + "\n" + personalized_prompt
         # 回退：使用全局统一 prompt（兼容无差异化数据的场景）
         elif _current_world_state_prompt:
-            return original + "\n" + _current_world_state_prompt
+            original = original + "\n" + _current_world_state_prompt
+        
+        # Agent Brain 认知层注入：为每个 Agent 附加个性化的内部认知框架
+        if _agent_brain_runtime is not None and agent_id is not None:
+            brain_prompt = _agent_brain_runtime.render_prompt(agent_id)
+            if brain_prompt:
+                original = original + "\n" + brain_prompt
+            # Feature ①: 个性化感知渲染（SocioVerse §2.1 Personalized Context）
+            if _current_world_state_data is not None:
+                perception_prompt = _agent_brain_runtime.render_personalized_perception(agent_id, _current_world_state_data)
+                if perception_prompt:
+                    original = original + "\n" + perception_prompt
+        
         return original
     
     SocialEnvironment.to_text_prompt = _patched_to_text_prompt
-    print("[WorldState] 已安装环境状态注入补丁 v2（差异化感知 + 论文 §4.1.1）")
+    print("[WorldState] 已安装环境状态注入补丁 v3（差异化感知 + 个性化认知 + 论文 §4.1.1）")
 
 
 class CommandType:
@@ -822,10 +840,17 @@ class ParallelIPCHandler:
             return {"platform": platform, "error": f"{platform}平台不可用"}
         
         try:
+            # Agent Brain: 为采访注入认知上下文，使回答与模拟内部状态一致
+            enriched_prompt = prompt
+            if _agent_brain_runtime is not None:
+                ctx = _agent_brain_runtime.render_interview_context(agent_id)
+                if ctx:
+                    enriched_prompt = ctx + "\n\n" + prompt
+            
             agent = agent_graph.get_agent(agent_id)
             interview_action = ManualAction(
                 action_type=ActionType.INTERVIEW,
-                action_args={"prompt": prompt}
+                action_args={"prompt": enriched_prompt}
             )
             actions = {agent: interview_action}
             await env.step(actions)
@@ -1819,6 +1844,9 @@ async def run_twitter_simulation(
                 _prev_world_state_data = {k: v for k, v in ws_data.items() if not k.startswith("_")}
                 _current_world_state_data = ws_data
                 _current_world_state_prompt = build_world_state_prompt(ws_data)
+                # Agent Brain: 根据世界状态更新所有 Agent 的认知状态
+                if _agent_brain_runtime is not None:
+                    _agent_brain_runtime.apply_world_state(round_num, ws_data)
         
         # 支持 simulation_start_hour：将模拟时钟偏移到指定起始小时
         # 默认从 8:00 开始，避免前 N 轮全在深夜导致无 Agent 活跃
@@ -1861,6 +1889,16 @@ async def run_twitter_simulation(
                 )
                 total_actions += 1
                 round_action_count += 1
+        
+        # Agent Brain: 记录本轮实际动作，更新认知状态
+        if _agent_brain_runtime is not None and actual_actions:
+            _agent_brain_runtime.record_actions(round_num, actual_actions)
+        # Feature ④: 反思机制（Generative Agents §4.3）— 每 N 轮触发
+        if _agent_brain_runtime is not None:
+            _agent_brain_runtime.trigger_reflection(round_num)
+        # Agent Brain: 写入认知轨迹快照（供报告/证据检索）
+        if _agent_brain_runtime is not None:
+            _agent_brain_runtime.write_cognition_snapshot(round_num)
         
         if action_logger:
             action_logger.log_round_end(round_num + 1, round_action_count)
@@ -2040,6 +2078,9 @@ async def run_reddit_simulation(
                 _prev_world_state_data = {k: v for k, v in ws_data.items() if not k.startswith("_")}
                 _current_world_state_data = ws_data
                 _current_world_state_prompt = build_world_state_prompt(ws_data)
+                # Agent Brain: 根据世界状态更新所有 Agent 的认知状态
+                if _agent_brain_runtime is not None:
+                    _agent_brain_runtime.apply_world_state(round_num, ws_data)
         
         # 支持 simulation_start_hour：将模拟时钟偏移到指定起始小时
         # 默认从 8:00 开始，避免前 N 轮全在深夜导致无 Agent 活跃
@@ -2082,6 +2123,16 @@ async def run_reddit_simulation(
                 )
                 total_actions += 1
                 round_action_count += 1
+        
+        # Agent Brain: 记录本轮实际动作，更新认知状态
+        if _agent_brain_runtime is not None and actual_actions:
+            _agent_brain_runtime.record_actions(round_num, actual_actions)
+        # Feature ④: 反思机制（Generative Agents §4.3）— 每 N 轮触发
+        if _agent_brain_runtime is not None:
+            _agent_brain_runtime.trigger_reflection(round_num)
+        # Agent Brain: 写入认知轨迹快照（供报告/证据检索）
+        if _agent_brain_runtime is not None:
+            _agent_brain_runtime.write_cognition_snapshot(round_num)
         
         if action_logger:
             action_logger.log_round_end(round_num + 1, round_action_count)
@@ -2207,6 +2258,15 @@ async def main():
             stances[s] = stances.get(s, 0) + 1
         log_manager.info(f"  - 差异化感知: 已加载 {len(_agent_role_map)} 个Agent角色, 立场分布={stances}")
     
+    # 加载 Agent Brain 运行时（认知层）
+    global _agent_brain_runtime
+    try:
+        _agent_brain_runtime = AgentBrainRuntime.load_or_create(config, simulation_dir)
+        log_manager.info(f"  - Agent Brain: 已加载 {len(_agent_brain_runtime)} 个认知状态")
+    except Exception as e:
+        log_manager.warning(f"  - Agent Brain: 加载失败 ({e})，认知层将被跳过")
+        _agent_brain_runtime = None
+    
     # 限制 Agent 记忆窗口，防止长模拟内存爆炸
     patch_agent_memory_limit(window_size=20)
     
@@ -2239,6 +2299,14 @@ async def main():
     total_elapsed = (datetime.now() - start_time).total_seconds()
     log_manager.info("=" * 60)
     log_manager.info(f"模拟循环完成! 总耗时: {total_elapsed:.1f}秒")
+    
+    # Agent Brain: 生成认知摘要（供报告生成和证据检索使用）
+    if _agent_brain_runtime is not None:
+        try:
+            summary = _agent_brain_runtime.generate_cognition_summary()
+            log_manager.info(f"  - Agent Brain: 已生成认知摘要（{summary.get('total_agents', 0)} 个Agent）")
+        except Exception as e:
+            log_manager.warning(f"  - Agent Brain: 生成认知摘要失败 ({e})")
     
     # 是否进入等待命令模式
     if wait_for_commands:

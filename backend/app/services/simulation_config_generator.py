@@ -21,6 +21,7 @@ from openai import OpenAI
 from ..config import Config
 from ..utils.logger import get_logger
 from .entity_reader import EntityNode, EntityReader
+from .agent_brain import create_agent_brain_profile
 
 logger = get_logger('nexusmind.simulation_config')
 
@@ -77,6 +78,9 @@ class AgentActivityConfig:
     
     # 影响力权重（决定其发言被其他Agent看到的概率）
     influence_weight: float = 1.0
+    
+    # Agent Brain 认知层配置（由 agent_brain 模块自动生成）
+    brain_profile: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass  
@@ -247,6 +251,7 @@ class SimulationConfigGenerator:
         simulation_requirement: str,
         document_text: str,
         entities: List[EntityNode],
+        agent_profiles: Optional[List[Any]] = None,
         enable_twitter: bool = True,
         enable_reddit: bool = True,
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
@@ -312,13 +317,22 @@ class SimulationConfigGenerator:
         report_progress(2, f"并行生成 {len(entities)} 个Agent配置...")
         all_agent_configs = []
         
+        # 构建 profile_map: agent_id -> profile 对象，供 brain_profile 生成使用
+        profile_map: Dict[int, Any] = {}
+        if agent_profiles:
+            for profile in agent_profiles:
+                pid = profile.get("user_id") if isinstance(profile, dict) else getattr(profile, "user_id", None)
+                if pid is not None:
+                    profile_map[int(pid)] = profile
+        
         if num_batches <= 1:
             # 只有1批，直接生成
             batch_configs = self._generate_agent_configs_batch(
                 context=context,
                 entities=entities,
                 start_idx=0,
-                simulation_requirement=simulation_requirement
+                simulation_requirement=simulation_requirement,
+                profile_map=profile_map,
             )
             all_agent_configs.extend(batch_configs)
         else:
@@ -334,7 +348,8 @@ class SimulationConfigGenerator:
                         context=context,
                         entities=batch_entities,
                         start_idx=start_idx,
-                        simulation_requirement=simulation_requirement
+                        simulation_requirement=simulation_requirement,
+                        profile_map=profile_map,
                     )
                     futures[ft] = batch_idx
                 
@@ -835,7 +850,8 @@ class SimulationConfigGenerator:
         context: str,
         entities: List[EntityNode],
         start_idx: int,
-        simulation_requirement: str
+        simulation_requirement: str,
+        profile_map: Optional[Dict[int, Any]] = None,
     ) -> List[AgentActivityConfig]:
         """分批生成Agent配置"""
         
@@ -918,7 +934,16 @@ class SimulationConfigGenerator:
                 response_delay_max=cfg.get("response_delay_max", 60),
                 sentiment_bias=cfg.get("sentiment_bias", 0.0),
                 stance=cfg.get("stance", "neutral"),
-                influence_weight=cfg.get("influence_weight", 1.0)
+                influence_weight=cfg.get("influence_weight", 1.0),
+                brain_profile=create_agent_brain_profile(
+                    agent_id=agent_id,
+                    entity_name=entity.name,
+                    entity_type=entity.get_entity_type() or "Unknown",
+                    entity_summary=entity.summary or "",
+                    simulation_requirement=simulation_requirement,
+                    activity_config=cfg,
+                    profile=profile_map.get(agent_id) if profile_map else None,
+                ),
             )
             configs.append(config)
         

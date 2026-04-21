@@ -624,12 +624,26 @@ TOOL_DESC_DECISION_SUPPORT = """\
 TOOL_DESC_EVIDENCE_SEARCH = """\
 【模拟证据检索】
 在模拟产出的所有数据中搜索特定话题的证据：
-搜索范围包括事件流、Agent行为日志、因果边证据。
+搜索范围包括事件流、Agent行为日志、因果边证据、Agent认知轨迹。
 
 【使用场景】
 - 需要为某个论点找到具体的模拟证据
-- 需要查找特定Agent或特定话题的行为记录
+- 需要查找特定 Agent或特定话题的行为记录
 - 需要引用具体的模拟事件或Agent发言"""
+
+TOOL_DESC_AGENT_COGNITION = """\
+【Agent认知动态分析】
+分析模拟中所有Agent的群体认知演变：
+- 情绪激活度轨迹与峰值事件
+- 策略转换统计（观望→质疑→宣传等）
+- 对权威/同侪信任演变
+- 群体分化趋势与代表性Agent状态
+
+【使用场景】
+- 分析舆论参与者的心理的转变规律
+- 识别关键信任崩塌或情绪引爆点
+- 为声誉修复/危机管理提供行为证据
+- 与世界模型宏观数据交叉印证"""
 
 # ── 大纲规划 prompt ──
 
@@ -843,6 +857,7 @@ SECTION_SYSTEM_PROMPT_TEMPLATE = """\
 - decision_support_brief: 获取决策支持简报（风险、机会、分阶段建议）
 - evaluation_summary: 获取量化评估摘要（情感、行为、影响力分析）
 - simulation_evidence_search: 在模拟数据中检索特定话题的证据
+- agent_cognition_analysis: 分析Agent群体认知动态（情绪轨迹、策略转换、信任演变）
 
 ═══════════════════════════════════════════════════════════════
 【工作流程】
@@ -1182,6 +1197,11 @@ class ReportAgent:
                         "limit": "返回结果数量（可选，默认15）"
                     }
                 },
+                "agent_cognition_analysis": {
+                    "name": "agent_cognition_analysis",
+                    "description": TOOL_DESC_AGENT_COGNITION,
+                    "parameters": {}
+                },
             }
             base_tools.update(world_model_tools)
         
@@ -1336,6 +1356,12 @@ class ReportAgent:
                 result = self.insight_service.search_simulation_evidence(query, limit=limit)
                 return result.get("text", json.dumps(result, ensure_ascii=False))
             
+            elif tool_name == "agent_cognition_analysis":
+                if not self.insight_service:
+                    return "Agent认知数据不可用"
+                result = self.insight_service.get_agent_cognition_analysis()
+                return result.get("text", json.dumps(result, ensure_ascii=False))
+            
             else:
                 available = ", ".join(self.tools.keys())
                 return f"未知工具: {tool_name}。请使用以下工具之一: {available}"
@@ -1349,7 +1375,7 @@ class ReportAgent:
         "insight_forge", "panorama_search", "quick_search", "interview_agents",
         "world_model_brief", "state_evolution_analysis", "causal_chain_analysis",
         "evaluation_summary", "reputation_scorecard", "decision_support_brief",
-        "simulation_evidence_search",
+        "simulation_evidence_search", "agent_cognition_analysis",
     }
 
     def _parse_tool_calls(self, response: str) -> List[Dict[str, Any]]:
