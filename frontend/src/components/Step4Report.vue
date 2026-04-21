@@ -3,8 +3,8 @@
     <div class="step4-shell">
       <aside class="step4-sidebar" aria-label="阶段导航">
         <p class="sidebar-brand">NEXUSMIND 智能系统</p>
-        <h2 class="sidebar-title">未来预测报告</h2>
-        <p class="sidebar-desc">基于模拟结果由智能体生成结构化预测报告，进度与章节将随生成过程更新。</p>
+        <h2 class="sidebar-title">决策支持报告</h2>
+        <p class="sidebar-desc">基于模拟推演与世界模型分析，智能体生成数据驱动的决策支持报告。</p>
         <div class="phase-card">
           <span class="phase-num mono">{{ currentPhaseBadge.num }}</span>
           <div class="phase-text">
@@ -37,7 +37,7 @@
           <!-- Report Header -->
           <div class="report-header-block">
             <div class="report-meta">
-              <span class="report-tag">预测报告</span>
+              <span class="report-tag">决策报告</span>
               <span class="report-id">编号 {{ reportId || '—' }}</span>
               <button
                 v-if="isComplete"
@@ -52,6 +52,19 @@
                 </svg>
                 <span v-if="isExportingPdf" class="loading-spinner-small"></span>
                 {{ isExportingPdf ? '导出中...' : '导出 PDF' }}
+              </button>
+              <button
+                v-if="isComplete"
+                class="export-md-btn"
+                @click="exportMarkdown"
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                </svg>
+                导出 Markdown
               </button>
             </div>
             <h1 class="main-title">{{ reportOutline.title }}</h1>
@@ -292,6 +305,43 @@
                         <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
                         <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
                       </svg>
+                      <!-- Activity - World Model Brief -->
+                      <svg v-else-if="getToolIcon(log.details?.tool_name) === 'activity'" class="tool-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                      </svg>
+                      <!-- Trending - State Evolution -->
+                      <svg v-else-if="getToolIcon(log.details?.tool_name) === 'trending'" class="tool-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+                        <polyline points="17 6 23 6 23 12"></polyline>
+                      </svg>
+                      <!-- Git Branch - Causal Chain -->
+                      <svg v-else-if="getToolIcon(log.details?.tool_name) === 'gitbranch'" class="tool-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="6" y1="3" x2="6" y2="15"></line>
+                        <circle cx="18" cy="6" r="3"></circle>
+                        <circle cx="6" cy="18" r="3"></circle>
+                        <path d="M18 9a9 9 0 0 1-9 9"></path>
+                      </svg>
+                      <!-- Bar Chart - Evaluation -->
+                      <svg v-else-if="getToolIcon(log.details?.tool_name) === 'barchart'" class="tool-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="20" x2="18" y2="10"></line>
+                        <line x1="12" y1="20" x2="12" y2="4"></line>
+                        <line x1="6" y1="20" x2="6" y2="14"></line>
+                      </svg>
+                      <!-- Shield - Scorecard -->
+                      <svg v-else-if="getToolIcon(log.details?.tool_name) === 'shield'" class="tool-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                      </svg>
+                      <!-- Target - Decision Brief -->
+                      <svg v-else-if="getToolIcon(log.details?.tool_name) === 'target'" class="tool-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <circle cx="12" cy="12" r="6"></circle>
+                        <circle cx="12" cy="12" r="2"></circle>
+                      </svg>
+                      <!-- Search - Evidence Search -->
+                      <svg v-else-if="getToolIcon(log.details?.tool_name) === 'search'" class="tool-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                      </svg>
                       <!-- Default - Tool -->
                       <svg v-else class="tool-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
@@ -307,7 +357,7 @@
                   <template v-if="log.action === 'tool_result'">
                     <div class="result-wrapper" :class="'result-' + log.details?.tool_name">
                       <!-- Hide result-meta for tools that show stats in their own header -->
-                      <div v-if="!['interview_agents', 'insight_forge', 'panorama_search', 'quick_search'].includes(log.details?.tool_name)" class="result-meta">
+                      <div v-if="!['interview_agents', 'insight_forge', 'panorama_search', 'quick_search', 'world_model_brief', 'state_evolution_analysis', 'causal_chain_analysis', 'evaluation_summary', 'reputation_scorecard', 'decision_support_brief', 'simulation_evidence_search'].includes(log.details?.tool_name)" class="result-meta">
                         <span class="result-tool">{{ getToolDisplayName(log.details?.tool_name) }}</span>
                         <span class="result-size">{{ formatResultSize(log.details?.result_length) }}</span>
                       </div>
@@ -332,6 +382,11 @@
                         <!-- Quick Search -->
                         <template v-else-if="log.details?.tool_name === 'quick_search'">
                           <QuickSearchDisplay :result="parseQuickSearch(log.details.result)" :result-length="log.details?.result_length" />
+                        </template>
+                        
+                        <!-- World Model Tools -->
+                        <template v-else-if="isWorldModelTool(log.details?.tool_name)">
+                          <WorldModelDisplay :tool-name="log.details.tool_name" :result="log.details?.result" :result-length="log.details?.result_length" />
                         </template>
                         
                         <!-- Default -->
@@ -438,6 +493,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, h, reactive } from 'vue'
 import { getAgentLog, getConsoleLog, getReport, getReportSections } from '../api/report'
 import html2pdf from 'html2pdf.js'
+import { marked } from 'marked'
 
 const props = defineProps({
   reportId: String,
@@ -566,7 +622,42 @@ const toolConfig = {
   'get_entities_by_type': {
     name: '实体查询',
     color: 'pink',
-    icon: 'database' // 数据库图标 - 代表实体
+    icon: 'database'
+  },
+  'world_model_brief': {
+    name: '世界模型概览',
+    color: 'teal',
+    icon: 'activity'
+  },
+  'state_evolution_analysis': {
+    name: '状态演进分析',
+    color: 'teal',
+    icon: 'trending'
+  },
+  'causal_chain_analysis': {
+    name: '因果链分析',
+    color: 'teal',
+    icon: 'gitbranch'
+  },
+  'evaluation_summary': {
+    name: '量化评估',
+    color: 'amber',
+    icon: 'barchart'
+  },
+  'reputation_scorecard': {
+    name: '态势评分卡',
+    color: 'amber',
+    icon: 'shield'
+  },
+  'decision_support_brief': {
+    name: '决策简报',
+    color: 'red',
+    icon: 'target'
+  },
+  'simulation_evidence_search': {
+    name: '证据检索',
+    color: 'amber',
+    icon: 'search'
   }
 }
 
@@ -581,6 +672,13 @@ const getToolColor = (toolName) => {
 const getToolIcon = (toolName) => {
   return toolConfig[toolName]?.icon || 'tool'
 }
+
+const WORLD_MODEL_TOOLS = new Set([
+  'world_model_brief', 'state_evolution_analysis', 'causal_chain_analysis',
+  'evaluation_summary', 'reputation_scorecard', 'decision_support_brief',
+  'simulation_evidence_search'
+])
+const isWorldModelTool = (toolName) => WORLD_MODEL_TOOLS.has(toolName)
 
 // Parse functions
 const parseInsightForge = (text) => {
@@ -1744,6 +1842,117 @@ const QuickSearchDisplay = {
   }
 }
 
+// World Model Display Component - renders markdown-formatted results from world model tools
+const WorldModelDisplay = {
+  props: ['toolName', 'result', 'resultLength'],
+  setup(props) {
+    const expanded = ref(false)
+    const PREVIEW_LEN = 600
+
+    const formatSize = (length) => {
+      if (!length) return ''
+      return length >= 1000 ? `${(length / 1000).toFixed(1)}k chars` : `${length} chars`
+    }
+
+    const displayName = computed(() => toolConfig[props.toolName]?.name || props.toolName)
+    const iconClass = computed(() => toolConfig[props.toolName]?.icon || 'tool')
+    const colorClass = computed(() => toolConfig[props.toolName]?.color || 'gray')
+
+    // Parse markdown sections from the result text
+    const sections = computed(() => {
+      if (!props.result) return []
+      const parts = []
+      const lines = props.result.split('\n')
+      let currentTitle = ''
+      let currentLines = []
+
+      for (const line of lines) {
+        const headingMatch = line.match(/^#{1,3}\s+(.+)/)
+        if (headingMatch) {
+          if (currentTitle || currentLines.length > 0) {
+            parts.push({ title: currentTitle, content: currentLines.join('\n').trim() })
+          }
+          currentTitle = headingMatch[1]
+          currentLines = []
+        } else {
+          currentLines.push(line)
+        }
+      }
+      if (currentTitle || currentLines.length > 0) {
+        parts.push({ title: currentTitle, content: currentLines.join('\n').trim() })
+      }
+      return parts
+    })
+
+    // Extract key metrics (lines starting with "- key: value")
+    const metrics = computed(() => {
+      if (!props.result) return []
+      const ms = []
+      const metricRe = /^-\s*(.+?)[：:]\s*(.+)$/gm
+      let m
+      while ((m = metricRe.exec(props.result)) !== null) {
+        if (ms.length < 8) ms.push({ label: m[1].trim(), value: m[2].trim() })
+      }
+      return ms
+    })
+
+    return () => h('div', { class: `wm-display wm-${colorClass.value}` }, [
+      // Header
+      h('div', { class: 'wm-header' }, [
+        h('div', { class: 'header-main' }, [
+          h('div', { class: 'header-title' }, displayName.value),
+          h('div', { class: 'header-stats' }, [
+            sections.value.length > 0 && h('span', { class: 'stat-item' }, [
+              h('span', { class: 'stat-value' }, sections.value.length),
+              h('span', { class: 'stat-label' }, 'Sections')
+            ]),
+            metrics.value.length > 0 && h('span', { class: 'stat-divider' }, '/'),
+            metrics.value.length > 0 && h('span', { class: 'stat-item' }, [
+              h('span', { class: 'stat-value' }, metrics.value.length),
+              h('span', { class: 'stat-label' }, 'Metrics')
+            ]),
+            props.resultLength && h('span', { class: 'stat-divider' }, '·'),
+            props.resultLength && h('span', { class: 'stat-size' }, formatSize(props.resultLength))
+          ])
+        ])
+      ]),
+
+      // Metrics bar (if any)
+      metrics.value.length > 0 && h('div', { class: 'wm-metrics' },
+        metrics.value.slice(0, 6).map((m, i) =>
+          h('div', { class: 'wm-metric', key: i }, [
+            h('span', { class: 'wm-metric-label' }, m.label),
+            h('span', { class: 'wm-metric-value' }, m.value)
+          ])
+        )
+      ),
+
+      // Content sections
+      h('div', { class: 'wm-content' },
+        (expanded.value ? sections.value : sections.value.slice(0, 3)).map((sec, i) =>
+          h('div', { class: 'wm-section', key: i }, [
+            sec.title && h('div', { class: 'wm-section-title' }, sec.title),
+            sec.content && h('div', {
+              class: 'wm-section-body',
+              innerHTML: renderMarkdown(
+                !expanded.value && i === 2 && sec.content.length > PREVIEW_LEN
+                  ? sec.content.substring(0, PREVIEW_LEN) + '...'
+                  : sec.content
+              )
+            })
+          ])
+        )
+      ),
+
+      // Expand button
+      (sections.value.length > 3 || (props.result && props.result.length > PREVIEW_LEN * 3)) && h('button', {
+        class: 'expand-btn',
+        onClick: () => { expanded.value = !expanded.value }
+      }, expanded.value ? '收起 ▲' : '展开全部 ▼')
+    ])
+  }
+}
+
 // Computed
 const statusClass = computed(() => {
   if (isComplete.value) return 'completed'
@@ -1869,7 +2078,7 @@ const workflowSteps = computed(() => {
 /** 侧栏「当前阶段」角标：输入 num 展示、label 文案 */
 const currentPhaseBadge = computed(() => {
   if (isComplete.value) return { num: '04', label: '报告已就绪' }
-  if (isFinalizing.value) return { num: '04', label: '最终预测合成' }
+  if (isFinalizing.value) return { num: '04', label: '报告整合中' }
   if (reportOutline.value && totalSections.value > 0) return { num: '03', label: '撰写章节内容' }
   if (agentLogs.value.length > 0) return { num: '02', label: '规划报告结构' }
   return { num: '02', label: '连接报告智能体' }
@@ -1877,7 +2086,7 @@ const currentPhaseBadge = computed(() => {
 
 /** 侧栏四段进度：数据同化 / 神经映射 / 参数注入 / 最终预测合成 */
 const sidebarStages = computed(() => {
-  const labels = ['数据同化', '神经映射', '参数注入', '最终预测合成']
+  const labels = ['数据同化', '世界模型分析', '章节生成', '报告整合']
   const done = (i) => ({ label: labels[i], state: 'done' })
   const active = (i) => ({ label: labels[i], state: 'active' })
   const todo = (i) => ({ label: labels[i], state: 'todo' })
@@ -1923,7 +2132,7 @@ const exportPdf = async () => {
     el.classList.add('pdf-exporting')
     await nextTick()
     
-    const title = reportOutline.value?.title || '预测报告'
+    const title = reportOutline.value?.title || '决策支持报告'
     const filename = `${title.replace(/[\\/:*?"<>|]/g, '_')}.pdf`
     
     await html2pdf().set({
@@ -1945,6 +2154,41 @@ const exportPdf = async () => {
   } finally {
     isExportingPdf.value = false
   }
+}
+
+const exportMarkdown = () => {
+  if (!reportOutline.value) return
+
+  const title = reportOutline.value.title || '决策支持报告'
+  const summary = reportOutline.value.summary || ''
+  const sections = reportOutline.value.sections || []
+
+  let md = `# ${title}\n\n`
+  if (summary) md += `> ${summary}\n\n---\n\n`
+
+  sections.forEach((section, idx) => {
+    const raw = generatedSections.value[idx + 1]
+    if (raw) {
+      // 内容本身已包含 ## 标题，直接拼接；若缺失则补上
+      const hasHeader = /^##\s+/.test(raw.trim())
+      md += hasHeader ? `${raw.trim()}\n\n` : `## ${section.title}\n\n${raw.trim()}\n\n`
+    } else {
+      md += `## ${section.title}\n\n（内容未生成）\n\n`
+    }
+  })
+
+  // 创建 Blob 并触发下载
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${title.replace(/[\\/:*?"<>|]/g, '_')}.md`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+
+  addLog(`✓ Markdown 已导出: ${a.download}`)
 }
 
 const isSectionCompleted = (sectionIndex) => {
@@ -1986,107 +2230,22 @@ const truncateText = (text, maxLen) => {
   return text.substring(0, maxLen) + '...'
 }
 
+// 配置 marked
+marked.setOptions({
+  breaks: true,       // 单换行 → <br>
+  gfm: true,          // 支持 GFM 表格、删除线等
+  headerIds: false,    // 不给标题生成 id
+  mangle: false,       // 不转义邮箱地址
+})
+
 const renderMarkdown = (content) => {
   if (!content) return ''
-  
+
   // 去掉开头的二级标题（## xxx），因为章节标题已在外层显示
   let processedContent = content.replace(/^##\s+.+\n+/, '')
-  
-  // 处理代码块
-  let html = processedContent.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="code-block"><code>$2</code></pre>')
-  
-  // 处理行内代码
-  html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
-  
-  // 处理标题
-  html = html.replace(/^#### (.+)$/gm, '<h5 class="md-h5">$1</h5>')
-  html = html.replace(/^### (.+)$/gm, '<h4 class="md-h4">$1</h4>')
-  html = html.replace(/^## (.+)$/gm, '<h3 class="md-h3">$1</h3>')
-  html = html.replace(/^# (.+)$/gm, '<h2 class="md-h2">$1</h2>')
-  
-  // 处理引用块
-  html = html.replace(/^> (.+)$/gm, '<blockquote class="md-quote">$1</blockquote>')
-  
-  // 处理列表 - 支持子列表
-  html = html.replace(/^(\s*)- (.+)$/gm, (match, indent, text) => {
-    const level = Math.floor(indent.length / 2)
-    return `<li class="md-li" data-level="${level}">${text}</li>`
-  })
-  html = html.replace(/^(\s*)(\d+)\. (.+)$/gm, (match, indent, num, text) => {
-    const level = Math.floor(indent.length / 2)
-    return `<li class="md-oli" data-level="${level}">${text}</li>`
-  })
 
-  // 包装无序列表
-  html = html.replace(/(<li class="md-li"[^>]*>.*?<\/li>\s*)+/g, '<ul class="md-ul">$&</ul>')
-  // 包装有序列表
-  html = html.replace(/(<li class="md-oli"[^>]*>.*?<\/li>\s*)+/g, '<ol class="md-ol">$&</ol>')
-
-  // 清理列表项之间的所有空白
-  html = html.replace(/<\/li>\s+<li/g, '</li><li')
-  // 清理列表开始标签后的空白
-  html = html.replace(/<ul class="md-ul">\s+/g, '<ul class="md-ul">')
-  html = html.replace(/<ol class="md-ol">\s+/g, '<ol class="md-ol">')
-  // 清理列表结束标签前的空白
-  html = html.replace(/\s+<\/ul>/g, '</ul>')
-  html = html.replace(/\s+<\/ol>/g, '</ol>')
-  
-  // 处理粗体和斜体
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>')
-  html = html.replace(/_(.+?)_/g, '<em>$1</em>')
-  
-  // 处理分隔线
-  html = html.replace(/^---$/gm, '<hr class="md-hr">')
-  
-  // 处理换行 - 空行变成段落分隔，单换行变成 <br>
-  html = html.replace(/\n\n/g, '</p><p class="md-p">')
-  html = html.replace(/\n/g, '<br>')
-  
-  // 包装在段落中
-  html = '<p class="md-p">' + html + '</p>'
-  
-  // 清理空段落
-  html = html.replace(/<p class="md-p"><\/p>/g, '')
-  html = html.replace(/<p class="md-p">(<h[2-5])/g, '$1')
-  html = html.replace(/(<\/h[2-5]>)<\/p>/g, '$1')
-  html = html.replace(/<p class="md-p">(<ul|<ol|<blockquote|<pre|<hr)/g, '$1')
-  html = html.replace(/(<\/ul>|<\/ol>|<\/blockquote>|<\/pre>)<\/p>/g, '$1')
-  // 清理块级元素前后的 <br> 标签
-  html = html.replace(/<br>\s*(<ul|<ol|<blockquote)/g, '$1')
-  html = html.replace(/(<\/ul>|<\/ol>|<\/blockquote>)\s*<br>/g, '$1')
-  // 清理 <p><br> 紧跟块级元素的情况（多余空行导致）
-  html = html.replace(/<p class="md-p">(<br>\s*)+(<ul|<ol|<blockquote|<pre|<hr)/g, '$2')
-  // 清理连续的 <br> 标签
-  html = html.replace(/(<br>\s*){2,}/g, '<br>')
-  // 清理块级元素后紧跟的段落开始标签前的 <br>
-  html = html.replace(/(<\/ol>|<\/ul>|<\/blockquote>)<br>(<p|<div)/g, '$1$2')
-
-  // 修复非连续有序列表的编号：当单项 <ol> 被段落内容隔开时，保持编号递增
-  const tokens = html.split(/(<ol class="md-ol">(?:<li class="md-oli"[^>]*>[\s\S]*?<\/li>)+<\/ol>)/g)
-  let olCounter = 0
-  let inSequence = false
-  for (let i = 0; i < tokens.length; i++) {
-    if (tokens[i].startsWith('<ol class="md-ol">')) {
-      const liCount = (tokens[i].match(/<li class="md-oli"/g) || []).length
-      if (liCount === 1) {
-        olCounter++
-        if (olCounter > 1) {
-          tokens[i] = tokens[i].replace('<ol class="md-ol">', `<ol class="md-ol" start="${olCounter}">`)
-        }
-        inSequence = true
-      } else {
-        olCounter = 0
-        inSequence = false
-      }
-    } else if (inSequence) {
-      if (/<h[2-5]/.test(tokens[i])) {
-        olCounter = 0
-        inSequence = false
-      }
-    }
-  }
-  html = tokens.join('')
+  // 用 marked 解析
+  let html = marked.parse(processedContent)
 
   return html
 }
@@ -2795,7 +2954,29 @@ watch(() => props.reportId, (newId, oldId) => {
   to { transform: rotate(360deg); }
 }
 
-.pdf-exporting .export-pdf-btn {
+.export-md-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6B7280;
+  background: #F3F4F6;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.export-md-btn:hover {
+  background: #374151;
+  color: #fff;
+  border-color: #374151;
+}
+
+.pdf-exporting .export-pdf-btn,
+.pdf-exporting .export-md-btn {
   display: none !important;
 }
 
@@ -2959,6 +3140,57 @@ watch(() => props.reportId, (newId, oldId) => {
 .generated-content :deep(strong) {
   font-weight: 600;
   color: #111827;
+}
+
+/* Table styles (from marked GFM tables) */
+.generated-content :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.2em 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.generated-content :deep(thead) {
+  background: #F9FAFB;
+}
+
+.generated-content :deep(th) {
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  border: 1px solid #E5E7EB;
+  white-space: nowrap;
+}
+
+.generated-content :deep(td) {
+  padding: 8px 12px;
+  border: 1px solid #E5E7EB;
+  color: #4B5563;
+}
+
+.generated-content :deep(tbody tr:hover) {
+  background: #F9FAFB;
+}
+
+/* Inline code */
+.generated-content :deep(code) {
+  background: #F3F4F6;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: #7C3AED;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+}
+
+/* Code block - override inline code style inside pre */
+.generated-content :deep(pre code) {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  color: inherit;
+  font-size: inherit;
 }
 
 /* Loading State */
@@ -5569,4 +5801,150 @@ watch(() => props.reportId, (newId, oldId) => {
 .log-msg.error { color: #ef9a9a; }
 .log-msg.warning { color: #ffcc80; }
 .log-msg.success { color: #80cbc4; }
+
+/* ── World Model Tool Badge Colors ── */
+.tool-badge.tool-teal {
+  background: #E6F4F7;
+  border-color: rgba(0, 102, 128, 0.25);
+  color: #006680;
+}
+.tool-badge.tool-amber {
+  background: #FEF3C7;
+  border-color: rgba(217, 119, 6, 0.25);
+  color: #92400E;
+}
+.tool-badge.tool-red {
+  background: #FEE2E2;
+  border-color: rgba(220, 38, 38, 0.25);
+  color: #991B1B;
+}
+
+/* ── WorldModelDisplay ── */
+:deep(.wm-display) {
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 12px;
+}
+:deep(.wm-display.wm-teal) { border-color: rgba(0, 102, 128, 0.2); }
+:deep(.wm-display.wm-amber) { border-color: rgba(217, 119, 6, 0.2); }
+:deep(.wm-display.wm-red) { border-color: rgba(220, 38, 38, 0.2); }
+
+:deep(.wm-header) {
+  padding: 10px 14px;
+  border-bottom: 1px solid #F3F4F6;
+}
+:deep(.wm-teal .wm-header) { background: #F0F9FB; }
+:deep(.wm-amber .wm-header) { background: #FFFBEB; }
+:deep(.wm-red .wm-header) { background: #FEF2F2; }
+
+:deep(.wm-header .header-main) {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+:deep(.wm-header .header-title) {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+:deep(.wm-teal .header-title) { color: #006680; }
+:deep(.wm-amber .header-title) { color: #92400E; }
+:deep(.wm-red .header-title) { color: #991B1B; }
+
+:deep(.wm-header .header-stats) {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+:deep(.wm-header .stat-item) {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+:deep(.wm-header .stat-value) {
+  font-weight: 700;
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #374151;
+}
+:deep(.wm-header .stat-label) {
+  font-size: 10px;
+  color: #9CA3AF;
+}
+:deep(.wm-header .stat-divider) {
+  color: #D1D5DB;
+  font-size: 10px;
+  margin: 0 2px;
+}
+:deep(.wm-header .stat-size) {
+  font-size: 10px;
+  color: #9CA3AF;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Metrics bar */
+:deep(.wm-metrics) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 14px;
+  border-bottom: 1px solid #F3F4F6;
+  background: #FAFAFA;
+}
+:deep(.wm-metric) {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 4px;
+}
+:deep(.wm-metric-label) {
+  font-size: 10px;
+  color: #6B7280;
+  font-weight: 500;
+}
+:deep(.wm-metric-value) {
+  font-size: 11px;
+  font-weight: 600;
+  color: #374151;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Content sections */
+:deep(.wm-content) {
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+:deep(.wm-section-title) {
+  font-size: 12px;
+  font-weight: 700;
+  color: #374151;
+  margin-bottom: 4px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid #F3F4F6;
+}
+:deep(.wm-section-body) {
+  font-size: 12px;
+  color: #4B5563;
+  line-height: 1.65;
+}
+:deep(.wm-section-body p) {
+  margin: 0 0 6px 0;
+}
+:deep(.wm-section-body ul),
+:deep(.wm-section-body ol) {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+:deep(.wm-section-body li) {
+  margin-bottom: 3px;
+}
+:deep(.wm-section-body strong) {
+  color: #1F2937;
+}
 </style>

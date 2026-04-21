@@ -918,9 +918,20 @@ const pollPrepareStatus = async () => {
       const data = res.data
 
       if (data.status === 'failed') {
+        stopPolling()
+        stopProfilesPolling()
         stopConfigPolling()
         const message = data.error || '环境搭建失败，请检查图谱构建结果'
-        addLog(`环境搭建失败: ${message}`)
+        addLog(`✗ 环境搭建失败: ${message}`)
+        emit('update-status', 'error')
+        return
+      }
+      
+      // 任务已丢失或从未开始（后端重启、task_id 丢失等），停止轮询
+      if (data.status === 'not_started') {
+        stopPolling()
+        stopProfilesPolling()
+        addLog(`准备任务未完成，请重新开始`)
         emit('update-status', 'error')
         return
       }
@@ -932,6 +943,12 @@ const pollPrepareStatus = async () => {
       // 解析阶段信息并输出详细日志
       if (data.progress_detail) {
         currentStage.value = data.progress_detail.current_stage_name || ''
+        
+        // 从轮询结果中获取预期Agent总数
+        if (data.progress_detail.expected_entities_count && !expectedTotal.value) {
+          expectedTotal.value = data.progress_detail.expected_entities_count
+          addLog(`从图谱读取到 ${data.progress_detail.expected_entities_count} 个实体`)
+        }
         
         // 输出详细进度日志（避免重复）
         const detail = data.progress_detail
@@ -964,10 +981,6 @@ const pollPrepareStatus = async () => {
         stopPolling()
         stopProfilesPolling()
         await loadPreparedData()
-      } else if (data.status === 'failed') {
-        addLog(`✗ 准备失败: ${data.error || '未知错误'}`)
-        stopPolling()
-        stopProfilesPolling()
       }
     }
   } catch (err) {

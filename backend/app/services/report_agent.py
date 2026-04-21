@@ -422,11 +422,17 @@ class ReportOutline:
     title: str
     summary: str
     sections: List[ReportSection]
+    core_concepts: List[str] = None
+    
+    def __post_init__(self):
+        if self.core_concepts is None:
+            self.core_concepts = []
     
     def to_dict(self) -> Dict[str, Any]:
         return {
             "title": self.title,
             "summary": self.summary,
+            "core_concepts": self.core_concepts or [],
             "sections": [s.to_dict() for s in self.sections]
         }
     
@@ -548,6 +554,83 @@ TOOL_DESC_INTERVIEW_AGENTS = """\
 
 【重要】需要OASIS模拟环境正在运行才能使用此功能！"""
 
+# ── 世界模型工具描述 ──
+
+TOOL_DESC_WORLD_MODEL_BRIEF = """\
+【世界模型状态简报】
+获取模拟世界的六维状态全景：关注度、恐慌度、信任度、极化度、风险等级、稳定性。
+包含当前状态值、最近趋势（上升/下降/稳定）、最显著异常维度、情绪分布。
+
+【使用场景】
+- 需要了解模拟结束时的宏观态势
+- 需要写"当前状态诊断"类内容
+- 需要引用具体的信任度/风险等级等数值"""
+
+TOOL_DESC_STATE_EVOLUTION = """\
+【状态演化分析】
+分析六维状态在整个模拟过程中的演化轨迹：峰值/谷值时刻、波动率、初始→最终变化量、关键转折点事件。
+
+【使用场景】
+- 需要描述"事态如何发展"的完整脉络
+- 需要识别拐点（信任度骤降/恐慌激增的时刻）
+- 需要写趋势预测类内容"""
+
+TOOL_DESC_CAUSAL_CHAIN = """\
+【因果链分析】
+返回模拟中推断出的因果关系：事件A→导致→事件B，包含因果强度和推断依据。
+按因果强度排序，展示最重要的因果链。
+
+【使用场景】
+- 需要解释"为什么会出现这种状态"
+- 需要写机制诊断类内容
+- 需要追溯风险的根源"""
+
+TOOL_DESC_EVALUATION_SUMMARY = """\
+【量化评估摘要】
+聚合模拟的量化评估结果：情感分析（平均/峰值/负面主导比）、行为多样性（基尼系数、活跃比）、
+状态演化（波动率）、影响力分析（Top影响力Agent）。
+
+【使用场景】
+- 需要引用量化数据支撑论点
+- 需要写行为分析/影响力分析类内容
+- 需要呈现表格化的评估数据"""
+
+TOOL_DESC_REPUTATION_SCORECARD = """\
+【综合态势评分卡】
+基于世界模型六维状态计算四项综合评分：
+- 综合健康评分（声誉总体状况）
+- 风险升级评分（事态恶化可能性）
+- 信任修复潜力（修复空间大小）
+- 极化压力评分（群体对立程度）
+并给出整体状态判定（高压脆弱/风险积累/修复中/相对稳定）。
+
+【使用场景】
+- 需要对整体态势下判断
+- 需要写核心判断/结论类内容
+- 需要量化的评分数据"""
+
+TOOL_DESC_DECISION_SUPPORT = """\
+【决策支持简报】
+综合评分卡+事件+趋势+因果链，自动生成：
+- 主要风险信号（及严重等级）
+- 机会窗口（及置信度）
+- 分阶段行动建议（24h内/72h内/2周内）
+
+【使用场景】
+- 需要写决策建议/行动方案类内容
+- 需要识别风险和机会
+- 需要给出可操作的建议"""
+
+TOOL_DESC_EVIDENCE_SEARCH = """\
+【模拟证据检索】
+在模拟产出的所有数据中搜索特定话题的证据：
+搜索范围包括事件流、Agent行为日志、因果边证据。
+
+【使用场景】
+- 需要为某个论点找到具体的模拟证据
+- 需要查找特定Agent或特定话题的行为记录
+- 需要引用具体的模拟事件或Agent发言"""
+
 # ── 大纲规划 prompt ──
 
 PLAN_SYSTEM_PROMPT = """\
@@ -569,25 +652,41 @@ PLAN_SYSTEM_PROMPT = """\
 - ❌ 不是对现实世界现状的分析
 - ❌ 不是泛泛而谈的舆情综述
 
-【章节数量限制】
-- 最少2个章节，最多5个章节
-- 不需要子章节，每个章节直接撰写完整内容
-- 内容要精炼，聚焦于核心预测发现
-- 章节结构由你根据预测结果自主设计
+【章节数量与结构】
+- 最少5个章节，最多8个章节
+- 每个章节内部可使用 ### 子节来组织论证层次
+- 章节标题使用中文编号，例如："一、情景设定与分析边界""二、核心判断"
+- 报告应形成完整的分析闭环，建议覆盖以下维度（可根据实际情况调整）：
+  1. 情景设定与分析边界（明确本报告的视角与方法边界）
+  2. 核心判断（2-4条凝练结论）
+  3. 决策/机制诊断（拆解"为什么会这样"）
+  4. 群体反应图谱（各类群体如何解读、行动）
+  5. 风险结构识别（当前策略的隐性风险）
+  6. 趋势预测（短/中/长期演化路径）
+  7. 决策建议（若希望改善需要做什么）
+  8. 结论（收束全文核心论断）
+- 使用冷静、克制、分析性的语言，像政策分析师而非咨询顾问
+- 避免咨询话术（"穿透式诊断""赤字""塌方"等夸张标签）和编造数据
+
+【核心概念要求】
+- 为整份报告提炼1-3个贯穿全文的核心分析概念（如"被动合规型止损""程序正义饱和""澄清过剩与共情赤字"）
+- 这些概念应在摘要中引入，在各章节中反复引用和深化
+- 概念命名要精准、可理解，避免堆砌术语
 
 请输出JSON格式的报告大纲，格式如下：
 {
     "title": "报告标题",
-    "summary": "报告摘要（一句话概括核心预测发现）",
+    "summary": "报告摘要（一段话，80-150字，概括核心预测发现与关键判断，用**粗体**标注核心概念）",
+    "core_concepts": ["核心概念1", "核心概念2"],
     "sections": [
         {
-            "title": "章节标题",
-            "description": "章节内容描述"
+            "title": "一、章节标题",
+            "description": "章节内容描述（包括要回答的核心问题）"
         }
     ]
 }
 
-注意：sections数组最少2个，最多5个元素！"""
+注意：sections数组最少5个，最多8个元素！"""
 
 PLAN_USER_PROMPT_TEMPLATE = """\
 【预测场景设定】
@@ -602,6 +701,8 @@ PLAN_USER_PROMPT_TEMPLATE = """\
 【模拟预测到的部分未来事实样本】
 {related_facts_json}
 
+{world_model_context}
+
 请以「上帝视角」审视这个未来预演：
 1. 在我们设定的条件下，未来呈现出了什么样的状态？
 2. 各类人群（Agent）是如何反应和行动的？
@@ -609,7 +710,7 @@ PLAN_USER_PROMPT_TEMPLATE = """\
 
 根据预测结果，设计最合适的报告章节结构。
 
-【再次提醒】报告章节数量：最少2个，最多5个，内容要精炼聚焦于核心预测发现。"""
+【再次提醒】报告章节数量：最少5个，最多8个，形成完整分析闭环。章节标题使用中文编号（一、二、三…）。"""
 
 # ── 章节生成 prompt ──
 
@@ -618,6 +719,7 @@ SECTION_SYSTEM_PROMPT_TEMPLATE = """\
 
 报告标题: {report_title}
 报告摘要: {report_summary}
+贯穿全文的核心概念: {core_concepts}
 预测场景（模拟需求）: {simulation_requirement}
 
 当前要撰写的章节: {section_title}
@@ -638,14 +740,31 @@ SECTION_SYSTEM_PROMPT_TEMPLATE = """\
 ✅ 要聚焦于"未来会怎样"——模拟结果就是预测的未来
 
 ═══════════════════════════════════════════════════════════════
+【分析纵深要求 - 区分普通报告与高质量报告的关键】
+═══════════════════════════════════════════════════════════════
+
+每个分析点必须达到三层纵深，不能停留在事实罗列：
+1. **现象层**：模拟中观察到了什么（引用Agent言行或数据）
+2. **解释层**：这意味着什么（公众/群体如何解读、背后的逻辑是什么）
+3. **推论层**：由此推出什么判断（对信任/风险/决策的含义）
+
+示例：
+  现象："多数Agent将校方决策标签化为'司法判了我才动'"
+  → 解释：这说明公众将校方行为解码为被动合规而非主动纠错
+  → 推论：因此校方修复了结果，却没有修复人们对其治理能力的预期
+
+【概念贯穿】在本章节中应自然引用或回扣上述"核心概念"，使全文形成统一的分析框架。
+不需要每段都提，但关键论点应与核心概念形成呼应。
+
+═══════════════════════════════════════════════════════════════
 【最重要的规则 - 必须遵守】
 ═══════════════════════════════════════════════════════════════
 
-1. 【必须调用工具观察模拟世界】
+1. 【调用工具观察模拟世界】
    - 你正在以「上帝视角」观察未来的预演
-   - 所有内容必须来自模拟世界中发生的事件和Agent言行
-   - 禁止使用你自己的知识来编写报告内容
-   - 每个章节至少调用3次工具（最多5次）来观察模拟的世界，它代表了未来
+   - 所有内容必须来自工具返回的模拟数据，禁止使用你自己的知识
+   - 每个章节调用 3–7 次工具，根据实际需要选择最相关的工具
+   - 如果工具返回的信息已充分，不需要为了凑数而继续调用
 
 2. 【必须引用Agent的原始言行】
    - Agent的发言和行为是对未来人群行为的预测
@@ -669,42 +788,45 @@ SECTION_SYSTEM_PROMPT_TEMPLATE = """\
 【⚠️ 格式规范 - 极其重要！】
 ═══════════════════════════════════════════════════════════════
 
-【一个章节 = 最小内容单位】
-- 每个章节是报告的最小分块单位
-- ❌ 禁止在章节内使用任何 Markdown 标题（#、##、###、#### 等）
-- ❌ 禁止在内容开头添加章节主标题
-- ✅ 章节标题由系统自动添加，你只需撰写纯正文内容
-- ✅ 使用**粗体**、段落分隔、引用、列表来组织内容，但不要用标题
+【章节格式规则】
+- ❌ 禁止使用 # 或 ## 标题（章节主标题由系统自动添加）
+- ❌ 禁止在内容开头重复章节标题
+- ✅ 可以使用 ### 编号子节来组织论证层次，例如 "### 1. 子节标题"
+- ✅ 使用**粗体**、段落分隔、引用、列表来组织内容
+- ✅ 善用 Markdown 表格呈现多维对比（群体对比、指标对比、策略对比等）
 
 【正确示例】
 ```
-本章节分析了事件的舆论传播态势。通过对模拟数据的深入分析，我们发现...
+基于现有通报内容与世界模型推演结果，本报告形成以下核心判断。
 
-**首发引爆阶段**
+### 1. 当前策略实现的是"程序止损"，不是"信任重建"
 
-微博作为舆情的第一现场，承担了信息首发的核心功能：
+校方通过撤销处分、发布复核结论，完成了对争议的程序性收束。但问题在于，
+**程序被纠正，并不等于关系被修复**。
 
-> "微博贡献了68%的首发声量..."
+> "我们不是反对纠错，是反对纠错只发生在法院盖章之后。"
 
-**情绪放大阶段**
+| 群体 | 主导认知 | 主要情绪 | 对信任修复的含义 |
+|------|----------|----------|------------------|
+| 在校学生 | 认可纠错，不信任机制 | 焦虑、疏离 | 程序信任受损 |
+| 校友 | 支持纠偏，要求制度回应 | 失望、监督 | 外部压力持续 |
 
-抖音平台进一步放大了事件影响力：
+### 2. 司法认可并未自动转化为校方信任
 
-- 视觉冲击力强
-- 情绪共鸣度高
+这意味着司法终局只提供了"不得不改"的外部约束，
+却没有为学校赢得"愿意相信你已经学会改"的声誉资本。
 ```
 
 【错误示例】
 ```
-## 执行摘要          ← 错误！不要添加任何标题
-### 一、首发阶段     ← 错误！不要用###分小节
-#### 1.1 详细分析   ← 错误！不要用####细分
+## 执行摘要          ← 错误！不要用 ## 标题
+# 一、首发阶段       ← 错误！不要用 # 标题
 
 本章节分析了...
 ```
 
 ═══════════════════════════════════════════════════════════════
-【可用检索工具】（每章节调用3-5次）
+【可用检索工具】（每章节调用3-7次）
 ═══════════════════════════════════════════════════════════════
 
 {tools_description}
@@ -714,6 +836,13 @@ SECTION_SYSTEM_PROMPT_TEMPLATE = """\
 - panorama_search: 广角全景搜索，了解事件全貌、时间线和演变过程
 - quick_search: 快速验证某个具体信息点
 - interview_agents: 采访模拟Agent，获取不同角色的第一人称观点和真实反应
+- world_model_brief: 获取世界模型六维状态全景（信任度、极化度等当前值和趋势）
+- state_evolution_analysis: 获取状态演化轨迹（峰值、谷值、转折点）
+- causal_chain_analysis: 获取因果关系链（事件A→导致→事件B）
+- reputation_scorecard: 获取综合态势评分卡（健康/风险/修复/极化四维评分）
+- decision_support_brief: 获取决策支持简报（风险、机会、分阶段建议）
+- evaluation_summary: 获取量化评估摘要（情感、行为、影响力分析）
+- simulation_evidence_search: 在模拟数据中检索特定话题的证据
 
 ═══════════════════════════════════════════════════════════════
 【工作流程】
@@ -741,12 +870,14 @@ SECTION_SYSTEM_PROMPT_TEMPLATE = """\
 ═══════════════════════════════════════════════════════════════
 
 1. 内容必须基于工具检索到的模拟数据
-2. 大量引用原文来展示模拟效果
-3. 使用Markdown格式（但禁止使用标题）：
-   - 使用 **粗体文字** 标记重点（代替子标题）
+2. 引用模拟Agent原声或工具返回的关键文本作为论据
+3. 使用Markdown格式：
+   - 可以使用 ### 编号子节组织论证层次（如 "### 1. 子节标题"）
+   - 使用 **粗体文字** 标记重点概念
    - 使用列表（-或1.2.3.）组织要点
+   - 善用表格（| 格式）呈现多维对比
    - 使用空行分隔不同段落
-   - ❌ 禁止使用 #、##、###、#### 等任何标题语法
+   - ❌ 禁止使用 # 或 ## 标题（由系统添加）
 4. 【引用格式规范 - 必须单独成段】
    引用必须独立成段，前后各有一个空行，不能混在段落中：
 
@@ -765,7 +896,13 @@ SECTION_SYSTEM_PROMPT_TEMPLATE = """\
    ```
 5. 保持与其他章节的逻辑连贯性
 6. 【避免重复】仔细阅读下方已完成的章节内容，不要重复描述相同的信息
-7. 【再次强调】不要添加任何标题！用**粗体**代替小节标题"""
+7. 【标题规则】❌ 禁止 # 和 ## ✅ 允许 ### 编号子节（如 "### 1. 子节标题"）
+8. 【善用表格】对比群体、维度、策略时，优先使用 Markdown 表格呈现
+9. 【语言风格】冷静、克制、分析性，像政策分析师而非咨询顾问。避免夸张修辞和情绪化标签。
+10. 【来源规范】正文中禁止出现工具名称（如 insight_forge、panorama_search 等）、
+   fact/evt 编号、采访索引等内部标识。引用数据时统一写为"来源：模拟数据"或"来源：Agent采访"。
+11. 【禁止编造】如果工具返回的信息不足以支撑某个论点，直接说明"当前数据不足"，
+   不要自行补充百分比、金额、阈值、时间窗口或外部案例。只引用工具实际返回的内容。"""
 
 SECTION_USER_PROMPT_TEMPLATE = """\
 已完成的章节内容（请仔细阅读，避免重复）：
@@ -777,20 +914,21 @@ SECTION_USER_PROMPT_TEMPLATE = """\
 
 【重要提醒】
 1. 仔细阅读上方已完成的章节，避免重复相同的内容！
-2. 开始前必须先调用工具获取模拟数据
-3. 请混合使用不同工具，不要只用一种
-4. 报告内容必须来自检索结果，不要使用自己的知识
+2. 开始前先调用工具获取模拟数据，根据实际需要选择最相关的工具
+3. 报告内容必须来自工具返回的数据，不要使用自己的知识
+4. Final Answer 中禁止出现工具名称、fact/evt 编号、采访索引等内部标识
+5. 如果工具返回的信息不足，直接说明“当前数据不足”，不要自行编造数据
 
 【⚠️ 格式警告 - 必须遵守】
-- ❌ 不要写任何标题（#、##、###、####都不行）
+- ❌ 不要使用 # 或 ## 标题（由系统添加）
 - ❌ 不要写"{section_title}"作为开头
-- ✅ 章节标题由系统自动添加
-- ✅ 直接写正文，用**粗体**代替小节标题
+- ✅ 可以使用 ### 编号子节组织论证（如 "### 1. 子节标题"）
+- ✅ 善用表格呈现多维对比
 
 请开始：
 1. 首先思考（Thought）这个章节需要什么信息
 2. 然后调用工具（Action）获取模拟数据
-3. 收集足够信息后输出 Final Answer（纯正文，无任何标题）"""
+3. 收集足够信息后输出 Final Answer"""
 
 # ── ReACT 循环内消息模板 ──
 
@@ -803,6 +941,7 @@ Observation（检索结果）:
 ═══════════════════════════════════════════════════════════════
 已调用工具 {tool_calls_count}/{max_tool_calls} 次（已用: {used_tools_str}）{unused_hint}
 - 如果信息充分：以 "Final Answer:" 开头输出章节内容（必须引用上述原文）
+- Final Answer 中禁止出现工具名称（insight_forge、panorama_search 等）、fact/evt 编号、采访索引等内部标识
 - 如果需要更多信息：调用一个工具继续检索
 ═══════════════════════════════════════════════════════════════"""
 
@@ -824,6 +963,44 @@ REACT_TOOL_LIMIT_MSG = (
 REACT_UNUSED_TOOLS_HINT = "\n💡 你还没有使用过: {unused_list}，建议尝试不同工具获取多角度信息"
 
 REACT_FORCE_FINAL_MSG = "已达到工具调用限制，请直接输出 Final Answer: 并生成章节内容。"
+
+# ── 全文润色 prompt ──
+
+POLISH_SYSTEM_PROMPT = """\
+你是一位顶级的政策分析报告编辑，正在对一份已完成的「未来预测报告」进行最终润色。
+
+【你的任务】
+对全文进行最后一轮编辑优化，提升报告的整体质量。你需要：
+
+1. **概念一致性**：检查核心分析概念在各章节中的使用是否一致，术语表述是否统一
+2. **逻辑衔接**：确保章节之间有自然过渡，前后论点不矛盾、不重复
+3. **论证纵深**：如果某处只有现象描述而缺乏分析推论，补充"这意味着…""由此可以判断…"等推论
+4. **语言风格**：统一为冷静、克制、分析性的语言，消除残余的咨询话术和夸张修辞
+5. **引用质量**：确保引用块（> 格式）前后有空行、与正文分离，引用内容有分析价值
+6. **表格检查**：如有表格，确认表头和列数对齐
+7. **重复消除**：不同章节间如果存在高度相似的论述或引用，合并或删除重复的部分
+8. **格式规范**：
+   - 章节标题为 ## 格式
+   - 子节标题为 ### 格式
+   - 不应出现 #### 或更深层级
+   - 消除多余空行（连续3个以上空行→2个）
+
+【绝对禁止】
+- ❌ 不要添加任何新的事实、数据、引用或案例（你没有数据源）
+- ❌ 不要改变任何实质性结论或判断方向
+- ❌ 不要删除完整的章节或子节
+- ❌ 不要添加工具名称、fact/evt编号等内部标识
+- ❌ 不要编造百分比、金额、时间窗口等数据
+
+【输出要求】
+直接输出润色后的完整报告 Markdown 文本（从 # 标题 开始），不要添加任何解释性前言或后记。"""
+
+POLISH_USER_PROMPT = """\
+以下是需要润色的完整报告：
+
+{report_content}
+
+请对全文进行最终润色优化，直接输出润色后的完整 Markdown 报告。"""
 
 # ── Chat prompt ──
 
@@ -874,7 +1051,7 @@ class ReportAgent:
     """
     
     # 最大工具调用次数（每个章节）
-    MAX_TOOL_CALLS_PER_SECTION = 5
+    MAX_TOOL_CALLS_PER_SECTION = 7
     
     # 最大反思轮数
     MAX_REFLECTION_ROUNDS = 3
@@ -907,6 +1084,16 @@ class ReportAgent:
         self.llm = llm_client or LLMClient()
         self.graph_tools = graph_tools or GraphToolsService()
         
+        # 世界模型洞察服务（如果有模拟数据）
+        self.insight_service = None
+        if simulation_id:
+            try:
+                from .simulation_insight_service import SimulationInsightService
+                self.insight_service = SimulationInsightService(simulation_id)
+                logger.info(f"SimulationInsightService 初始化成功: {simulation_id}")
+            except Exception as e:
+                logger.warning(f"SimulationInsightService 初始化失败（世界模型工具不可用）: {e}")
+        
         # 工具定义
         self.tools = self._define_tools()
         
@@ -919,7 +1106,7 @@ class ReportAgent:
     
     def _define_tools(self) -> Dict[str, Dict[str, Any]]:
         """定义可用工具"""
-        return {
+        base_tools = {
             "insight_forge": {
                 "name": "insight_forge",
                 "description": TOOL_DESC_INSIGHT_FORGE,
@@ -951,8 +1138,54 @@ class ReportAgent:
                     "interview_topic": "采访主题或需求描述（如：'了解学生对宿舍甲醛事件的看法'）",
                     "max_agents": "最多采访的Agent数量（可选，默认5，最大10）"
                 }
-            }
+            },
         }
+        
+        # 如果世界模型服务可用，注册世界模型工具
+        if self.insight_service:
+            world_model_tools = {
+                "world_model_brief": {
+                    "name": "world_model_brief",
+                    "description": TOOL_DESC_WORLD_MODEL_BRIEF,
+                    "parameters": {}
+                },
+                "state_evolution_analysis": {
+                    "name": "state_evolution_analysis",
+                    "description": TOOL_DESC_STATE_EVOLUTION,
+                    "parameters": {}
+                },
+                "causal_chain_analysis": {
+                    "name": "causal_chain_analysis",
+                    "description": TOOL_DESC_CAUSAL_CHAIN,
+                    "parameters": {}
+                },
+                "evaluation_summary": {
+                    "name": "evaluation_summary",
+                    "description": TOOL_DESC_EVALUATION_SUMMARY,
+                    "parameters": {}
+                },
+                "reputation_scorecard": {
+                    "name": "reputation_scorecard",
+                    "description": TOOL_DESC_REPUTATION_SCORECARD,
+                    "parameters": {}
+                },
+                "decision_support_brief": {
+                    "name": "decision_support_brief",
+                    "description": TOOL_DESC_DECISION_SUPPORT,
+                    "parameters": {}
+                },
+                "simulation_evidence_search": {
+                    "name": "simulation_evidence_search",
+                    "description": TOOL_DESC_EVIDENCE_SEARCH,
+                    "parameters": {
+                        "query": "搜索关键词或话题",
+                        "limit": "返回结果数量（可选，默认15）"
+                    }
+                },
+            }
+            base_tools.update(world_model_tools)
+        
+        return base_tools
     
     def _execute_tool(self, tool_name: str, parameters: Dict[str, Any], report_context: str = "") -> str:
         """
@@ -1055,15 +1288,69 @@ class ReportAgent:
                 result = [n.to_dict() for n in nodes]
                 return json.dumps(result, ensure_ascii=False, indent=2)
             
+            # ========== 世界模型工具 ==========
+            
+            elif tool_name == "world_model_brief":
+                if not self.insight_service:
+                    return "世界模型数据不可用（模拟尚未完成或数据缺失）"
+                result = self.insight_service.get_world_model_brief()
+                return result.get("text", json.dumps(result, ensure_ascii=False))
+            
+            elif tool_name == "state_evolution_analysis":
+                if not self.insight_service:
+                    return "世界模型数据不可用"
+                result = self.insight_service.get_state_evolution_analysis()
+                return result.get("text", json.dumps(result, ensure_ascii=False))
+            
+            elif tool_name == "causal_chain_analysis":
+                if not self.insight_service:
+                    return "因果图谱数据不可用"
+                result = self.insight_service.get_causal_chain_analysis()
+                return result.get("text", json.dumps(result, ensure_ascii=False))
+            
+            elif tool_name == "evaluation_summary":
+                if not self.insight_service:
+                    return "评估数据不可用"
+                result = self.insight_service.get_evaluation_summary()
+                return result.get("text", json.dumps(result, ensure_ascii=False))
+            
+            elif tool_name == "reputation_scorecard":
+                if not self.insight_service:
+                    return "世界模型数据不可用"
+                result = self.insight_service.get_reputation_scorecard()
+                return result.get("text", json.dumps(result, ensure_ascii=False))
+            
+            elif tool_name == "decision_support_brief":
+                if not self.insight_service:
+                    return "决策支持数据不可用"
+                result = self.insight_service.get_decision_support_brief()
+                return result.get("text", json.dumps(result, ensure_ascii=False))
+            
+            elif tool_name == "simulation_evidence_search":
+                if not self.insight_service:
+                    return "模拟证据数据不可用"
+                query = parameters.get("query", "")
+                limit = parameters.get("limit", 15)
+                if isinstance(limit, str):
+                    limit = int(limit)
+                result = self.insight_service.search_simulation_evidence(query, limit=limit)
+                return result.get("text", json.dumps(result, ensure_ascii=False))
+            
             else:
-                return f"未知工具: {tool_name}。请使用以下工具之一: insight_forge, panorama_search, quick_search"
+                available = ", ".join(self.tools.keys())
+                return f"未知工具: {tool_name}。请使用以下工具之一: {available}"
                 
         except Exception as e:
             logger.error(f"工具执行失败: {tool_name}, 错误: {str(e)}")
             return f"工具执行失败: {str(e)}"
     
     # 合法的工具名称集合，用于裸 JSON 兜底解析时校验
-    VALID_TOOL_NAMES = {"insight_forge", "panorama_search", "quick_search", "interview_agents"}
+    VALID_TOOL_NAMES = {
+        "insight_forge", "panorama_search", "quick_search", "interview_agents",
+        "world_model_brief", "state_evolution_analysis", "causal_chain_analysis",
+        "evaluation_summary", "reputation_scorecard", "decision_support_brief",
+        "simulation_evidence_search",
+    }
 
     def _parse_tool_calls(self, response: str) -> List[Dict[str, Any]]:
         """
@@ -1125,6 +1412,97 @@ class ReportAgent:
             return True
         return False
     
+    @staticmethod
+    def _normalize_section_output(content: str) -> str:
+        """清洗章节输出中残留的内部标识（工具名、fact/evt 编号、采访索引等）"""
+        if not content:
+            return content
+
+        text = content
+
+        # 1. 括号内包含工具名 → 替换为通用来源标签
+        tool_label_map = [
+            (r'[（(][^）)]*(?:insight_forge|panorama_search|quick_search)[^）)]*[）)]', '（来源：模拟数据）'),
+            (r'[（(][^）)]*interview_agents[^）)]*[）)]', '（来源：Agent采访）'),
+        ]
+        for pattern, replacement in tool_label_map:
+            text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
+        # 2. 正文中残留的裸工具名 → 替换为通用表述
+        bare_tool_map = {
+            'insight_forge': '深度检索',
+            'panorama_search': '全景搜索',
+            'quick_search': '快速检索',
+            'interview_agents': 'Agent采访',
+        }
+        for raw, label in bare_tool_map.items():
+            text = re.sub(rf'\b{raw}\b', label, text, flags=re.IGNORECASE)
+
+        # 3. fact_xxx / evt_xxx 编号
+        text = re.sub(r'\b(?:fact|evt)_[A-Za-z0-9_]+\b', '', text)
+
+        # 4. 采访索引（如 "采访索引3"）
+        text = re.sub(r'(?:采访索引|索引)\s*\d+', '', text)
+
+        # 5. 连续重复来源标签去重
+        text = re.sub(r'（来源：([^）]+)）(?:\s*（来源：\1）)+', r'（来源：\1）', text)
+
+        # 6. 清理多余空白
+        text = re.sub(r'[ \t]{2,}', ' ', text)
+        text = re.sub(r'\n{3,}', '\n\n', text)
+
+        return text.strip()
+
+    def _polish_full_report(self, markdown_content: str) -> str:
+        """
+        对组装后的完整报告进行 LLM 全局润色
+        
+        修复跨章节的概念不一致、逻辑衔接、重复论述、格式问题等。
+        不添加新事实，只优化表达。
+        
+        Args:
+            markdown_content: 组装后的原始 Markdown 报告
+            
+        Returns:
+            润色后的 Markdown 报告
+        """
+        logger.info("开始全文润色...")
+        
+        try:
+            response = self.llm.chat(
+                messages=[
+                    {"role": "system", "content": POLISH_SYSTEM_PROMPT},
+                    {"role": "user", "content": POLISH_USER_PROMPT.format(
+                        report_content=markdown_content
+                    )}
+                ],
+                temperature=0.2,
+                max_tokens=16384
+            )
+            
+            if response and len(response.strip()) > len(markdown_content) * 0.5:
+                # 润色结果有效（长度至少为原文的50%，防止截断或空返回）
+                polished = response.strip()
+                # 确保以 # 开头（去掉LLM可能添加的前言）
+                if not polished.startswith('#'):
+                    hash_idx = polished.find('\n#')
+                    if hash_idx >= 0:
+                        polished = polished[hash_idx + 1:]
+                    else:
+                        # LLM 没有按要求返回，使用原文
+                        logger.warning("润色结果未以 # 开头，使用原始报告")
+                        return markdown_content
+                
+                logger.info(f"全文润色完成: {len(markdown_content)} → {len(polished)} 字符")
+                return polished
+            else:
+                logger.warning("润色结果无效（为空或过短），使用原始报告")
+                return markdown_content
+                
+        except Exception as e:
+            logger.error(f"全文润色失败: {e}，使用原始报告")
+            return markdown_content
+
     def _get_tools_description(self) -> str:
         """生成工具描述文本"""
         desc_parts = ["可用工具："]
@@ -1164,6 +1542,17 @@ class ReportAgent:
         if progress_callback:
             progress_callback("planning", 30, "正在生成报告大纲...")
         
+        # 获取世界模型上下文（如果可用）
+        world_model_context = ""
+        if self.insight_service:
+            try:
+                bundle = self.insight_service.get_report_context_bundle()
+                world_model_context = bundle.get("text", "")
+                if world_model_context:
+                    logger.info(f"世界模型上下文已注入大纲规划（{len(world_model_context)} 字符）")
+            except Exception as e:
+                logger.warning(f"获取世界模型上下文失败: {e}")
+        
         system_prompt = PLAN_SYSTEM_PROMPT
         user_prompt = PLAN_USER_PROMPT_TEMPLATE.format(
             simulation_requirement=self.simulation_requirement,
@@ -1172,6 +1561,7 @@ class ReportAgent:
             entity_types=list(context.get('graph_statistics', {}).get('entity_types', {}).keys()),
             total_entities=context.get('total_entities', 0),
             related_facts_json=json.dumps(context.get('related_facts', [])[:10], ensure_ascii=False, indent=2),
+            world_model_context=world_model_context,
         )
 
         try:
@@ -1197,7 +1587,8 @@ class ReportAgent:
             outline = ReportOutline(
                 title=response.get("title", "模拟分析报告"),
                 summary=response.get("summary", ""),
-                sections=sections
+                sections=sections,
+                core_concepts=response.get("core_concepts", [])
             )
             
             if progress_callback:
@@ -1208,14 +1599,16 @@ class ReportAgent:
             
         except Exception as e:
             logger.error(f"大纲规划失败: {str(e)}")
-            # 返回默认大纲（3个章节，作为fallback）
+            # 返回默认大纲（5个章节，作为fallback）
             return ReportOutline(
                 title="未来预测报告",
                 summary="基于模拟预测的未来趋势与风险分析",
                 sections=[
-                    ReportSection(title="预测场景与核心发现"),
-                    ReportSection(title="人群行为预测分析"),
-                    ReportSection(title="趋势展望与风险提示")
+                    ReportSection(title="一、情景设定与分析边界"),
+                    ReportSection(title="二、核心判断"),
+                    ReportSection(title="三、群体反应图谱"),
+                    ReportSection(title="四、风险结构与趋势预测"),
+                    ReportSection(title="五、决策建议与结论")
                 ]
             )
     
@@ -1253,9 +1646,17 @@ class ReportAgent:
         if self.report_logger:
             self.report_logger.log_section_start(section.title, section_index)
         
+        # 获取核心概念（如果大纲中有）
+        core_concepts_str = ""
+        if hasattr(outline, 'core_concepts') and outline.core_concepts:
+            core_concepts_str = "、".join(outline.core_concepts)
+        else:
+            core_concepts_str = "（由你根据报告摘要提炼）"
+        
         system_prompt = SECTION_SYSTEM_PROMPT_TEMPLATE.format(
             report_title=outline.title,
             report_summary=outline.summary,
+            core_concepts=core_concepts_str,
             simulation_requirement=self.simulation_requirement,
             section_title=section.title,
             tools_description=self._get_tools_description(),
@@ -1284,11 +1685,11 @@ class ReportAgent:
         
         # ReACT循环
         tool_calls_count = 0
-        max_iterations = 5  # 最大迭代轮数
+        max_iterations = 10  # 最大迭代轮数（含重试截断的余量）
         min_tool_calls = 3  # 最少工具调用次数
         conflict_retries = 0  # 工具调用与Final Answer同时出现的连续冲突次数
         used_tools = set()  # 记录已调用过的工具名
-        all_tools = {"insight_forge", "panorama_search", "quick_search", "interview_agents"}
+        all_tools = set(self.tools.keys())
 
         # 报告上下文，用于InsightForge的子问题生成
         report_context = f"章节标题: {section.title}\n模拟需求: {self.simulation_requirement}"
@@ -1304,8 +1705,8 @@ class ReportAgent:
             # 调用LLM
             response = self.llm.chat(
                 messages=messages,
-                temperature=0.5,
-                max_tokens=4096
+                temperature=0.25,
+                max_tokens=16384
             )
 
             # 检查 LLM 返回是否为 None（API 异常或内容为空）
@@ -1390,8 +1791,28 @@ class ReportAgent:
                     })
                     continue
 
-                # 正常结束
+                # 提取 Final Answer 内容
                 final_answer = response.split("Final Answer:")[-1].strip()
+                
+                # 检测 max_tokens 截断导致 Final Answer 内容为空
+                if len(final_answer) < 50:
+                    logger.warning(
+                        f"章节 {section.title}: Final Answer 内容过短（{len(final_answer)} 字符），"
+                        "可能被 max_tokens 截断，要求 LLM 直接输出章节内容"
+                    )
+                    messages.append({"role": "assistant", "content": response})
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            "你的 Final Answer 内容被截断了（可能是输出长度不够）。\n"
+                            "请不要再写 Thought，直接以 'Final Answer:' 开头输出完整的章节正文内容。\n"
+                            "不需要任何分析过程，直接输出 Markdown 格式的章节正文。"
+                        ),
+                    })
+                    continue
+                
+                # 正常结束
+                final_answer = self._normalize_section_output(final_answer)
                 logger.info(f"章节 {section.title} 生成完成（工具调用: {tool_calls_count}次）")
 
                 if self.report_logger:
@@ -1490,7 +1911,7 @@ class ReportAgent:
             # 工具调用已足够，LLM 输出了内容但没带 "Final Answer:" 前缀
             # 直接将这段内容作为最终答案，不再空转
             logger.info(f"章节 {section.title} 未检测到 'Final Answer:' 前缀，直接采纳LLM输出作为最终内容（工具调用: {tool_calls_count}次）")
-            final_answer = response.strip()
+            final_answer = self._normalize_section_output(response.strip())
 
             if self.report_logger:
                 self.report_logger.log_section_content(
@@ -1503,22 +1924,50 @@ class ReportAgent:
         
         # 达到最大迭代次数，强制生成内容
         logger.warning(f"章节 {section.title} 达到最大迭代次数，强制生成")
-        messages.append({"role": "user", "content": REACT_FORCE_FINAL_MSG})
+        messages.append({
+            "role": "user",
+            "content": (
+                "已达到工具调用限制。请不要再写 Thought 分析过程，"
+                "直接以 'Final Answer:' 开头输出完整的章节正文内容。"
+                "只输出 Markdown 格式的章节正文，不需要任何前置分析。"
+            )
+        })
         
-        response = self.llm.chat(
-            messages=messages,
-            temperature=0.5,
-            max_tokens=4096
-        )
+        # 强制收尾最多重试2次（防止再次被截断）
+        for force_attempt in range(2):
+            response = self.llm.chat(
+                messages=messages,
+                temperature=0.25,
+                max_tokens=16384
+            )
 
-        # 检查强制收尾时 LLM 返回是否为 None
-        if response is None:
-            logger.error(f"章节 {section.title} 强制收尾时 LLM 返回 None，使用默认错误提示")
-            final_answer = f"（本章节生成失败：LLM 返回空响应，请稍后重试）"
-        elif "Final Answer:" in response:
-            final_answer = response.split("Final Answer:")[-1].strip()
+            if response is None:
+                logger.error(f"章节 {section.title} 强制收尾时 LLM 返回 None")
+                final_answer = f"（本章节生成失败：LLM 返回空响应，请稍后重试）"
+                break
+            elif "Final Answer:" in response:
+                final_answer = response.split("Final Answer:")[-1].strip()
+            else:
+                final_answer = response.strip()
+            
+            if len(final_answer) >= 50:
+                break
+            
+            logger.warning(
+                f"章节 {section.title} 强制收尾第{force_attempt+1}次: "
+                f"内容过短（{len(final_answer)}字符），再次要求"
+            )
+            messages.append({"role": "assistant", "content": response})
+            messages.append({
+                "role": "user",
+                "content": "内容太短或被截断。请直接输出完整章节正文，不要写Thought。"
+            })
         else:
-            final_answer = response
+            if len(final_answer) < 50:
+                logger.error(f"章节 {section.title} 多次强制收尾仍为空，标记生成失败")
+                final_answer = f"（本章节内容生成不完整，请重新生成报告）"
+        
+        final_answer = self._normalize_section_output(final_answer)
         
         # 记录章节内容生成完成日志
         if self.report_logger:
@@ -1636,7 +2085,7 @@ class ReportAgent:
             generated_sections = []  # 保存内容用于上下文
             progress_lock = threading.Lock()  # 保护进度更新的并发安全
             
-            PARALLEL_BATCH_SIZE = 3  # 每批并行生成的章节数
+            PARALLEL_BATCH_SIZE = 1  # 串行生成，保证逻辑连贯
             
             def _generate_one_section(i: int, section, snapshot_previous: List[str]):
                 """并行任务：生成单个章节并返回结果"""
@@ -1743,7 +2192,26 @@ class ReportAgent:
             )
             
             # 使用ReportManager组装完整报告
-            report.markdown_content = ReportManager.assemble_full_report(report_id, outline)
+            raw_content = ReportManager.assemble_full_report(report_id, outline)
+            
+            # 阶段4: LLM全文润色
+            if progress_callback:
+                progress_callback("generating", 97, "正在进行全文润色...")
+            ReportManager.update_progress(
+                report_id, "generating", 97, "正在进行全文润色...",
+                completed_sections=completed_section_titles
+            )
+            
+            polished_content = self._polish_full_report(raw_content)
+            report.markdown_content = polished_content
+            
+            # 如果润色后内容有变化，覆盖写入文件
+            if polished_content != raw_content:
+                full_path = ReportManager._get_report_markdown_path(report_id)
+                with open(full_path, 'w', encoding='utf-8') as f:
+                    f.write(polished_content)
+                logger.info(f"润色后报告已覆盖写入: {full_path}")
+            
             report.status = ReportStatus.COMPLETED
             report.completed_at = datetime.now().isoformat()
             
@@ -2201,16 +2669,19 @@ class ReportManager:
                 level = len(heading_match.group(1))
                 title_text = heading_match.group(2).strip()
                 
-                # 检查是否是与章节标题重复的标题（跳过前5行内的重复）
-                if i < 5:
-                    if title_text == section_title or title_text.replace(' ', '') == section_title.replace(' ', ''):
-                        skip_next_empty = True
-                        continue
+                # 检查是否是与章节标题重复的标题（全文范围移除）
+                normalized_title = section_title.replace(' ', '').replace('　', '').strip()
+                normalized_text = title_text.replace(' ', '').replace('　', '').strip()
+                if normalized_text == normalized_title:
+                    skip_next_empty = True
+                    continue
                 
-                # 将所有级别的标题（#, ##, ###, ####等）转换为粗体
-                # 因为章节标题由系统添加，内容中不应有任何标题
-                cleaned_lines.append(f"**{title_text}**")
-                cleaned_lines.append("")  # 添加空行
+                # ### 及以下保留（允许子节结构），# 和 ## 转为粗体
+                if level >= 3:
+                    cleaned_lines.append(stripped)
+                else:
+                    cleaned_lines.append(f"**{title_text}**")
+                    cleaned_lines.append("")  # 添加空行
                 continue
             
             # 如果上一行是被跳过的标题，且当前行为空，也跳过
@@ -2422,10 +2893,9 @@ class ReportManager:
                         processed_lines.append("")
                         prev_was_heading = False
                 else:
-                    # ### 及以下级别的标题转换为粗体文本
-                    processed_lines.append(f"**{title}**")
-                    processed_lines.append("")
-                    prev_was_heading = False
+                    # ### 及以下级别的标题保留（允许子节结构）
+                    processed_lines.append(line)
+                    prev_was_heading = True
                 
                 i += 1
                 continue

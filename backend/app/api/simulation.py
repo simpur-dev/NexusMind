@@ -492,6 +492,12 @@ def prepare_simulation():
         document_text = ProjectManager.get_extracted_text(state.project_id) or ""
         
         entity_types_list = data.get('entity_types')
+        # 如果前端没有指定实体类型，自动从项目本体定义中读取
+        if not entity_types_list and project.ontology:
+            ontology_entity_types = project.ontology.get('entity_types', [])
+            if ontology_entity_types:
+                entity_types_list = [t['name'] for t in ontology_entity_types if isinstance(t, dict) and t.get('name')]
+                logger.info(f"从项目本体自动获取实体类型: {entity_types_list}")
         use_llm_for_profiles = data.get('use_llm_for_profiles', True)
         parallel_profile_count = data.get('parallel_profile_count', 5)
         
@@ -604,6 +610,10 @@ def prepare_simulation():
                     else:
                         detailed_message = f"[{stage_index}/{total_stages}] {stage_names.get(stage, stage)}: {message}"
                     
+                    # 当 reading 阶段完成（100%）时，实体总数已知，写入 metadata
+                    if stage == "reading" and progress == 100 and detail.get("total"):
+                        progress_detail_data["expected_entities_count"] = detail["total"]
+                    
                     task_manager.update_task(
                         task_id,
                         progress=current_progress,
@@ -621,6 +631,15 @@ def prepare_simulation():
                     parallel_profile_count=parallel_profile_count,
                     resume=resume
                 )
+                
+                # 检查 prepare_simulation 是否返回了 FAILED 状态
+                # （例如实体数为 0 时它会设 status=FAILED 并 return，不会 raise）
+                if result_state.status == SimulationStatus.FAILED:
+                    task_manager.fail_task(
+                        task_id,
+                        result_state.error or "准备任务失败"
+                    )
+                    return
                 
                 # 任务完成
                 task_manager.complete_task(
@@ -753,6 +772,26 @@ def get_prepare_status():
         # 如果没有task_id，返回错误
         if not task_id:
             if simulation_id:
+                # 回退到 state.json 检查实际状态（failed / preparing 等）
+                try:
+                    sim_manager = SimulationManager()
+                    sim_state = sim_manager.get_simulation(simulation_id)
+                    if sim_state:
+                        sim_status = sim_state.status.value if hasattr(sim_state.status, 'value') else str(sim_state.status)
+                        if sim_status == 'failed':
+                            return jsonify({
+                                "success": True,
+                                "data": {
+                                    "simulation_id": simulation_id,
+                                    "status": "failed",
+                                    "progress": 0,
+                                    "message": sim_state.error or "准备任务失败",
+                                    "error": sim_state.error or "准备任务失败",
+                                    "already_prepared": False
+                                }
+                            })
+                except Exception as e:
+                    logger.warning(f"读取 simulation state 兜底失败: {e}")
                 # 有simulation_id但未准备完成
                 return jsonify({
                     "success": True,

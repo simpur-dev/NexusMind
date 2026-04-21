@@ -324,7 +324,7 @@
                 <textarea
                   v-model="formData.simulationRequirement"
                   class="code-input"
-                  placeholder="// 用自然语言输入模拟或预测需求，例如：某地若发布撤销某处分的公告，会引发什么舆情走向？"
+                  placeholder="// 描述事件背景与决策问题，例如：&#10;// 武汉大学图书馆争议事件：校方撤销肖某瑫记过处分并维持杨某媛硕士学位。&#10;// 请模拟各利益群体（学生、校友、教职工、公众）对此决定的反应，&#10;// 评估舆情风险、信任修复路径，并给出分阶段的处置建议。"
                   rows="6"
                   :disabled="loading"
                 ></textarea>

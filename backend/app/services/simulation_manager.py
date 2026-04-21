@@ -309,6 +309,27 @@ class SimulationManager:
             if progress_callback:
                 progress_callback("reading", 0, "正在连接图谱...")
             
+            # ---- 自动标注：检查节点是否已有 entity_type，没有则自动执行 ----
+            try:
+                from ..models.project import ProjectManager
+                project_for_ontology = ProjectManager.get_project(state.project_id)
+                if project_for_ontology and project_for_ontology.ontology:
+                    from .entity_type_annotator import annotate_entity_types
+                    if progress_callback:
+                        progress_callback("reading", 5, "检查实体类型标注...")
+                    annotations = annotate_entity_types(
+                        graph_id=state.graph_id,
+                        ontology=project_for_ontology.ontology,
+                        use_llm=True,
+                        progress_callback=lambda msg, prog: (
+                            progress_callback("reading", 5 + int(prog * 20), f"标注: {msg}")
+                            if progress_callback else None
+                        )
+                    )
+                    logger.info(f"实体类型标注完成: {len(annotations)} 个节点")
+            except Exception as e:
+                logger.warning(f"自动标注实体类型失败（继续使用推断）: {e}")
+            
             reader = EntityReader()
             
             if progress_callback:

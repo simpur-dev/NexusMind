@@ -794,3 +794,50 @@ def delete_graph(graph_id: str):
             "error": str(e),
             "traceback": traceback.format_exc()
         }), 500
+
+
+@graph_bp.route('/graph/<graph_id>/annotate', methods=['POST'])
+def annotate_graph_entities(graph_id):
+    """
+    为已有图谱追加实体类型标注（不需要重新构建图谱）。
+    
+    请求（JSON）：
+        {
+            "project_id": "proj_xxxx",    // 必填，用于读取本体定义
+            "use_llm": true               // 可选，是否使用LLM分类，默认true
+        }
+    """
+    try:
+        data = request.get_json() or {}
+        project_id = data.get('project_id')
+        use_llm = data.get('use_llm', True)
+        
+        if not project_id:
+            return jsonify({"success": False, "error": "请提供 project_id"}), 400
+        
+        project = ProjectManager.get_project(project_id)
+        if not project or not project.ontology:
+            return jsonify({"success": False, "error": "项目不存在或缺少本体定义"}), 404
+        
+        from ..services.entity_type_annotator import annotate_entity_types
+        annotations = annotate_entity_types(
+            graph_id=graph_id,
+            ontology=project.ontology,
+            use_llm=use_llm
+        )
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "graph_id": graph_id,
+                "annotated_count": len(annotations),
+                "annotations": annotations
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500

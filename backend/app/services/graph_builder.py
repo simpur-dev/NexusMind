@@ -181,10 +181,36 @@ class GraphBuilderService:
                 )
             )
             
-            # 7. 获取图谱信息
+            # 7. 实体类型标注（用 LLM 为未分类节点标注本体类型）
             self.task_manager.update_task(
                 task_id,
-                progress=90,
+                progress=88,
+                message="标注实体类型..."
+            )
+            try:
+                from .entity_type_annotator import annotate_entity_types
+                annotations = annotate_entity_types(
+                    graph_id=graph_id,
+                    ontology=ontology,
+                    use_llm=True,
+                    progress_callback=lambda msg, prog: self.task_manager.update_task(
+                        task_id,
+                        progress=88 + int(prog * 7),  # 88-95%
+                        message=f"标注实体类型: {msg}"
+                    )
+                )
+                import logging
+                logging.getLogger(__name__).info(
+                    f"实体类型标注完成: {len(annotations)} 个节点已标注"
+                )
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"实体类型标注失败（不影响图谱使用）: {e}")
+            
+            # 8. 获取图谱信息
+            self.task_manager.update_task(
+                task_id,
+                progress=95,
                 message="获取图谱信息..."
             )
             
@@ -460,7 +486,7 @@ class GraphBuilderService:
         获取完整图谱数据（直接通过 Neo4j Cypher 查询）。
         
         1. 查询所有 Entity 节点和 RELATES_TO 边
-        2. 基于 ontology 类型名和边连接推断每个节点的 entity type
+        2. 基于 Neo4j 持久化的 entity_type + 推断逻辑确定每个节点的类型
         3. 将 entity type 写入 labels，供前端按类型着色
         """
         async def _fetch():
@@ -470,6 +496,7 @@ class GraphBuilderService:
             node_result = await driver.execute_query(
                 f"MATCH (n:Entity) {gid_filter} "
                 "RETURN n.uuid AS uuid, n.name AS name, n.summary AS summary, "
+                "n.entity_type AS entity_type, "
                 "n.group_id AS group_id, n.created_at AS created_at",
                 gid=graph_id,
                 database_=Config.NEO4J_DATABASE,
@@ -507,55 +534,13 @@ class GraphBuilderService:
             traceback.print_exc()
             node_records, edge_records, cooccur_records = [], [], []
         
-        # --- 推断 entity type ---
-        # 收集所有节点名称
-        all_names = set()
-        node_summaries = {}
-        for rec in node_records:
-            name = rec["name"] or ""
-            all_names.add(name)
-            node_summaries[name] = rec["summary"] or ""
-        
-        # 识别 type 定义节点（summary 包含 "属性:" 模式，说明是 ontology 类型描述）
-        type_names = set()
-        for name, summary in node_summaries.items():
-            if summary and "属性:" in summary and len(summary) > 30:
-                type_names.add(name)
-        
-        # 通过边关系推断实例节点的类型（实例 → 类型定义节点 的边）
-        node_uuid_to_name = {}
-        for rec in node_records:
-            node_uuid_to_name[rec["uuid"]] = rec["name"] or ""
-        
-        # 正向 + 反向关系：如果一个实例节点连接到一个类型定义节点，就继承该类型
-        node_type_map = {}  # node_name -> entity_type
-        for rec in edge_records:
-            src = rec["source_name"] or ""
-            tgt = rec["target_name"] or ""
-            if src in type_names and tgt not in type_names:
-                if tgt not in node_type_map:
-                    node_type_map[tgt] = src
-            elif tgt in type_names and src not in type_names:
-                if src not in node_type_map:
-                    node_type_map[src] = tgt
-        
-        # 对未分类节点，尝试从 summary 中匹配类型关键词
-        for name in all_names:
-            if name in type_names or name in node_type_map:
-                continue
-            summary = node_summaries.get(name, "")
-            for tn in type_names:
-                if tn.lower() in summary.lower():
-                    node_type_map[name] = tn
-                    break
+        # --- 复用 EntityReader 的推断逻辑（统一入口，避免重复代码） ---
+        from .entity_reader import EntityReader
+        _reader = EntityReader()
+        type_info = _reader._infer_entity_types(node_records, edge_records)
         
         def _get_labels(name: str) -> List[str]:
-            if name in type_names:
-                return ["Entity", name]
-            entity_type = node_type_map.get(name)
-            if entity_type:
-                return ["Entity", entity_type]
-            return ["Entity"]
+            return _reader._get_labels(name, type_info)
         
         # --- 构建返回数据 ---
         node_map = {}

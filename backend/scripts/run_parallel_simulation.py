@@ -1601,6 +1601,8 @@ def create_model(config: Dict[str, Any], use_boost: bool = False):
     return ModelFactory.create(
         model_platform=ModelPlatformType.OPENAI,
         model_type=llm_model,
+        timeout=120,      # 单次 LLM 调用最多等 120 秒，防止死锁
+        max_retries=3,    # 失败自动重试 3 次
     )
 
 

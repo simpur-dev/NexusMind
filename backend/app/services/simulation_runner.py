@@ -635,6 +635,26 @@ class SimulationRunner:
             if start_round > 0:
                 cmd.extend(["--start-round", str(start_round)])
             
+            # 非续跑模式：清理上次模拟残留的 action 日志和数据库，避免监控线程读到旧数据
+            if start_round == 0:
+                stale_files = [
+                    os.path.join(sim_dir, "twitter", "actions.jsonl"),
+                    os.path.join(sim_dir, "reddit", "actions.jsonl"),
+                    os.path.join(sim_dir, "events.jsonl"),
+                    os.path.join(sim_dir, "world_state_history.jsonl"),
+                    os.path.join(sim_dir, "world_state_current.json"),
+                    os.path.join(sim_dir, "causal_edges.jsonl"),
+                    os.path.join(sim_dir, "actions.jsonl"),
+                    os.path.join(sim_dir, "twitter_simulation.db"),
+                    os.path.join(sim_dir, "reddit_simulation.db"),
+                ]
+                for f in stale_files:
+                    if os.path.exists(f):
+                        try:
+                            os.remove(f)
+                        except Exception as e:
+                            logger.warning(f"清理旧文件失败: {f}: {e}")
+            
             # 创建主日志文件，避免 stdout/stderr 管道缓冲区满导致进程阻塞
             main_log_path = os.path.join(sim_dir, "simulation.log")
             log_mode = 'a' if start_round > 0 else 'w'

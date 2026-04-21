@@ -117,7 +117,7 @@ class EntityReader:
             node_result = await driver.execute_query(
                 f"MATCH (n:Entity) {gid_filter} "
                 "RETURN n.uuid AS uuid, n.name AS name, n.summary AS summary, "
-                "n.created_at AS created_at",
+                "n.entity_type AS entity_type, n.created_at AS created_at",
                 gid=graph_id,
                 database_=Config.NEO4J_DATABASE,
             )
@@ -136,25 +136,40 @@ class EntityReader:
 
         return run_async(_query())
 
-    def _infer_entity_types(self, node_records, edge_records) -> dict:
+    def _infer_entity_types(self, node_records, edge_records, ontology_types: Optional[List[str]] = None) -> dict:
         """
         推断每个节点的 entity type。
         
         策略：
         1. 识别 ontology 类型定义节点（summary 含 '属性:' 模式）
         2. 通过边连接关系传播类型到实例节点
-        3. 通过 summary 关键词匹配兜底
+        3. 从 summary 中提取 "属XXX类型" 标注
+        4. 用本体类型名匹配 summary 关键词兜底
+        
+        Args:
+            ontology_types: 项目本体定义的实体类型名称列表（可选）
         """
+        import re
+        
         node_summaries = {}
+        stored_types = {}  # name -> stored entity_type from Neo4j
         for rec in node_records:
             name = rec["name"] or ""
             node_summaries[name] = rec["summary"] or ""
+            # 读取 Neo4j 上已持久化的 entity_type 属性
+            stored = rec.get("entity_type") if hasattr(rec, 'get') else (rec["entity_type"] if "entity_type" in rec.keys() else None)
+            if stored:
+                stored_types[name] = stored
 
         # 识别类型定义节点
         type_names = set()
         for name, summary in node_summaries.items():
             if summary and "属性:" in summary and len(summary) > 30:
                 type_names.add(name)
+        
+        # 如果提供了本体类型，也加入候选类型集
+        if ontology_types:
+            type_names.update(ontology_types)
 
         # 通过边传播类型
         node_type_map = {}  # node_name -> entity_type
@@ -168,14 +183,37 @@ class EntityReader:
                 if src not in node_type_map:
                     node_type_map[src] = tgt
 
-        # summary 关键词兜底
+        # 从 summary 中提取 "属XXX类型" 标注（如 "属FacultyMember类型"）
+        type_pattern = re.compile(r'属(\w+)类型')
         for name, summary in node_summaries.items():
             if name in type_names or name in node_type_map:
                 continue
+            m = type_pattern.search(summary)
+            if m:
+                inferred = m.group(1)
+                # 验证是否是合法的本体类型
+                if ontology_types and inferred in ontology_types:
+                    node_type_map[name] = inferred
+                elif inferred in type_names:
+                    node_type_map[name] = inferred
+                else:
+                    # 即使不在已知类型里，也先记录
+                    node_type_map[name] = inferred
+
+        # summary 关键词兜底：用已知类型名匹配 summary
+        for name, summary in node_summaries.items():
+            if name in type_names or name in node_type_map:
+                continue
+            summary_lower = summary.lower()
             for tn in type_names:
-                if tn.lower() in summary.lower():
+                if tn.lower() in summary_lower:
                     node_type_map[name] = tn
                     break
+
+        # 最高优先级：Neo4j 持久化的 entity_type 覆盖推断结果
+        for name, stored in stored_types.items():
+            if name not in type_names:  # 不覆盖类型定义节点
+                node_type_map[name] = stored
 
         return {"type_names": type_names, "node_type_map": node_type_map}
 
@@ -188,9 +226,13 @@ class EntityReader:
             return ["Entity", entity_type]
         return ["Entity"]
 
-    def get_all_nodes(self, graph_id: str) -> List[Dict[str, Any]]:
+    def get_all_nodes(self, graph_id: str, ontology_types: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
         获取图谱的所有节点（直接 Neo4j Cypher 查询 + entity type 推断）
+        
+        Args:
+            graph_id: 图谱ID
+            ontology_types: 项目本体定义的实体类型名称列表（可选，用于增强类型推断）
         """
         logger.info(f"获取图谱 {graph_id} 的所有节点...")
         try:
@@ -199,7 +241,7 @@ class EntityReader:
             logger.warning(f"获取节点失败: {e}")
             return []
 
-        type_info = self._infer_entity_types(node_records, edge_records)
+        type_info = self._infer_entity_types(node_records, edge_records, ontology_types=ontology_types)
 
         nodes_data = []
         for rec in node_records:
@@ -288,8 +330,8 @@ class EntityReader:
         """
         logger.info(f"开始筛选图谱 {graph_id} 的实体...")
         
-        # 获取所有节点
-        all_nodes = self.get_all_nodes(graph_id)
+        # 获取所有节点（传入本体类型增强推断）
+        all_nodes = self.get_all_nodes(graph_id, ontology_types=defined_entity_types)
         total_count = len(all_nodes)
         
         # 获取所有边（用于后续关联查找）
