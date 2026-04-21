@@ -482,155 +482,14 @@ const currentSimulationId = ref(null)
 const currentReportId = ref(null)
 const maxRounds = ref(null) // 从 Step2 传入的模拟轮数配置
 const pendingFreshStart = ref(false) // Step2 点击"开始推演"时置 true，让 Step3 跳过 resume 直接启动
+const stepStatus = ref('') // 子组件通过 emit('update-status') 上报的状态: processing / completed / error
 const systemLogs = ref([])
 
 // DOM引用
 const graphContainer = ref(null)
 const graphSvg = ref(null)
 
-/** 图谱画布背后 HTML 装饰：+/× 各自闪烁与漂移周期（勿放进 SVG：CSS transform 会覆盖 g 的 translate） */
-const GRAPH_DECOR_SYMBOLS = [
-  { kind: 'plus', left: '6%', top: '6%', f: 9.2, d: 14.5, fd: 0, dd: -2.1, drift: 'a', size: 28 },
-  { kind: 'cross', left: '14%', top: '3%', f: 15.8, d: 11.2, fd: -4, dd: -1.3, drift: 'b', size: 26 },
-  { kind: 'plus', left: '35%', top: '8%', f: 12.4, d: 17.6, fd: -7, dd: -5.2, drift: 'c', size: 30 },
-  { kind: 'cross', left: '52%', top: '11%', f: 17.1, d: 13.4, fd: -2, dd: -8.4, drift: 'a', size: 25 },
-  { kind: 'plus', left: '72%', top: '5%', f: 10.6, d: 19.2, fd: -5, dd: -3.7, drift: 'b', size: 28 },
-  { kind: 'cross', left: '88%', top: '9%', f: 14.3, d: 15.1, fd: -9, dd: -6.8, drift: 'c', size: 26 },
-  { kind: 'plus', left: '8%', top: '22%', f: 16.5, d: 10.8, fd: -3, dd: -0.9, drift: 'a', size: 26 },
-  { kind: 'cross', left: '28%', top: '19%', f: 11.7, d: 16.3, fd: -8, dd: -4.4, drift: 'b', size: 28 },
-  { kind: 'plus', left: '48%', top: '16%', f: 13.9, d: 12.6, fd: -1, dd: -7.1, drift: 'c', size: 25 },
-  { kind: 'cross', left: '66%', top: '21%', f: 18.2, d: 14.8, fd: -6, dd: -2.6, drift: 'a', size: 30 },
-  { kind: 'plus', left: '82%', top: '17%', f: 10.1, d: 18.4, fd: -11, dd: -9.2, drift: 'b', size: 26 },
-  { kind: 'cross', left: '20%', top: '34%', f: 15.4, d: 11.9, fd: -4, dd: -1.8, drift: 'c', size: 28 },
-  { kind: 'plus', left: '40%', top: '38%', f: 12.8, d: 16.7, fd: -8, dd: -5.5, drift: 'a', size: 26 },
-  { kind: 'cross', left: '60%', top: '36%', f: 9.8, d: 13.2, fd: -2, dd: -3.1, drift: 'b', size: 26 },
-  { kind: 'plus', left: '78%', top: '42%', f: 17.6, d: 10.4, fd: -5, dd: -6.9, drift: 'c', size: 28 },
-  { kind: 'cross', left: '92%', top: '45%', f: 14, d: 17.9, fd: -10, dd: -4.7, drift: 'a', size: 25 },
-  { kind: 'plus', left: '12%', top: '55%', f: 11.3, d: 15.6, fd: -1, dd: -8.1, drift: 'b', size: 26 },
-  { kind: 'cross', left: '34%', top: '52%', f: 16.1, d: 12.1, fd: -7, dd: -2.4, drift: 'c', size: 30 },
-  { kind: 'plus', left: '56%', top: '60%', f: 13.5, d: 18.8, fd: -9, dd: -5.9, drift: 'a', size: 25 },
-  { kind: 'cross', left: '76%', top: '58%', f: 10.4, d: 14.2, fd: -3, dd: -0.6, drift: 'b', size: 28 },
-  { kind: 'plus', left: '4%', top: '72%', f: 18.9, d: 11.5, fd: -6, dd: -7.3, drift: 'c', size: 26 },
-  { kind: 'cross', left: '24%', top: '78%', f: 12.2, d: 16, fd: -2, dd: -4.2, drift: 'a', size: 26 },
-  { kind: 'plus', left: '46%', top: '80%', f: 15.7, d: 13.7, fd: -12, dd: -1.5, drift: 'b', size: 28 },
-  { kind: 'cross', left: '68%', top: '84%', f: 9.6, d: 19.4, fd: -5, dd: -8.8, drift: 'c', size: 26 },
-  { kind: 'plus', left: '86%', top: '76%', f: 14.6, d: 10.2, fd: -4, dd: -3.4, drift: 'a', size: 25 },
-  { kind: 'cross', left: '14%', top: '92%', f: 11.1, d: 15.3, fd: -9, dd: -6.1, drift: 'b', size: 28 },
-  { kind: 'plus', left: '60%', top: '94%', f: 17.3, d: 12.8, fd: -1, dd: -2.9, drift: 'c', size: 26 },
-  { kind: 'cross', left: '38%', top: '88%', f: 13.1, d: 17.1, fd: -8, dd: -5, drift: 'a', size: 25 },
-  { kind: 'plus', left: '90%', top: '66%', f: 10.9, d: 14.6, fd: -7, dd: -4.5, drift: 'b', size: 30 },
-  { kind: 'cross', left: '50%', top: '26%', f: 16.8, d: 11.3, fd: -3, dd: -9.4, drift: 'c', size: 26 },
-  { kind: 'plus', left: '30%', top: '68%', f: 12.6, d: 18.2, fd: -5, dd: -1.1, drift: 'a', size: 26 },
-  { kind: 'cross', left: '70%', top: '30%', f: 15.2, d: 13.5, fd: -10, dd: -7.6, drift: 'b', size: 28 },
-  { kind: 'plus', left: '2%', top: '44%', f: 11.5, d: 16.4, fd: -2, dd: -3.8, drift: 'c', size: 24 },
-  { kind: 'cross', left: '96%', top: '62%', f: 13.8, d: 12.2, fd: -6, dd: -1.2, drift: 'a', size: 25 },
-]
-
-// 轮询定时器
-let pollTimer = null
-
-// 初始化十字星点阵动画
-const initStarCanvas = () => {
-  const canvas = starCanvas.value
-  if (!canvas) return
-  
-  const ctx = canvas.getContext('2d')
-  
-  // 设置画布尺寸
-  const resizeCanvas = () => {
-    const rect = canvas.getBoundingClientRect()
-    canvas.width = rect.width
-    canvas.height = rect.height
-  }
-  
-  resizeCanvas()
-  window.addEventListener('resize', resizeCanvas)
-  
-  // 十字星配置
-  const stars = []
-  const starCount = 80 // 十字星数量
-  
-  for (let i = 0; i < starCount; i++) {
-    stars.push({
-      x: Math.random() * canvas.width,
-      y: Math.random() * canvas.height,
-      size: Math.random() * 2 + 1,
-      opacity: Math.random() * 0.5 + 0.1,
-      speed: Math.random() * 0.02 + 0.01,
-      angle: Math.random() * Math.PI / 2, // 45度基准
-      twinkleSpeed: Math.random() * 0.02 + 0.01,
-      twinkleOffset: Math.random() * Math.PI * 2
-    })
-  }
-  
-  // 绘制十字星
-  const drawStar = (star, time) => {
-    const twinkle = Math.sin(time * star.twinkleSpeed + star.twinkleOffset) * 0.3 + 0.7
-    const alpha = star.opacity * twinkle
-    
-    ctx.save()
-    ctx.translate(star.x, star.y)
-    ctx.rotate(star.angle)
-    
-    // 发光效果
-    ctx.shadowBlur = 10
-    ctx.shadowColor = `rgba(59, 130, 246, ${alpha})`
-    
-    ctx.strokeStyle = `rgba(147, 197, 253, ${alpha})`
-    ctx.lineWidth = star.size * 0.5
-    
-    // 横线
-    ctx.beginPath()
-    ctx.moveTo(-star.size * 3, 0)
-    ctx.lineTo(star.size * 3, 0)
-    ctx.stroke()
-    
-    // 竖线
-    ctx.beginPath()
-    ctx.moveTo(0, -star.size * 3)
-    ctx.lineTo(0, star.size * 3)
-    ctx.stroke()
-    
-    // 中心点
-    ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.8})`
-    ctx.beginPath()
-    ctx.arc(0, 0, star.size * 0.5, 0, Math.PI * 2)
-    ctx.fill()
-    
-    ctx.restore()
-  }
-  
-  // 动画循环
-  let animationTime = 0
-  const animate = () => {
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    animationTime += 16 // 约60fps
-    
-    // 更新星星位置（缓慢漂移）
-    stars.forEach(star => {
-      star.x += Math.sin(animationTime * 0.0001 + star.twinkleOffset) * 0.3
-      star.y += Math.cos(animationTime * 0.0001 + star.twinkleOffset) * 0.3
-      
-      // 边界检查
-      if (star.x < -20) star.x = canvas.width + 20
-      if (star.x > canvas.width + 20) star.x = -20
-      if (star.y < -20) star.y = canvas.height + 20
-      if (star.y > canvas.height + 20) star.y = -20
-      
-      // 旋转
-      star.angle += star.speed * 0.01
-    })
-    
-    // 绘制所有星星
-    stars.forEach(star => drawStar(star, animationTime))
-    
-    starAnimationId = requestAnimationFrame(animate)
-  }
-  
-  animate()
-}
-
-// 停止十字星动画
+// 停止十字星画布动画
 const stopStarAnimation = () => {
   if (starAnimationId) {
     cancelAnimationFrame(starAnimationId)
@@ -638,19 +497,43 @@ const stopStarAnimation = () => {
   }
 }
 
-// 计算属性
-const statusClass = computed(() => {
-  if (error.value) return 'error'
-  if (currentPhase.value >= 2) return 'completed'
-  return 'processing'
-})
+// 轮询定时器
+let pollTimer = null
 
 const statusText = computed(() => {
   if (error.value) return '构建失败'
-  if (currentPhase.value >= 2) return '构建完成'
-  if (currentPhase.value === 1) return '图谱构建中'
-  if (currentPhase.value === 0) return '本体生成中'
-  return '初始化中'
+  if (stepStatus.value === 'error') return '出错'
+  switch (currentStep.value) {
+    case 1:
+      if (currentPhase.value >= 2) return '构建完成'
+      if (currentPhase.value === 1) return '图谱构建中'
+      if (currentPhase.value === 0) return '本体生成中'
+      return '初始化中'
+    case 2:
+      return stepStatus.value === 'completed' ? '环境搭建完成' : '环境搭建中'
+    case 3:
+      return stepStatus.value === 'completed' ? '模拟完成' : '模拟运行中'
+    case 4:
+      return stepStatus.value === 'completed' ? '报告完成' : '报告生成中'
+    case 5:
+      return '深度互动就绪'
+    default:
+      return ''
+  }
+})
+
+const statusClass = computed(() => {
+  if (error.value || stepStatus.value === 'error') return 'error'
+  // Step 1: 图谱构建
+  if (currentStep.value === 1) {
+    if (currentPhase.value >= 2) return 'completed'
+    return 'processing'
+  }
+  // Step 2-5: 使用子组件上报的 stepStatus
+  if (stepStatus.value === 'completed') return 'completed'
+  if (stepStatus.value === 'processing') return 'processing'
+  // 默认：刚切到这个步骤，还没有状态上报
+  return 'processing'
 })
 
 const entityTypes = computed(() => {
@@ -688,11 +571,9 @@ const addLog = (msg, status) => {
 }
 
 const updateStatus = (s) => {
-  // status reflected in statusClass/statusText
+  stepStatus.value = s || ''
 }
 
-// 把 currentStep 同步到 URL ?step=N，这样浏览器前进/后退可以切 Step
-// isSyncingFromRoute 防止"路由变化 → 改 step → 又去改路由"的死循环
 let isSyncingFromRoute = false
 let isInitialStepSync = true
 const pushStepToRoute = (step) => {
@@ -757,6 +638,7 @@ const handleSimulationCreated = ({ simulationId }) => {
 // 首次会通过 router.replace 写入 ?step=N（不产生历史），后续是 push（产生历史）
 watch(currentStep, (newStep) => {
   if (!newStep) return
+  stepStatus.value = '' // 切换步骤时重置子组件状态
   pushStepToRoute(newStep)
 })
 

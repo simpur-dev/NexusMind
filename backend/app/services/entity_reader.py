@@ -117,7 +117,7 @@ class EntityReader:
             node_result = await driver.execute_query(
                 f"MATCH (n:Entity) {gid_filter} "
                 "RETURN n.uuid AS uuid, n.name AS name, n.summary AS summary, "
-                "n.entity_type AS entity_type, n.created_at AS created_at",
+                "labels(n) AS neo4j_labels, n.entity_type AS entity_type, n.created_at AS created_at",
                 gid=graph_id,
                 database_=Config.NEO4J_DATABASE,
             )
@@ -244,17 +244,27 @@ class EntityReader:
         type_info = self._infer_entity_types(node_records, edge_records, ontology_types=ontology_types)
 
         nodes_data = []
+        neo4j_typed_count = 0
         for rec in node_records:
             name = rec["name"] or ""
+            # 优先使用 Neo4j 真实 labels
+            neo4j_labels = rec.get("neo4j_labels") or []
+            custom_neo4j = [l for l in neo4j_labels if l not in ("Entity", "Node", "__Entity__")]
+            if custom_neo4j:
+                labels = list(set(["Entity"] + custom_neo4j))
+                neo4j_typed_count += 1
+            else:
+                labels = self._get_labels(name, type_info)
             nodes_data.append({
                 "uuid": str(rec["uuid"] or ""),
                 "name": name,
-                "labels": self._get_labels(name, type_info),
+                "labels": labels,
                 "summary": rec["summary"] or "",
                 "attributes": {},
             })
 
-        logger.info(f"共获取 {len(nodes_data)} 个节点")
+        logger.info(f"共获取 {len(nodes_data)} 个节点 "
+                   f"(Neo4j typed: {neo4j_typed_count}, inference typed: {len(nodes_data) - neo4j_typed_count})")
         return nodes_data
 
     def get_all_edges(self, graph_id: str) -> List[Dict[str, Any]]:
