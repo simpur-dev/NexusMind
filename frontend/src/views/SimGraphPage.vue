@@ -70,7 +70,7 @@
             </span>
             <button class="close-btn" @click="selectedEvent = null">&times;</button>
           </div>
-          <h3 class="detail-name">{{ eventTypeLabel(selectedEvent.event_type) }} · R{{ selectedEvent.round_num }}</h3>
+          <h3 class="detail-name">{{ eventTypeLabel(selectedEvent.event_type) }} · 第{{ selectedEvent.round_num }}轮</h3>
           <div class="detail-fields">
             <div class="field">
               <span class="field-key">轮次</span>
@@ -98,10 +98,10 @@
                     <span class="re-strength">{{ (re.strength || 0).toFixed(2) }}</span>
                   </div>
                   <div class="re-pair">
-                    {{ eventTypeLabel(re.source_type) }} R{{ re.source_round }}
-                    → {{ eventTypeLabel(re.target_type) }} R{{ re.target_round }}
+                    {{ eventTypeLabel(re.source_type) }} 第{{ re.source_round }}轮
+                    → {{ eventTypeLabel(re.target_type) }} 第{{ re.target_round }}轮
                   </div>
-                  <div v-if="re.evidence" class="re-evidence">{{ re.evidence }}</div>
+                  <div v-if="cleanEvidence(re.evidence)" class="re-evidence">{{ cleanEvidence(re.evidence) }}</div>
                 </div>
               </div>
             </div>
@@ -162,10 +162,10 @@ const EVENT_COLORS = {
   topic_outbreak: '#f59e0b'
 }
 const RELATION_COLORS = {
-  triggered: '#3b82f6',
-  amplified: '#ef4444',
-  suppressed: '#10b981',
-  correlated: '#f59e0b'
+  triggered: '#60a5fa',
+  amplified: '#f87171',
+  suppressed: '#34d399',
+  correlated: '#fbbf24'
 }
 const RELATION_LABELS = {
   triggered: '触发',
@@ -179,6 +179,18 @@ const VARIABLE_LABELS = {
 }
 
 function eventTypeLabel(t) { return EVENT_TYPE_LABELS[t] || String(t || '').replace(/_/g, ' ') }
+
+function cleanEvidence(txt) {
+  if (!txt) return ''
+  return String(txt)
+    .replace(/[\(（][^\)）]*(?:evt_|ce_)[a-f0-9]+[^\)）]*[\)）]/g, '')
+    .replace(/\b(?:evt_|ce_)[a-f0-9]{6,}\b/g, '')
+    .replace(/\b(?:Round|round)\s*\d*/gi, '')
+    .replace(/\b(?:severity|strength|stabilization|heat_spike|sentiment_shift|trust_drop|official_response|polarization_surge|calm_restored|topic_outbreak)\b/gi, '')
+    .replace(/\s*[,，]\s*[,，]/g, '，')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
 function formatAffectedVars(affected) {
   return Object.entries(affected || {}).map(([k, v]) => {
     const num = Number(v || 0)
@@ -266,7 +278,7 @@ function renderGraph() {
   const cRect = containerEl.value?.getBoundingClientRect()
   const W = cRect?.width || window.innerWidth
   const H = cRect?.height || 700
-  const pad = { top: 80, bottom: 50, left: 100, right: 100 }
+  const pad = { top: 90, bottom: 60, left: 120, right: 120 }
 
   // 按轮次分组
   const rounds = [...new Set(rawEvents.map(e => e.round_num))].sort((a, b) => a - b)
@@ -278,8 +290,8 @@ function renderGraph() {
   })
 
   // 布局：扩展画布让节点不挤
-  const canvasW = Math.max(W, rounds.length * 200)
-  const canvasH = Math.max(H, (Math.max(...[...eventsByRound.values()].map(b => b.length)) + 1) * 110)
+  const canvasW = Math.max(W, rounds.length * 220)
+  const canvasH = Math.max(H, (Math.max(...[...eventsByRound.values()].map(b => b.length)) + 1) * 140)
   const maxRI = Math.max(rounds.length - 1, 1)
   const xScale = d3.scaleLinear().domain([0, maxRI]).range([pad.left, canvasW - pad.right])
 
@@ -301,21 +313,25 @@ function renderGraph() {
   svg.selectAll('*').remove()
   svg.attr('width', W).attr('height', H)
 
-  // 箭头标记
+  // 箭头标记（加大尺寸）
   const defs = svg.append('defs')
   for (const [rel, color] of Object.entries(RELATION_COLORS)) {
     defs.append('marker')
       .attr('id', `arrow-${rel}`)
-      .attr('viewBox', '0 -5 10 10')
-      .attr('refX', 22).attr('refY', 0)
-      .attr('markerWidth', 8).attr('markerHeight', 8)
+      .attr('viewBox', '0 -6 12 12')
+      .attr('refX', 24).attr('refY', 0)
+      .attr('markerWidth', 10).attr('markerHeight', 10)
       .attr('orient', 'auto')
-      .append('path').attr('d', 'M0,-4L10,0L0,4Z').attr('fill', color)
+      .append('path').attr('d', 'M0,-5L12,0L0,5Z').attr('fill', color)
   }
-  // 发光
+  // 节点发光
   const glow = defs.append('filter').attr('id', 'glow').attr('x', '-40%').attr('y', '-40%').attr('width', '180%').attr('height', '180%')
   glow.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'blur')
   glow.append('feMerge').selectAll('feMergeNode').data(['blur', 'SourceGraphic']).join('feMergeNode').attr('in', d => d)
+  // 连线发光
+  const edgeGlow = defs.append('filter').attr('id', 'edge-glow').attr('x', '-20%').attr('y', '-20%').attr('width', '140%').attr('height', '140%')
+  edgeGlow.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'blur')
+  edgeGlow.append('feMerge').selectAll('feMergeNode').data(['blur', 'SourceGraphic']).join('feMergeNode').attr('in', d => d)
 
   const g = svg.append('g')
   const zoom = d3.zoom().scaleExtent([0.15, 4]).on('zoom', ev => g.attr('transform', ev.transform))
@@ -342,22 +358,48 @@ function renderGraph() {
       .attr('fill', '#8888aa').attr('font-size', 12).attr('font-weight', 600).text(`第 ${r} 轮`)
   })
 
+  // ── 计算平行边偏移索引 ──
+  const edgePairCount = {}
+  const edgePairIdx = []
+  edges.forEach(e => {
+    const sId = typeof e.source === 'object' ? e.source.id : e.source
+    const tId = typeof e.target === 'object' ? e.target.id : e.target
+    const pairKey = [sId, tId].sort().join('|')
+    if (!edgePairCount[pairKey]) edgePairCount[pairKey] = 0
+    edgePairIdx.push({ key: pairKey, idx: edgePairCount[pairKey]++ })
+  })
+  edges.forEach((e, i) => {
+    e._pairIdx = edgePairIdx[i].idx
+    e._pairTotal = edgePairCount[edgePairIdx[i].key]
+  })
+
   // ── 力模拟（加大间距）──
   if (sim) sim.stop()
   sim = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(edges).id(n => n.id).distance(140).strength(0.12))
-    .force('charge', d3.forceManyBody().strength(-400))
+    .force('link', d3.forceLink(edges).id(n => n.id).distance(160).strength(0.1))
+    .force('charge', d3.forceManyBody().strength(-500))
     .force('y', d3.forceY(canvasH / 2).strength(0.03))
-    .force('collide', d3.forceCollide().radius(45).strength(0.8))
-    .alphaDecay(0.05)
+    .force('collide', d3.forceCollide().radius(55).strength(0.85))
+    .alphaDecay(0.04)
 
-  // ── 因果边 ──
+  // ── 因果边（底层发光 + 上层实线）──
   const edgeG = g.append('g')
-  const causalPath = edgeG.selectAll('path').data(edges).join('path')
+  // 发光底层
+  const causalGlow = edgeG.selectAll('path.glow').data(edges).join('path')
+    .attr('class', 'glow')
     .attr('fill', 'none')
     .attr('stroke', e => RELATION_COLORS[e.relation_type] || '#555')
-    .attr('stroke-width', e => 1.2 + (e.strength || 0.5) * 1.8)
-    .attr('stroke-opacity', 0.6)
+    .attr('stroke-width', e => 3 + (e.strength || 0.5) * 4)
+    .attr('stroke-opacity', 0.15)
+    .attr('filter', 'url(#edge-glow)')
+  // 主线
+  const causalPath = edgeG.selectAll('path.main').data(edges).join('path')
+    .attr('class', 'main')
+    .attr('fill', 'none')
+    .attr('stroke', e => RELATION_COLORS[e.relation_type] || '#555')
+    .attr('stroke-width', e => 2 + (e.strength || 0.5) * 2.5)
+    .attr('stroke-opacity', 0.85)
+    .attr('stroke-linecap', 'round')
     .attr('marker-end', e => `url(#arrow-${e.relation_type || 'correlated'})`)
 
   // 边标签（带背景 pill）
@@ -365,17 +407,17 @@ function renderGraph() {
   const edgeLabelItems = edgeLabelG.selectAll('g').data(edges).join('g')
     .attr('pointer-events', 'none')
   edgeLabelItems.append('rect')
-    .attr('rx', 6).attr('fill', '#12121e').attr('stroke', e => RELATION_COLORS[e.relation_type] || '#555')
-    .attr('stroke-width', 0.8).attr('stroke-opacity', 0.5)
+    .attr('rx', 7).attr('fill', '#0e0e1c').attr('stroke', e => RELATION_COLORS[e.relation_type] || '#555')
+    .attr('stroke-width', 1).attr('stroke-opacity', 0.7)
   edgeLabelItems.append('text')
     .text(e => RELATION_LABELS[e.relation_type] || '')
-    .attr('font-size', 9).attr('font-weight', 600)
+    .attr('font-size', 11).attr('font-weight', 700)
     .attr('fill', e => RELATION_COLORS[e.relation_type] || '#888')
-    .attr('text-anchor', 'middle').attr('dy', 3.5)
+    .attr('text-anchor', 'middle').attr('dy', 4)
 
   // ── 事件节点 ──
   const nodeG = g.append('g')
-  const R = 16 // 统一半径，severity 用不同效果体现
+  const R = 18 // 统一半径，severity 用不同效果体现
   const nodeItems = nodeG.selectAll('g').data(nodes).join('g')
     .attr('transform', n => `translate(${n.x},${n.y})`)
     .attr('cursor', 'pointer')
@@ -413,15 +455,15 @@ function renderGraph() {
   labelItems.append('text')
     .attr('class', 'node-type-text')
     .text(n => eventTypeLabel(n.event_type))
-    .attr('font-size', 10).attr('font-weight', 700)
+    .attr('font-size', 12).attr('font-weight', 700)
     .attr('fill', n => EVENT_COLORS[n.event_type] || '#fda4af')
-    .attr('text-anchor', 'middle').attr('dy', 3.5)
+    .attr('text-anchor', 'middle').attr('dy', 4)
   // 描述文字（第二行）
   labelItems.append('text')
     .attr('class', 'node-desc-text')
-    .text(n => truncate(n.description, 12))
-    .attr('font-size', 9).attr('fill', '#888')
-    .attr('text-anchor', 'middle').attr('dy', 16)
+    .text(n => truncate(n.description, 14))
+    .attr('font-size', 10).attr('fill', '#999')
+    .attr('text-anchor', 'middle').attr('dy', 18)
 
   // 调整标签背景大小
   labelItems.each(function() {
@@ -453,7 +495,11 @@ function renderGraph() {
     labelItems.attr('opacity', n => connected.has(n.id) ? 1 : 0.1)
     causalPath.attr('stroke-opacity', e => {
       const sid = e.source?.id || e.source, tid = e.target?.id || e.target
-      return sid === d.id || tid === d.id ? 0.9 : 0.05
+      return sid === d.id || tid === d.id ? 1 : 0.06
+    })
+    causalGlow.attr('stroke-opacity', e => {
+      const sid = e.source?.id || e.source, tid = e.target?.id || e.target
+      return sid === d.id || tid === d.id ? 0.3 : 0
     })
     edgeLabelItems.attr('opacity', e => {
       const sid = e.source?.id || e.source, tid = e.target?.id || e.target
@@ -464,37 +510,63 @@ function renderGraph() {
     tooltip.value.show = false
     nodeItems.attr('opacity', 1)
     labelItems.attr('opacity', 1)
-    causalPath.attr('stroke-opacity', 0.6)
+    causalPath.attr('stroke-opacity', 0.85)
+    causalGlow.attr('stroke-opacity', 0.15)
     edgeLabelItems.attr('opacity', 1)
   })
   .on('click', (_, d) => { selectedEvent.value = { ...d } })
 
+  // ── 贝塞尔曲线生成（支持平行边偏移）──
+  function edgePath(e) {
+    const sx = e.source.x, sy = e.source.y, tx = e.target.x, ty = e.target.y
+    if (isNaN(sx) || isNaN(sy) || isNaN(tx) || isNaN(ty)) return ''
+    const dx = tx - sx, dy = ty - sy
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1
+    // 法线方向
+    const nx = -dy / dist, ny = dx / dist
+    // 平行边偏移：多条边之间拉开
+    const total = e._pairTotal || 1
+    const idx = e._pairIdx || 0
+    const spread = 30
+    const baseOff = (idx - (total - 1) / 2) * spread
+    // 曲线弯曲程度
+    const sameCol = Math.abs((e.source.fx ?? sx) - (e.target.fx ?? tx)) < 10
+    const curvature = sameCol ? 0.5 : 0.25
+    const bendOff = dist * curvature + baseOff
+    // 控制点
+    const mx = (sx + tx) / 2 + nx * bendOff
+    const my = (sy + ty) / 2 + ny * bendOff
+    return `M${sx},${sy} Q${mx},${my} ${tx},${ty}`
+  }
+
   // ── Tick ──
   sim.on('tick', () => {
-    // 边曲线
-    causalPath.attr('d', e => {
-      const sx = e.source.x, sy = e.source.y, tx = e.target.x, ty = e.target.y
-      if (isNaN(sx) || isNaN(sy) || isNaN(tx) || isNaN(ty)) return ''
-      const dx = tx - sx, dy = ty - sy
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1
-      const sameCol = Math.abs(e.source.fx - e.target.fx) < 5
-      const dr = sameCol ? dist * 0.35 : dist * 0.8
-      return `M${sx},${sy} A${dr},${dr} 0 0,${sy < ty ? 1 : 0} ${tx},${ty}`
-    })
+    // 边曲线（发光层 + 主线层）
+    causalGlow.attr('d', edgePath)
+    causalPath.attr('d', edgePath)
     // 边标签
     edgeLabelItems.each(function(e) {
-      const mx = (e.source.x + e.target.x) / 2
-      const my = (e.source.y + e.target.y) / 2
-      const dx = e.target.x - e.source.x, dy = e.target.y - e.source.y
+      const sx = e.source.x, sy = e.source.y, tx = e.target.x, ty = e.target.y
+      const dx = tx - sx, dy = ty - sy
       const dist = Math.sqrt(dx * dx + dy * dy) || 1
-      const off = 16
-      const nx = mx + (-dy / dist * off), ny = my + (dx / dist * off)
+      const nx = -dy / dist, ny = dx / dist
+      const total = e._pairTotal || 1
+      const idx = e._pairIdx || 0
+      const spread = 30
+      const baseOff = (idx - (total - 1) / 2) * spread
+      const sameCol = Math.abs((e.source.fx ?? sx) - (e.target.fx ?? tx)) < 10
+      const curvature = sameCol ? 0.5 : 0.25
+      const bendOff = dist * curvature + baseOff
+      // 标签放在曲线 t=0.5 的位置（即控制点与中点之间）
+      const t = 0.5
+      const lx = (1-t)*(1-t)*sx + 2*(1-t)*t*((sx+tx)/2 + nx*bendOff) + t*t*tx
+      const ly = (1-t)*(1-t)*sy + 2*(1-t)*t*((sy+ty)/2 + ny*bendOff) + t*t*ty
       const grp = d3.select(this)
-      grp.select('text').attr('x', nx).attr('y', ny)
+      grp.select('text').attr('x', lx).attr('y', ly)
       const bbox = grp.select('text').node().getBBox()
       grp.select('rect')
-        .attr('x', bbox.x - 5).attr('y', bbox.y - 2)
-        .attr('width', bbox.width + 10).attr('height', bbox.height + 4)
+        .attr('x', bbox.x - 6).attr('y', bbox.y - 3)
+        .attr('width', bbox.width + 12).attr('height', bbox.height + 6)
     })
     // 节点
     nodeItems.attr('transform', n => `translate(${n.x},${n.y})`)
@@ -565,7 +637,7 @@ onBeforeUnmount(() => { if (sim) sim.stop() })
 .legend-title { font-size: 13px; color: #666; font-weight: 700; margin-right: 6px; }
 .legend-item { display: flex; align-items: center; gap: 5px; font-size: 13px; color: #999; }
 .dot { width: 12px; height: 12px; border-radius: 50%; }
-.edge-sample { width: 22px; height: 3px; border-radius: 2px; }
+.edge-sample { width: 28px; height: 4px; border-radius: 2px; box-shadow: 0 0 6px currentColor; }
 
 /* Graph */
 .graph-container { flex: 1; position: relative; overflow: hidden; }

@@ -1,14 +1,14 @@
 <template>
   <div class="world-state-panel">
     <div class="panel-header">
-      <h3>🌍 Global World State</h3>
-      <span class="round-badge" v-if="currentState">Round {{ currentState.round_num }}</span>
+      <h3>🌍 全局世界状态</h3>
+      <span class="round-badge" v-if="currentState">第 {{ currentState.round_num }} 轮</span>
     </div>
 
     <!-- No Data State -->
     <div v-if="!currentState" class="empty-state">
       <div class="spinner"></div>
-      <p>Waiting for World Model data...</p>
+      <p>正在等待世界模型数据...</p>
     </div>
 
     <!-- Data Content -->
@@ -16,7 +16,7 @@
       
       <!-- 1. 核心指标刻度 (Macro Indicators) -->
       <div class="indicators-section section-box">
-        <h4 class="section-title">Macro Indicators</h4>
+        <h4 class="section-title">宏观指标</h4>
         <div class="indicator-grid">
           <div v-for="item in indicatorItems" :key="item.key" class="indicator-item">
             <div class="ind-header">
@@ -32,8 +32,8 @@
 
       <!-- 2. 状态总结 & 热词 (Summary & Keywords) -->
       <div class="summary-section section-box">
-        <h4 class="section-title">Current Summary</h4>
-        <p class="summary-text">{{ stateSummary || 'System is currently stable.' }}</p>
+        <h4 class="section-title">当前状态摘要</h4>
+        <p class="summary-text">{{ stateSummary || '系统当前运行稳定。' }}</p>
         
         <div class="keywords-wrap" v-if="currentState.top_keywords && currentState.top_keywords.length > 0">
           <span v-for="(kw, idx) in currentState.top_keywords" :key="idx" class="keyword-tag">
@@ -45,33 +45,33 @@
       <!-- 3. 事件注入面板 (God Mode) -->
       <div class="inject-section section-box" v-if="simulationId">
         <h4 class="section-title inject-title" @click="showInjectPanel = !showInjectPanel">
-          <span>Event Injection</span>
+          <span>事件注入</span>
           <span class="toggle-icon">{{ showInjectPanel ? '▾' : '▸' }}</span>
         </h4>
         <div v-if="showInjectPanel" class="inject-form">
           <div class="form-row">
-            <label class="form-label">Event Type</label>
+            <label class="form-label">事件类型</label>
             <select v-model="injectForm.event_type" class="form-select">
-              <option value="breaking_news">Breaking News</option>
-              <option value="official_statement">Official Statement</option>
-              <option value="policy_change">Policy Change</option>
-              <option value="rumor_spread">Rumor Spread</option>
-              <option value="public_protest">Public Protest</option>
-              <option value="expert_opinion">Expert Opinion</option>
-              <option value="custom">Custom</option>
+              <option value="breaking_news">突发新闻</option>
+              <option value="official_statement">官方声明</option>
+              <option value="policy_change">政策变化</option>
+              <option value="rumor_spread">谣言传播</option>
+              <option value="public_protest">公众抗议</option>
+              <option value="expert_opinion">专家意见</option>
+              <option value="custom">自定义</option>
             </select>
           </div>
           <div class="form-row">
-            <label class="form-label">Description</label>
-            <textarea v-model="injectForm.description" class="form-textarea" rows="3" placeholder="Describe the event..."></textarea>
+            <label class="form-label">描述</label>
+            <textarea v-model="injectForm.description" class="form-textarea" rows="3" placeholder="描述事件..."></textarea>
           </div>
           <div class="form-row">
-            <label class="form-label">Severity: <span class="severity-val">{{ injectForm.severity.toFixed(1) }}</span></label>
+            <label class="form-label">严重性: <span class="severity-val">{{ injectForm.severity.toFixed(1) }}</span></label>
             <input type="range" v-model.number="injectForm.severity" min="0" max="1" step="0.1" class="form-range" />
           </div>
           <button class="inject-btn" :disabled="injectLoading || !injectForm.description" @click="handleInjectEvent">
             <span v-if="injectLoading" class="spinner-small"></span>
-            {{ injectLoading ? 'Injecting...' : 'Inject Event' }}
+            {{ injectLoading ? '注入中...' : '注入事件' }}
           </button>
           <div v-if="injectResult" class="inject-result" :class="injectResult.success ? 'success' : 'error'">
             {{ injectResult.message }}
@@ -81,28 +81,28 @@
 
       <!-- 4. 事件与因果链 (Event & Causal Graph) -->
       <div class="causal-section section-box">
-        <h4 class="section-title">Event Causality Chain</h4>
+        <h4 class="section-title">事件因果链</h4>
         <div v-if="causalGraph && causalGraph.edges && causalGraph.edges.length > 0" class="causal-chain">
           <div v-for="edge in causalGraph.edges" :key="edge.edge_id" class="causal-edge">
             <div class="edge-nodes">
               <span class="node src">{{ formatEventNode(edge.source_event_id) }}</span>
-              <span class="relation-arrow" :class="edge.relation_type" :title="`Strength: ${edge.strength}`">
+              <span class="relation-arrow" :class="edge.relation_type" :title="`强度: ${edge.strength}`">
                 {{ getRelationSymbol(edge.relation_type) }}
               </span>
               <span class="node tgt">{{ formatEventNode(edge.target_event_id) }}</span>
             </div>
-            <div class="edge-evidence">{{ edge.evidence }}</div>
+            <div class="edge-evidence">{{ cleanEvidence(edge.evidence) }}</div>
           </div>
         </div>
         <div v-else-if="events && events.length > 0" class="event-list">
           <div v-for="evt in events" :key="evt.event_id" class="event-item" :class="evt.severity > 0.6 ? 'high-sev' : ''">
-            <span class="evt-round">R{{ evt.round_num }}</span>
+            <span class="evt-round">第{{ evt.round_num }}轮</span>
             <span class="evt-type">{{ formatEventType(evt.event_type) }}</span>
             <span class="evt-desc">{{ evt.description }}</span>
           </div>
         </div>
         <div v-else class="empty-state mini">
-          No significant events detected yet.
+          尚未检测到显著事件。
         </div>
       </div>
 
@@ -145,13 +145,13 @@ const handleInjectEvent = async () => {
       severity: injectForm.severity
     })
     if (res.success) {
-      injectResult.value = { success: true, message: `Event injected (queue: ${res.data?.result?.queue_size || '?'})` }
+      injectResult.value = { success: true, message: `事件注入成功 (队列: ${res.data?.result?.queue_size || '?'})` }
       injectForm.description = ''
     } else {
-      injectResult.value = { success: false, message: res.error || 'Injection failed' }
+      injectResult.value = { success: false, message: res.error || '注入失败' }
     }
   } catch (err) {
-    injectResult.value = { success: false, message: err.message || 'Network error' }
+    injectResult.value = { success: false, message: err.message || '网络错误' }
   } finally {
     injectLoading.value = false
     setTimeout(() => { injectResult.value = null }, 4000)
@@ -163,12 +163,12 @@ const indicatorItems = computed(() => {
   if (!props.currentState) return []
   const s = props.currentState
   return [
-    { key: 'attention', label: 'Public Attention', value: s.attention_level, color: '#3b82f6' },
-    { key: 'panic', label: 'Panic Level', value: s.panic_level, color: '#ef4444' },
-    { key: 'trust', label: 'Public Trust', value: s.trust_level, color: '#10b981' },
-    { key: 'polarization', label: 'Polarization', value: s.polarization_level, color: '#f59e0b' },
-    { key: 'risk', label: 'System Risk', value: s.risk_level, color: '#f97316' },
-    { key: 'stability', label: 'Stability', value: s.stability_level, color: '#8b5cf6' }
+    { key: 'attention', label: '公众关注度', value: s.attention_level, color: '#3b82f6' },
+    { key: 'panic', label: '恐慌水平', value: s.panic_level, color: '#ef4444' },
+    { key: 'trust', label: '公众信任度', value: s.trust_level, color: '#10b981' },
+    { key: 'polarization', label: '极化水平', value: s.polarization_level, color: '#f59e0b' },
+    { key: 'risk', label: '系统风险', value: s.risk_level, color: '#f97316' },
+    { key: 'stability', label: '系统稳定性', value: s.stability_level, color: '#8b5cf6' }
   ]
 })
 
@@ -179,7 +179,7 @@ const formatEventNode = (eventId) => {
   if (props.events) {
     const evt = props.events.find(e => e.event_id === eventId)
     if (evt) {
-      return `[R${evt.round_num}] ${formatEventType(evt.event_type)}`
+      return `[第${evt.round_num}轮] ${formatEventType(evt.event_type)}`
     }
   }
   return idStr.length > 8 ? idStr.substring(0, 8) : idStr
@@ -187,14 +187,28 @@ const formatEventNode = (eventId) => {
 
 const formatEventType = (type) => {
   const map = {
-    'sentiment_shift': 'Sentiment Shift',
-    'polarization_surge': 'Polarization Surge',
-    'trust_drop': 'Trust Drop',
-    'heat_spike': 'Heat Spike',
-    'official_response': 'Official Response',
-    'stabilization': 'Stabilization'
+    'sentiment_shift': '情绪转变',
+    'polarization_surge': '极化加剧',
+    'trust_drop': '信任下滑',
+    'heat_spike': '热度飙升',
+    'official_response': '官方回应',
+    'stabilization': '系统稳定',
+    'calm_restored': '舆情平息',
+    'topic_outbreak': '议题爆发'
   }
   return map[type] || type
+}
+
+const cleanEvidence = (txt) => {
+  if (!txt) return ''
+  return String(txt)
+    .replace(/[\(（][^\)）]*(?:evt_|ce_)[a-f0-9]+[^\)）]*[\)）]/g, '')
+    .replace(/\b(?:evt_|ce_)[a-f0-9]{6,}\b/g, '')
+    .replace(/\b(?:Round|round)\s*\d*/gi, '')
+    .replace(/\b(?:severity|strength|stabilization|heat_spike|sentiment_shift|trust_drop|official_response|polarization_surge|calm_restored|topic_outbreak)\b/gi, '')
+    .replace(/\s*[,，]\s*[,，]/g, '，')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
 }
 
 const getRelationSymbol = (type) => {
@@ -295,7 +309,6 @@ const getRelationSymbol = (type) => {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-secondary, #94a3b8);
-  text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 

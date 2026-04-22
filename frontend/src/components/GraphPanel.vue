@@ -1272,6 +1272,7 @@ input:checked + .slider:before {
   line-height: 1.6;
   color: #43576f;
   font-size: 12px;
+  white-space: pre-line;
 }
 
 .labels-list {

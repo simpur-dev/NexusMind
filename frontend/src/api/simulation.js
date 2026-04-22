@@ -220,6 +220,14 @@ export const interviewAgents = (data) => {
 }
 
 /**
+ * 离线采访Agent（无需模拟环境运行）
+ * @param {Object} data - { simulation_id, agent_id, prompt, chat_history? }
+ */
+export const interviewAgentOffline = (data) => {
+  return requestWithRetry(() => service.post('/api/simulation/interview/offline', data), 2, 1000)
+}
+
+/**
  * 获取模拟知识图谱数据（SimAgent + SimAction 节点与关系）
  * @param {string} simulationId
  * @param {Object} params - { platform?, limit? }

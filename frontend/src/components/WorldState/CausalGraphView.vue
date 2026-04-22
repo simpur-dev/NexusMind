@@ -13,15 +13,15 @@
            class="edge-card" :class="edge.relation_type">
         <div class="edge-row">
           <div class="node src">
-            <div class="node-round">R{{ getRound(edge.source_event_id) }}</div>
+            <div class="node-round">第{{ getRound(edge.source_event_id) }}轮</div>
             <div class="node-type">{{ formatEventType(getType(edge.source_event_id)) }}</div>
           </div>
-          <div class="edge-arrow" :title="`strength: ${(edge.strength || 0).toFixed(2)}`">
+          <div class="edge-arrow" :title="`强度: ${(edge.strength || 0).toFixed(2)}`">
             <span class="arrow-label">{{ relationLabel(edge.relation_type) }}</span>
             <span class="arrow-line">{{ relationSymbol(edge.relation_type) }}</span>
           </div>
           <div class="node tgt">
-            <div class="node-round">R{{ getRound(edge.target_event_id) }}</div>
+            <div class="node-round">第{{ getRound(edge.target_event_id) }}轮</div>
             <div class="node-type">{{ formatEventType(getType(edge.target_event_id)) }}</div>
           </div>
         </div>
@@ -102,13 +102,11 @@ const relationSymbol = (t) => ({
 const cleanEvidence = (txt) => {
   if (!txt) return ''
   return String(txt)
-    // 干掉括号内包含 evt_ 的整段："(evt_xxx, evt_yyy)" "（evt_xxx）"
     .replace(/[\(（][^\)）]*(?:evt_|ce_)[a-f0-9]+[^\)）]*[\)）]/g, '')
-    // 裸露的 id
     .replace(/\b(?:evt_|ce_)[a-f0-9]{6,}\b/g, '')
-    // 多余的逗号/空格/再之
-    .replace(/\s+,/g, ',')
-    .replace(/,\s*\)/g, ')')
+    .replace(/\b(?:Round|round)\s*\d*/gi, '')
+    .replace(/\b(?:severity|strength|stabilization|heat_spike|sentiment_shift|trust_drop|official_response|polarization_surge|calm_restored|topic_outbreak)\b/gi, '')
+    .replace(/\s*[,，]\s*[,，]/g, '，')
     .replace(/\s{2,}/g, ' ')
     .trim()
 }

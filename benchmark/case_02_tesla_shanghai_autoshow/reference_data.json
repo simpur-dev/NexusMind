@@ -1,0 +1,63 @@
+{
+  "case_id": "case_02_tesla_shanghai_autoshow",
+  "case_name": "特斯拉上海车展维权事件",
+  "case_type": "企业危机公关 / 消费者维权 / 官方监管介入",
+  "status": "skeleton",
+  "_note": "此文件为骨架，待案例 1 跑通后再补充完整数据",
+
+  "phases": [
+    {
+      "phase_id": "P1",
+      "phase_name": "爆发期",
+      "description": "维权视频传播，引发大量关注",
+      "sentiment_direction": "negative_rising"
+    },
+    {
+      "phase_id": "P2",
+      "phase_name": "企业强硬回应期",
+      "description": "特斯拉发声绝不妥协，舆论愤怒升级",
+      "sentiment_direction": "negative_peak"
+    },
+    {
+      "phase_id": "P3",
+      "phase_name": "监管介入期",
+      "description": "市场监管部门要求配合调查",
+      "sentiment_direction": "negative_sustained"
+    },
+    {
+      "phase_id": "P4",
+      "phase_name": "企业态度转变期",
+      "description": "特斯拉致歉、配合调查",
+      "sentiment_direction": "mixed"
+    },
+    {
+      "phase_id": "P5",
+      "phase_name": "收敛期",
+      "description": "后续处理推进，热度逐步下降",
+      "sentiment_direction": "neutral_declining"
+    }
+  ],
+
+  "turning_points_top3": [
+    {"tp_id": "T1", "phase": "P1", "description": "维权视频爆发"},
+    {"tp_id": "T2", "phase": "P2", "description": "企业强硬回应导致二次升级"},
+    {"tp_id": "T3", "phase": "P3", "description": "监管部门介入，企业态度转变"}
+  ],
+
+  "event_order_reference": [
+    "维权视频传播",
+    "企业强硬回应",
+    "舆论二次升级",
+    "监管部门介入",
+    "企业致歉配合",
+    "热度逐步收敛"
+  ],
+
+  "key_actors": [
+    {"actor_id": "A1", "name": "特斯拉", "type": "organization", "importance": "high"},
+    {"actor_id": "A2", "name": "维权车主", "type": "individual", "importance": "high"},
+    {"actor_id": "A3", "name": "主流媒体", "type": "media", "importance": "high"},
+    {"actor_id": "A4", "name": "普通网民", "type": "group", "importance": "medium"},
+    {"actor_id": "A5", "name": "市场监管部门", "type": "regulator", "importance": "high"}
+  ]
+}

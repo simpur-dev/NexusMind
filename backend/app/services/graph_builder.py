@@ -4,6 +4,7 @@
 """
 
 import os
+import re
 import uuid
 import time
 import asyncio
@@ -51,7 +52,64 @@ class GraphBuilderService:
         # api_key 参数保留用于兼容，但 Graphiti 使用环境变量中的 OPENAI_API_KEY
         self.task_manager = TaskManager()
         self.vector_store = VectorStore()
-    
+
+    @staticmethod
+    def _normalize_summary_line(text: str) -> str:
+        """清洗单行摘要文本，减少多余空白和标点间隔。"""
+        if not text:
+            return ""
+        text = text.replace("\u3000", " ")
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\s*([，。；：！？])\s*", r"\1", text)
+        return text.strip(" \n\t•-")
+
+    @classmethod
+    def _format_node_summary(cls, raw_summary: str, max_points: int = 4) -> str:
+        """将原始摘要整理为“简介 + 要点”格式。"""
+        if not raw_summary:
+            return ""
+
+        normalized = raw_summary.replace("\r\n", "\n").replace("\r", "\n")
+        lines = [cls._normalize_summary_line(line) for line in normalized.split("\n")]
+        lines = [line for line in lines if line]
+
+        unique_lines = []
+        seen = set()
+        for line in lines:
+            dedupe_key = re.sub(r"\s+", "", line)
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            unique_lines.append(line)
+
+        if not unique_lines:
+            return cls._normalize_summary_line(normalized)
+
+        if len(unique_lines) == 1:
+            merged = unique_lines[0]
+            clauses = [part.strip() for part in re.split(r"(?<=[。；！？])", merged) if part.strip()]
+            if len(clauses) <= 1:
+                return merged
+            intro = clauses[0]
+            points = clauses[1:1 + max_points]
+            extra_count = max(len(clauses) - 1 - max_points, 0)
+            formatted = [intro, ""]
+            formatted.extend([f"- {point}" for point in points])
+            if extra_count:
+                formatted.append(f"- 等 {extra_count} 条相关信息")
+            return "\n".join(formatted)
+
+        intro = unique_lines[0]
+        points = unique_lines[1:1 + max_points]
+        extra_count = max(len(unique_lines) - 1 - max_points, 0)
+        formatted = [intro]
+        if points:
+            formatted.append("")
+            formatted.extend([f"- {point}" for point in points])
+            if extra_count:
+                formatted.append(f"- 等 {extra_count} 条相关信息")
+        return "\n".join(formatted)
+
     def build_graph_async(
         self,
         text: str,
@@ -551,11 +609,17 @@ class GraphBuilderService:
             node_map[uuid] = name
             
             created_at = rec["created_at"]
+            labels = _get_labels(name)
+            # 如果推断未产生具体类型，用 Neo4j entity_type 属性兜底
+            if len(labels) == 1 and labels[0] == "Entity":
+                stored_type = rec["entity_type"] if "entity_type" in rec.keys() else None
+                if stored_type:
+                    labels = ["Entity", stored_type]
             nodes_data.append({
                 "uuid": uuid,
                 "name": name,
-                "labels": _get_labels(name),
-                "summary": rec["summary"] or "",
+                "labels": labels,
+                "summary": self._format_node_summary(rec["summary"] or ""),
                 "attributes": {},
                 "created_at": str(created_at) if created_at else None,
             })

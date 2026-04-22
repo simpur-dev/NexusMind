@@ -89,32 +89,70 @@ RELATION_TYPES = {
 # 事件类型之间的先验因果模板
 # 格式: (source_type, target_type) -> (relation_type, base_strength)
 CAUSAL_TEMPLATES = {
-    # 热度飙升通常触发情绪变化
+    # ── 热度飙升 ──
     ("heat_spike", "sentiment_shift"): ("triggered", 0.7),
     ("heat_spike", "trust_drop"): ("triggered", 0.5),
     ("heat_spike", "polarization_surge"): ("amplified", 0.6),
+    ("heat_spike", "topic_outbreak"): ("triggered", 0.6),
+    ("heat_spike", "official_response"): ("triggered", 0.5),
     
-    # 情绪恶化可能导致信任下降和极化
+    # ── 情绪转折 ──
     ("sentiment_shift", "trust_drop"): ("triggered", 0.6),
     ("sentiment_shift", "polarization_surge"): ("amplified", 0.5),
+    ("sentiment_shift", "official_response"): ("triggered", 0.4),
+    ("sentiment_shift", "stabilization"): ("triggered", 0.4),
     
-    # 信任下降可能加剧恐慌
+    # ── 信任下滑 ──
     ("trust_drop", "sentiment_shift"): ("amplified", 0.4),
+    ("trust_drop", "polarization_surge"): ("amplified", 0.5),
+    ("trust_drop", "official_response"): ("triggered", 0.5),
     
-    # 官方回应通常抑制恐慌、恢复信任
+    # ── 官方回应 ──
     ("official_response", "sentiment_shift"): ("suppressed", 0.6),
     ("official_response", "trust_drop"): ("suppressed", 0.7),
     ("official_response", "stabilization"): ("triggered", 0.8),
+    ("official_response", "calm_restored"): ("triggered", 0.7),
+    ("official_response", "polarization_surge"): ("suppressed", 0.5),
     
-    # 系统稳定抑制极化
+    # ── 系统稳定 ──
     ("stabilization", "polarization_surge"): ("suppressed", 0.5),
+    ("stabilization", "calm_restored"): ("triggered", 0.7),
+    ("stabilization", "stabilization"): ("amplified", 0.6),
     
-    # 极化可能阻碍稳定
+    # ── 极化加剧 ──
     ("polarization_surge", "stabilization"): ("suppressed", 0.4),
+    ("polarization_surge", "trust_drop"): ("triggered", 0.5),
+    ("polarization_surge", "official_response"): ("triggered", 0.4),
+    ("polarization_surge", "sentiment_shift"): ("amplified", 0.4),
+    
+    # ── 恢复平稳 ──
+    ("calm_restored", "stabilization"): ("triggered", 0.7),
+    ("calm_restored", "calm_restored"): ("amplified", 0.5),
+    ("calm_restored", "topic_outbreak"): ("suppressed", 0.4),
+    ("calm_restored", "heat_spike"): ("suppressed", 0.4),
+    
+    # ── 议题爆发 ──
+    ("topic_outbreak", "heat_spike"): ("triggered", 0.7),
+    ("topic_outbreak", "sentiment_shift"): ("triggered", 0.6),
+    ("topic_outbreak", "polarization_surge"): ("amplified", 0.5),
+    ("topic_outbreak", "official_response"): ("triggered", 0.5),
+    ("topic_outbreak", "trust_drop"): ("triggered", 0.4),
+}
+
+# 事件类型中文名
+EVENT_TYPE_CN = {
+    "heat_spike": "舆论热度飙升",
+    "sentiment_shift": "公众情绪变化",
+    "trust_drop": "公众信任下降",
+    "official_response": "官方回应",
+    "polarization_surge": "立场极化加剧",
+    "stabilization": "系统趋于稳定",
+    "calm_restored": "舆情平息",
+    "topic_outbreak": "新话题爆发",
 }
 
 # 同轮或相邻轮次才考虑因果关系
-MAX_ROUND_GAP = 2
+MAX_ROUND_GAP = 4
 
 
 # ============== 因果图谱引擎 ==============
@@ -338,19 +376,40 @@ class CausalGraphEngine:
         target: WorldEvent,
         relation_type: str
     ) -> str:
-        """生成可读的因果解释文本"""
-        relation_cn = RELATION_TYPES.get(relation_type, relation_type)
-        
-        round_desc = ""
+        """生成通俗易懂的中文因果解释文本，面向非技术评委"""
+        src_type_cn = EVENT_TYPE_CN.get(source.event_type, source.event_type)
+        tgt_type_cn = EVENT_TYPE_CN.get(target.event_type, target.event_type)
+
+        # 提取关键数值变化（从 description 中）
+        src_desc = source.description or src_type_cn
+        tgt_desc = target.description or tgt_type_cn
+
         if source.round_num == target.round_num:
-            round_desc = f"在第{source.round_num}轮中"
+            time_ctx = f"在第{source.round_num}轮"
         else:
-            round_desc = f"从第{source.round_num}轮到第{target.round_num}轮"
-        
-        return (
-            f"{round_desc}，\"{source.description}\"对\"{target.description}\""
-            f"产生了{relation_cn}。"
-        )
+            time_ctx = f"第{source.round_num}轮至第{target.round_num}轮"
+
+        # 根据 relation_type 生成不同风格的解释
+        if relation_type == "triggered":
+            return (
+                f"{time_ctx}，{src_desc}直接引发了{tgt_desc}。"
+                f"前一事件的发生为后续变化创造了条件，两者在时间上紧密衔接、因果关系明确。"
+            )
+        elif relation_type == "amplified":
+            return (
+                f"{time_ctx}，{src_desc}进一步放大了{tgt_desc}的影响程度。"
+                f"前序事件积累的效应使后续变化更加剧烈，呈现出逐步升级的趋势。"
+            )
+        elif relation_type == "suppressed":
+            return (
+                f"{time_ctx}，{src_desc}对{tgt_desc}起到了抑制或缓解作用。"
+                f"干预措施的介入有效减弱了负面趋势的进一步扩散。"
+            )
+        else:  # correlated
+            return (
+                f"{time_ctx}，{src_desc}与{tgt_desc}存在显著关联。"
+                f"两者在时间窗口内同步变化，具有统计上的相关性。"
+            )
     
     # ============== LLM 辅助推断 ==============
     
@@ -372,47 +431,62 @@ class CausalGraphEngine:
                 base_url=Config.LLM_BASE_URL
             )
             
-            # 构造事件列表
+            # 构造事件列表（全中文，隐藏原始 ID）
+            id_alias = {}  # evt_xxx -> "事件A" 映射
             events_desc = []
-            for evt in all_events[-15:]:
+            for i, evt in enumerate(all_events[-15:]):
+                alias = f"事件{chr(65 + i)}"  # 事件A, 事件B, ...
+                id_alias[evt.event_id] = alias
+                type_cn = EVENT_TYPE_CN.get(evt.event_type, evt.event_type)
+                sev_label = "高" if evt.severity > 0.6 else ("中" if evt.severity > 0.3 else "低")
                 events_desc.append(
-                    f"[{evt.event_id}] Round {evt.round_num} | "
-                    f"{evt.event_type} | {evt.description} (severity={evt.severity:.2f})"
+                    f"[{alias}] 第{evt.round_num}轮 | "
+                    f"类型：{type_cn} | {evt.description} | 严重程度：{sev_label}"
                 )
             events_text = "\n".join(events_desc)
-            
+
             new_ids = {e.event_id for e in new_events}
+            new_aliases = [id_alias.get(eid, eid) for eid in new_ids]
             existing_pairs = {(e.source_event_id, e.target_event_id) for e in self._edges}
-            
-            prompt = f"""你是一个社会舆情模拟的因果关系分析器。请分析以下事件序列中的因果关系。
+            existing_alias_pairs = [
+                f"{id_alias.get(e.source_event_id, '?')} -> {id_alias.get(e.target_event_id, '?')}"
+                for e in self._edges[-10:]
+                if e.source_event_id in id_alias or e.target_event_id in id_alias
+            ]
+
+            prompt = f"""你是一位面向政府决策者和学术评委的舆情因果分析专家。请用通俗易懂的中文分析以下事件之间的因果关系。
 
 事件列表（按时间顺序）：
 {events_text}
 
-本轮新增事件ID：{list(new_ids)}
+本轮新增事件：{new_aliases}
 
-已知因果关系（不要重复）：
-{[f"{e.source_event_id} -> {e.target_event_id}" for e in self._edges[-10:]]}
+已知因果关系（请勿重复）：
+{existing_alias_pairs}
 
-请找出新增事件与历史事件之间的因果关系。输出 JSON 数组：
+请找出新增事件与历史事件之间的因果关系。输出JSON数组：
 ```json
 [
   {{
-    "source_id": "原因事件ID",
-    "target_id": "结果事件ID", 
+    "source_id": "原因事件别名，如事件A",
+    "target_id": "结果事件别名，如事件C",
     "relation": "triggered/amplified/suppressed/correlated",
     "strength": 0.0到1.0,
-    "evidence": "中文因果解释"
+    "evidence": "通俗中文因果解释"
   }}
 ]
 ```
 
-规则：
-1. 只输出你有较高把握的因果关系（strength >= 0.4）
-2. target_id 必须是本轮新增事件之一
+严格规则：
+1. 只输出有较高把握的因果关系（strength >= 0.4）
+2. target_id必须是本轮新增事件之一
 3. 不要重复已有的因果关系
-4. evidence 必须全部使用中文，不得包含任何英文，必须讲清因果逻辑
-5. 只输出 JSON 数组，不要其他内容"""
+4. evidence字段要求：
+   - 全部使用中文，严禁出现任何英文单词、事件ID、技术代号
+   - 用日常用语解释因果逻辑，让非专业人士也能读懂
+   - 说明"因为什么→所以什么"的逻辑链条
+   - 适当引用具体数值变化来佐证（如"信任度从0.4上升到0.6"）
+5. 只输出JSON数组，不要其他内容"""
 
             response = client.chat.completions.create(
                 model=Config.LLM_MODEL_NAME,
@@ -441,13 +515,35 @@ class CausalGraphEngine:
                     if relation not in RELATION_TYPES:
                         relation = "correlated"
                     
+                    # 将别名映射回真实 event_id
+                    real_src = None
+                    real_tgt = None
+                    for real_id, alias in id_alias.items():
+                        if alias == src_id:
+                            real_src = real_id
+                        if alias == tgt_id:
+                            real_tgt = real_id
+                    if not real_src or not real_tgt:
+                        continue
+                    if real_tgt not in new_ids:
+                        continue
+                    if (real_src, real_tgt) in existing_pairs:
+                        continue
+
+                    # 二次清洗 evidence：移除可能残留的英文
+                    raw_evidence = item.get("evidence", "模型推断的因果关系")
+                    import re as re2
+                    raw_evidence = re2.sub(r'\b(?:evt_|ce_)[a-f0-9]+\b', '', raw_evidence)
+                    raw_evidence = re2.sub(r'\b(?:Round|round|severity|strength)\b', '', raw_evidence)
+                    raw_evidence = re2.sub(r'\s{2,}', ' ', raw_evidence).strip()
+
                     edges.append(CausalEdge(
                         edge_id=f"ce_{uuid.uuid4().hex[:12]}",
-                        source_event_id=src_id,
-                        target_event_id=tgt_id,
+                        source_event_id=real_src,
+                        target_event_id=real_tgt,
                         relation_type=relation,
                         strength=min(1.0, max(0.0, float(item.get("strength", 0.5)))),
-                        evidence=item.get("evidence", "LLM推断"),
+                        evidence=raw_evidence or "模型推断的因果关系",
                         round_num=max(e.round_num for e in new_events),
                         timestamp=datetime.now().isoformat(),
                     ))
@@ -547,7 +643,7 @@ class CausalGraphEngine:
                 visited.discard(edge.source_event_id)
     
     def _describe_chain(self, chain: List[CausalEdge]) -> str:
-        """生成因果链的文本描述"""
+        """生成因果链的通俗中文描述"""
         if not chain:
             return ""
         
@@ -556,13 +652,17 @@ class CausalGraphEngine:
             src_evt = self._events_cache.get(edge.source_event_id)
             tgt_evt = self._events_cache.get(edge.target_event_id)
             
-            src_desc = src_evt.description[:30] if src_evt else edge.source_event_id
-            tgt_desc = tgt_evt.description[:30] if tgt_evt else edge.target_event_id
+            src_type_cn = EVENT_TYPE_CN.get(src_evt.event_type, '') if src_evt else ''
+            tgt_type_cn = EVENT_TYPE_CN.get(tgt_evt.event_type, '') if tgt_evt else ''
+            src_desc = src_type_cn or (src_evt.description[:20] if src_evt else '未知事件')
+            tgt_desc = tgt_type_cn or (tgt_evt.description[:20] if tgt_evt else '未知事件')
             relation_cn = RELATION_TYPES.get(edge.relation_type, edge.relation_type)
             
             if i == 0:
-                parts.append(f"{src_desc}")
-            parts.append(f" --[{relation_cn}]--> {tgt_desc}")
+                src_round = f"第{src_evt.round_num}轮" if src_evt else ''
+                parts.append(f"{src_round}{src_desc}")
+            tgt_round = f"第{tgt_evt.round_num}轮" if tgt_evt else ''
+            parts.append(f" →({relation_cn})→ {tgt_round}{tgt_desc}")
         
         return "".join(parts)
     

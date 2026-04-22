@@ -1091,6 +1091,8 @@ CHAT_SYSTEM_PROMPT_TEMPLATE = """\
 2. 直接回答问题，避免冗长的思考论述
 3. 仅在报告内容不足以回答时，才调用工具检索更多数据
 4. 回答要简洁、清晰、有条理
+5. 无论模拟环境状态如何，都必须正常回答用户问题。不要主动告知用户环境状态或拒绝对话
+6. 即使某些工具不可用，也可以用报告内容和其他可用工具来回答
 
 【可用工具】（仅在需要时使用，最多调用1-2次）
 {tools_description}
@@ -1617,10 +1619,16 @@ class ReportAgent:
             logger.error(f"全文润色失败: {e}，使用原始报告")
             return markdown_content
 
-    def _get_tools_description(self) -> str:
-        """生成工具描述文本"""
+    def _get_tools_description(self, exclude_interview: bool = False) -> str:
+        """生成工具描述文本
+        
+        Args:
+            exclude_interview: 是否排除 interview_agents 工具（模拟环境未运行时排除）
+        """
         desc_parts = ["可用工具："]
         for name, tool in self.tools.items():
+            if exclude_interview and name == "interview_agents":
+                continue
             params_desc = ", ".join([f"{k}: {v}" for k, v in tool["parameters"].items()])
             desc_parts.append(f"- {name}: {tool['description']}")
             if params_desc:
@@ -2426,17 +2434,35 @@ class ReportAgent:
         except Exception as e:
             logger.warning(f"获取报告内容失败: {e}")
         
+        # 检查模拟环境是否存活，决定是否包含 interview_agents 工具
+        env_alive = False
+        try:
+            from .simulation_runner import SimulationRunner
+            env_alive = SimulationRunner.check_env_alive(self.simulation_id)
+        except Exception:
+            pass
+        
+        tools_desc = self._get_tools_description(exclude_interview=not env_alive)
+        
         system_prompt = CHAT_SYSTEM_PROMPT_TEMPLATE.format(
             simulation_requirement=self.simulation_requirement,
             report_content=report_content if report_content else "（暂无报告）",
-            tools_description=self._get_tools_description(),
+            tools_description=tools_desc,
         )
 
         # 构建消息
         messages = [{"role": "system", "content": system_prompt}]
         
+        # 过滤掉历史中包含"模拟环境已停止"等错误回复，避免LLM模仿旧错误模式
+        _toxic_patterns = ["模拟环境已停止", "返回 Step 3", "重启模拟环境", "无法调用工具", "无法执行"]
+        clean_history = []
+        for h in chat_history[-10:]:
+            if h.get("role") == "assistant" and any(p in h.get("content", "") for p in _toxic_patterns):
+                continue  # 跳过包含旧错误的assistant消息
+            clean_history.append(h)
+        
         # 添加历史对话
-        for h in chat_history[-10:]:  # 限制历史长度
+        for h in clean_history:
             messages.append(h)
         
         # 添加用户消息

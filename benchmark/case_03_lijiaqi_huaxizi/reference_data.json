@@ -1,0 +1,29 @@
+{
+  "case_id": "case_03_lijiaqi_huaxizi",
+  "case_name": "李佳琦/花西子眉笔事件",
+  "case_type": "KOL 信任危机 / 消费者情绪 / 品牌公关",
+  "status": "skeleton",
+  "_note": "此文件为骨架，待案例 1、2 跑通后再补充完整数据",
+
+  "phases": [
+    {"phase_id": "P1", "phase_name": "爆发期", "sentiment_direction": "negative_rising"},
+    {"phase_id": "P2", "phase_name": "信任崩塌期", "sentiment_direction": "negative_peak"},
+    {"phase_id": "P3", "phase_name": "品牌连带期", "sentiment_direction": "negative_divergent"},
+    {"phase_id": "P4", "phase_name": "延迟回应期", "sentiment_direction": "mixed"},
+    {"phase_id": "P5", "phase_name": "长尾期", "sentiment_direction": "neutral_slow"}
+  ],
+
+  "turning_points_top3": [
+    {"tp_id": "T1", "phase": "P1", "description": "不当言论视频传播"},
+    {"tp_id": "T2", "phase": "P2", "description": "大规模取关退货潮"},
+    {"tp_id": "T3", "phase": "P4", "description": "延迟道歉被质疑诚意"}
+  ],
+
+  "key_actors": [
+    {"actor_id": "A1", "name": "李佳琦", "type": "individual", "importance": "high"},
+    {"actor_id": "A2", "name": "花西子", "type": "organization", "importance": "high"},
+    {"actor_id": "A3", "name": "消费者群体", "type": "group", "importance": "high"},
+    {"actor_id": "A4", "name": "竞品国货品牌", "type": "organization", "importance": "medium"},
+    {"actor_id": "A5", "name": "媒体", "type": "media", "importance": "medium"}
+  ]
+}

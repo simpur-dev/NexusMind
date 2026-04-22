@@ -13,7 +13,15 @@
     
     <!-- 顶部导航栏 -->
     <nav class="navbar">
-      <div class="nav-brand" @click="goHome">NexusMind</div>
+      <div class="nav-brand-group">
+        <div class="nav-brand" @click="goHome">NexusMind</div>
+        <button class="home-btn" @click="goHome" title="返回首页">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </button>
+      </div>
       
       <!-- 中间步骤指示器 -->
       <div class="nav-center">
@@ -1192,7 +1200,7 @@ const renderGraph = () => {
     'MediaOutlet':     { fill: '#ec4899', glow: '#f472b6' },
     'AcademicLead':    { fill: '#14b8a6', glow: '#2dd4bf' },
     'University':      { fill: '#0ea5e9', glow: '#38bdf8' },
-    'Entity':          { fill: '#64748b', glow: '#94a3b8' },
+    'Entity':          { fill: '#38bdf8', glow: '#7dd3fc' },
   }
   const FALLBACK_COLORS = [
     { fill: '#6366f1', glow: '#818cf8' },
@@ -1203,6 +1211,14 @@ const renderGraph = () => {
     { fill: '#ec4899', glow: '#f472b6' },
     { fill: '#0ea5e9', glow: '#38bdf8' },
     { fill: '#14b8a6', glow: '#2dd4bf' },
+  ]
+  // 度数分级配色：当所有节点同一类型时，按连接度分层着色
+  const DEGREE_TIER_COLORS = [
+    { fill: '#38bdf8', glow: '#7dd3fc' },  // 低度数：天蓝
+    { fill: '#6366f1', glow: '#818cf8' },  // 中度数：靛蓝
+    { fill: '#a855f7', glow: '#c084fc' },  // 中高度数：紫
+    { fill: '#f43f5e', glow: '#fb7185' },  // 高度数：玫红
+    { fill: '#f59e0b', glow: '#fbbf24' },  // 最高度数：琥珀
   ]
   const types = [...new Set(nodes.map(n => n.type))]
   const typeColorMap = {}
@@ -1215,7 +1231,27 @@ const renderGraph = () => {
       fallbackIdx++
     }
   })
-  const getColor = (type) => typeColorMap[type] || { fill: '#64748b', glow: '#94a3b8' }
+  // 是否所有节点同一类型（需要度数分级着色）
+  const isSingleType = types.length <= 1
+  // 为每个节点分配度数分级颜色
+  if (isSingleType) {
+    const sortedDeg = [...new Set(nodes.map(n => n.degree))].sort((a, b) => a - b)
+    nodes.forEach(n => {
+      const rank = sortedDeg.indexOf(n.degree)
+      const tier = Math.min(Math.floor(rank / Math.max(sortedDeg.length / DEGREE_TIER_COLORS.length, 1)), DEGREE_TIER_COLORS.length - 1)
+      n._color = DEGREE_TIER_COLORS[tier]
+      n._colorId = `deg-${tier}`
+    })
+  }
+  const getColor = (typeOrNode) => {
+    // 如果传入的是节点对象且为单类型模式，使用度数分级颜色
+    if (isSingleType && typeOrNode && typeof typeOrNode === 'object' && typeOrNode._color) {
+      return typeOrNode._color
+    }
+    const type = typeof typeOrNode === 'string' ? typeOrNode : (typeOrNode?.type || 'Entity')
+    return typeColorMap[type] || { fill: '#38bdf8', glow: '#7dd3fc' }
+  }
+  const getColorId = (d) => isSingleType && d._colorId ? d._colorId : d.type.replace(/\s+/g, '_')
   
   // ── 节点半径：基于度数，高连接度的节点更大更醒目 ──
   const maxDeg = Math.max(...nodes.map(n => n.degree), 1)
@@ -1228,29 +1264,36 @@ const renderGraph = () => {
   // ── SVG Defs: 径向渐变 + 辉光 + 箭头 ──
   const defs = svg.append('defs')
   
-  // 每种类型创建渐变和辉光
-  types.forEach(t => {
-    const c = getColor(t)
-    // 径向渐变
+  // 创建渐变和辉光的辅助函数
+  const createGradientAndGlow = (id, c) => {
     const grad = defs.append('radialGradient')
-      .attr('id', `grad-${t.replace(/\s+/g, '_')}`)
+      .attr('id', `grad-${id}`)
       .attr('cx', '35%').attr('cy', '35%').attr('r', '65%')
     grad.append('stop').attr('offset', '0%').attr('stop-color', '#fff').attr('stop-opacity', 0.45)
     grad.append('stop').attr('offset', '50%').attr('stop-color', c.fill).attr('stop-opacity', 1)
     grad.append('stop').attr('offset', '100%').attr('stop-color', d3.color(c.fill).darker(0.6)).attr('stop-opacity', 1)
     
-    // 辉光滤镜
     const filter = defs.append('filter')
-      .attr('id', `glow-${t.replace(/\s+/g, '_')}`)
+      .attr('id', `glow-${id}`)
       .attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%')
-    filter.append('feGaussianBlur').attr('in', 'SourceGraphic').attr('stdDeviation', '3.5').attr('result', 'blur')
+    filter.append('feGaussianBlur').attr('in', 'SourceGraphic').attr('stdDeviation', '4').attr('result', 'blur')
     filter.append('feColorMatrix').attr('in', 'blur').attr('type', 'matrix')
-      .attr('values', `0 0 0 0 ${parseInt(c.glow.slice(1, 3), 16) / 255}  0 0 0 0 ${parseInt(c.glow.slice(3, 5), 16) / 255}  0 0 0 0 ${parseInt(c.glow.slice(5, 7), 16) / 255}  0 0 0 0.55 0`)
+      .attr('values', `0 0 0 0 ${parseInt(c.glow.slice(1, 3), 16) / 255}  0 0 0 0 ${parseInt(c.glow.slice(3, 5), 16) / 255}  0 0 0 0 ${parseInt(c.glow.slice(5, 7), 16) / 255}  0 0 0 0.65 0`)
       .attr('result', 'colorBlur')
     const merge = filter.append('feMerge')
     merge.append('feMergeNode').attr('in', 'colorBlur')
     merge.append('feMergeNode').attr('in', 'SourceGraphic')
+  }
+  // 每种类型创建渐变和辉光
+  types.forEach(t => {
+    createGradientAndGlow(t.replace(/\s+/g, '_'), getColor(t))
   })
+  // 度数分级颜色也需要创建渐变和辉光
+  if (isSingleType) {
+    DEGREE_TIER_COLORS.forEach((c, i) => {
+      createGradientAndGlow(`deg-${i}`, c)
+    })
+  }
   
   // 箭头标记
   defs.append('marker')
@@ -1299,11 +1342,12 @@ const renderGraph = () => {
   const linkPath = linkGroup.append('path')
     .attr('fill', 'none')
     .attr('stroke', d => {
-      const c = getColor(typeof d.source === 'object' ? (nodes.find(n => n.id === d.source.id) || {}).type : 'Entity')
-      return c.glow || '#475569'
+      const srcNode = typeof d.source === 'object' ? nodes.find(n => n.id === d.source.id) : null
+      const c = getColor(srcNode || 'Entity')
+      return c.glow || '#7dd3fc'
     })
-    .attr('stroke-width', 1.2)
-    .attr('stroke-opacity', 0.2)
+    .attr('stroke-width', 1.4)
+    .attr('stroke-opacity', 0.3)
     .attr('marker-end', 'url(#arrow)')
   
   // 透明宽路径用于点击
@@ -1331,7 +1375,7 @@ const renderGraph = () => {
     .style('cursor', 'pointer')
     .on('click', (event, d) => {
       event.stopPropagation()
-      selectNode(d.rawData, getColor(d.type).fill)
+      selectNode(d.rawData, getColor(d).fill)
     })
     .call(d3.drag()
       .on('start', dragstarted)
@@ -1342,17 +1386,17 @@ const renderGraph = () => {
   node.filter(d => d.degree >= 3).append('circle')
     .attr('r', d => nodeRadius(d) + 6)
     .attr('fill', 'none')
-    .attr('stroke', d => getColor(d.type).glow)
-    .attr('stroke-width', 1)
-    .attr('stroke-opacity', 0.25)
+    .attr('stroke', d => getColor(d).glow)
+    .attr('stroke-width', 1.5)
+    .attr('stroke-opacity', 0.4)
     .attr('stroke-dasharray', '3 3')
   
   // 主圆：径向渐变 + 辉光滤镜
   node.append('circle')
     .attr('r', nodeRadius)
-    .attr('fill', d => `url(#grad-${d.type.replace(/\s+/g, '_')})`)
-    .attr('filter', d => d.degree >= 2 ? `url(#glow-${d.type.replace(/\s+/g, '_')})` : null)
-    .attr('stroke', d => d3.color(getColor(d.type).fill).brighter(0.3))
+    .attr('fill', d => `url(#grad-${getColorId(d)})`)
+    .attr('filter', d => d.degree >= 1 ? `url(#glow-${getColorId(d)})` : null)
+    .attr('stroke', d => d3.color(getColor(d).fill).brighter(0.3))
     .attr('stroke-width', d => d.degree >= 5 ? 2 : 1.2)
     .attr('stroke-opacity', 0.7)
     .attr('class', 'node-circle')
@@ -1373,8 +1417,8 @@ const renderGraph = () => {
     .attr('font-family', "'Noto Sans SC', 'JetBrains Mono', sans-serif")
     .attr('font-weight', d => d.degree >= 5 ? 600 : 400)
     .attr('fill', d => {
-      const c = getColor(d.type)
-      return d.degree >= 3 ? c.glow : 'rgba(148,163,184,0.85)'
+      const c = getColor(d)
+      return d.degree >= 2 ? c.glow : 'rgba(200,210,225,0.9)'
     })
     .attr('paint-order', 'stroke')
     .attr('stroke', 'rgba(10,10,26,0.7)')
@@ -1417,7 +1461,7 @@ const renderGraph = () => {
   })
   .on('mouseout', () => {
     node.select('.node-circle').transition().duration(300).attr('opacity', 1)
-    linkPath.transition().duration(300).attr('stroke-opacity', 0.2).attr('stroke-width', 1.2)
+    linkPath.transition().duration(300).attr('stroke-opacity', 0.3).attr('stroke-width', 1.4)
     labelItem.select('text').transition().duration(300).attr('opacity', 1)
     linkLabel.transition().duration(300).attr('opacity', 0)
   })
@@ -1463,30 +1507,37 @@ const renderGraph = () => {
   }
   
   // ── 内嵌图例（左下角） ──
+  const legendItems = isSingleType
+    ? DEGREE_TIER_COLORS.map((c, i) => ({
+        color: c.fill,
+        label: ['低连接度', '中连接度', '中高连接度', '高连接度', '核心节点'][i]
+      }))
+    : types.map(t => ({ color: getColor(t).fill, label: t }))
+
   const legendG = svg.append('g')
-    .attr('transform', `translate(16, ${height - types.length * 22 - 16})`)
+    .attr('transform', `translate(16, ${height - legendItems.length * 22 - 16})`)
   
-  const legendBg = legendG.append('rect')
+  legendG.append('rect')
     .attr('x', -8).attr('y', -8)
     .attr('width', 140)
-    .attr('height', types.length * 22 + 12)
+    .attr('height', legendItems.length * 22 + 12)
     .attr('rx', 6)
     .attr('fill', 'rgba(10,10,26,0.6)')
     .attr('stroke', 'rgba(100,116,139,0.2)')
     .attr('stroke-width', 1)
   
-  types.forEach((t, i) => {
+  legendItems.forEach((item, i) => {
     const row = legendG.append('g').attr('transform', `translate(0, ${i * 22})`)
     row.append('circle')
       .attr('r', 5)
       .attr('cx', 6).attr('cy', 0)
-      .attr('fill', getColor(t).fill)
+      .attr('fill', item.color)
     row.append('text')
       .attr('x', 18).attr('dy', 4)
       .attr('font-size', '10px')
       .attr('fill', 'rgba(203,213,225,0.85)')
       .attr('font-family', "'Noto Sans SC', sans-serif")
-      .text(t)
+      .text(item.label)
   })
 }
 
@@ -1554,6 +1605,12 @@ onUnmounted(() => {
   border-bottom: 1px solid rgba(115, 168, 185, 0.2);
 }
 
+.nav-brand-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .nav-brand {
   font-size: 1rem;
   font-weight: 700;
@@ -1569,6 +1626,26 @@ onUnmounted(() => {
 .nav-brand:hover {
   opacity: 0.8;
   transform: translateX(2px);
+}
+
+.home-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(115, 168, 185, 0.3);
+  border-radius: 6px;
+  background: rgba(115, 168, 185, 0.1);
+  color: #3A5A6A;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.home-btn:hover {
+  background: rgba(115, 168, 185, 0.25);
+  border-color: rgba(115, 168, 185, 0.5);
+  transform: translateY(-1px);
 }
 
 .nav-center {
@@ -2798,6 +2875,8 @@ onUnmounted(() => {
 }
 
 .step-area-inner {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   overflow-y: auto;
   min-height: 0;

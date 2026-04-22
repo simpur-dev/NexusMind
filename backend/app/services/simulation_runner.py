@@ -583,15 +583,6 @@ class SimulationRunner:
             cls._post_sim_graph_import[simulation_id] = graph_id
             logger.info(f"已注册模拟后批量图谱导入: simulation_id={simulation_id}, graph_id={graph_id}")
         
-        # 初始化世界状态引擎
-        try:
-            ws_engine = WorldStateEngine(sim_dir=sim_dir, use_llm=bool(Config.LLM_API_KEY))
-            cls._world_state_engines[simulation_id] = ws_engine
-            cls._round_action_buffers[simulation_id] = []
-            logger.info(f"已初始化世界状态引擎: simulation_id={simulation_id}")
-        except Exception as e:
-            logger.error(f"初始化世界状态引擎失败: {e}")
-        
         # 确定运行哪个脚本（脚本位于 backend/scripts/ 目录）
         if platform == "twitter":
             script_name = "run_twitter_simulation.py"
@@ -657,6 +648,15 @@ class SimulationRunner:
                             os.remove(f)
                         except Exception as e:
                             logger.warning(f"清理旧文件失败: {f}: {e}")
+            
+            # 初始化世界状态引擎（必须在清理旧文件之后，避免加载上一轮的历史数据）
+            try:
+                ws_engine = WorldStateEngine(sim_dir=sim_dir, use_llm=bool(Config.LLM_API_KEY))
+                cls._world_state_engines[simulation_id] = ws_engine
+                cls._round_action_buffers[simulation_id] = []
+                logger.info(f"已初始化世界状态引擎: simulation_id={simulation_id}")
+            except Exception as e:
+                logger.error(f"初始化世界状态引擎失败: {e}")
             
             # 创建主日志文件，避免 stdout/stderr 管道缓冲区满导致进程阻塞
             main_log_path = os.path.join(sim_dir, "simulation.log")
@@ -1907,7 +1907,26 @@ class SimulationRunner:
             return False
 
         ipc_client = SimulationIPCClient(sim_dir)
-        return ipc_client.check_env_alive()
+        file_says_alive = ipc_client.check_env_alive()
+        
+        if not file_says_alive:
+            return False
+        
+        # env_status.json 说 alive，但需要验证进程是否真的在跑
+        # 检查是否有对应的活跃进程
+        process = cls._processes.get(simulation_id)
+        if process is not None and process.poll() is None:
+            return True  # 进程确实在跑
+        
+        # 文件说alive但进程不存在 → 状态文件过期，修正它
+        logger.warning(f"env_status.json says alive but no running process found for {simulation_id}, correcting to stopped")
+        try:
+            status_file = os.path.join(sim_dir, "env_status.json")
+            with open(status_file, 'w', encoding='utf-8') as f:
+                json.dump({"status": "stopped", "timestamp": __import__('datetime').datetime.now().isoformat()}, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+        return False
 
     @classmethod
     def get_env_status_detail(cls, simulation_id: str) -> Dict[str, Any]:

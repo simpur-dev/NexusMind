@@ -3230,12 +3230,7 @@ def get_sim_graph(simulation_id):
       (SimAgent)-[:CORRESPONDS_TO]->(知识图谱实体)
     """
     try:
-        from neo4j import GraphDatabase
-
         graph_id = request.args.get('graph_id')
-        if not graph_id:
-            return jsonify({"success": False, "error": "缺少 graph_id 参数，无法查询图谱"}), 400
-
         platform = request.args.get('platform')
         action_limit = min(int(request.args.get('limit', 240)), 1200)
         event_limit = min(int(request.args.get('event_limit', 18)), 60)
@@ -3249,15 +3244,20 @@ def get_sim_graph(simulation_id):
         recent_event_ids = {evt.event_id for evt in recent_events}
         causal_edges = []
         if ws_engine and recent_event_ids:
-            causal_edges = [
-                edge for edge in ws_engine.causal_graph.edges
-                if edge.source_event_id in recent_event_ids and edge.target_event_id in recent_event_ids
-            ]
+            try:
+                causal_edges = [
+                    edge for edge in ws_engine.causal_graph.edges
+                    if edge.source_event_id in recent_event_ids and edge.target_event_id in recent_event_ids
+                ]
+            except Exception as ce_err:
+                logger.warning(f"加载因果边失败: {ce_err}")
 
         nodes = []
         edges = []
         node_ids = set()
         action_rows = []
+        agent_count = 0
+        stats_result = None
 
         def add_node(node):
             node_id = node.get("id")
@@ -3265,101 +3265,108 @@ def get_sim_graph(simulation_id):
                 nodes.append(node)
                 node_ids.add(node_id)
 
-        driver = GraphDatabase.driver(
-            Config.NEO4J_URI,
-            auth=(Config.NEO4J_USERNAME, Config.NEO4J_PASSWORD)
-        )
+        # Neo4j 查询（graph_id 存在时才执行，否则跳过）
+        if graph_id:
+            try:
+                from neo4j import GraphDatabase
 
-        with driver.session() as session:
-            agent_result = session.run(
-                "MATCH (a:SimAgent {graph_id: $gid}) "
-                "OPTIONAL MATCH (a)-[:PERFORMED]->(act:SimAction) "
-                "WHERE $platform = '' OR act.platform = $platform "
-                "RETURN a.name AS name, count(act) AS action_count, collect(DISTINCT act.platform) AS platforms",
-                gid=graph_id,
-                platform=platform or ''
-            )
-            for rec in agent_result:
-                plats = [p for p in (rec["platforms"] or []) if p]
-                add_node({
-                    "id": f"agent_{rec['name']}",
-                    "label": rec["name"],
-                    "type": "agent",
-                    "platform": ','.join(plats),
-                    "action_count": rec["action_count"] or 0,
-                })
+                driver = GraphDatabase.driver(
+                    Config.NEO4J_URI,
+                    auth=(Config.NEO4J_USERNAME, Config.NEO4J_PASSWORD)
+                )
 
-            action_query = (
-                "MATCH (ag:SimAgent {graph_id: $gid})-[:PERFORMED]->(act:SimAction) "
-                "WHERE ($platform = '' OR act.platform = $platform) "
-            )
-            params = {
-                "gid": graph_id,
-                "platform": platform or '',
-                "limit": action_limit,
-                "event_rounds": event_rounds,
-            }
-            if event_rounds:
-                action_query += "AND act.round IN $event_rounds "
-            action_query += (
-                "RETURN ag.name AS agent_name, act.uid AS uid, act.action_type AS action_type, "
-                "act.platform AS platform, act.round AS round_num, substring(act.content, 0, 120) AS content_preview "
-                "ORDER BY act.round DESC LIMIT $limit"
-            )
+                with driver.session() as session:
+                    agent_result = session.run(
+                        "MATCH (a:SimAgent {graph_id: $gid}) "
+                        "OPTIONAL MATCH (a)-[:PERFORMED]->(act:SimAction) "
+                        "WHERE $platform = '' OR act.platform = $platform "
+                        "RETURN a.name AS name, count(act) AS action_count, collect(DISTINCT act.platform) AS platforms",
+                        gid=graph_id,
+                        platform=platform or ''
+                    )
+                    for rec in agent_result:
+                        plats = [p for p in (rec["platforms"] or []) if p]
+                        add_node({
+                            "id": f"agent_{rec['name']}",
+                            "label": rec["name"],
+                            "type": "agent",
+                            "platform": ','.join(plats),
+                            "action_count": rec["action_count"] or 0,
+                        })
 
-            action_result = session.run(action_query, **params)
-            for rec in action_result:
-                action_id = f"action_{rec['uid']}"
-                agent_id = f"agent_{rec['agent_name']}"
-                action_row = {
-                    "id": action_id,
-                    "agent_id": agent_id,
-                    "label": rec["action_type"],
-                    "type": "action",
-                    "platform": rec["platform"],
-                    "round_num": rec["round_num"],
-                    "content_preview": rec["content_preview"] or "",
-                }
-                action_rows.append(action_row)
-                add_node(action_row)
-                edges.append({
-                    "source": agent_id,
-                    "target": action_id,
-                    "type": "PERFORMED",
-                })
+                    action_query = (
+                        "MATCH (ag:SimAgent {graph_id: $gid})-[:PERFORMED]->(act:SimAction) "
+                        "WHERE ($platform = '' OR act.platform = $platform) "
+                    )
+                    params = {
+                        "gid": graph_id,
+                        "platform": platform or '',
+                        "limit": action_limit,
+                        "event_rounds": event_rounds,
+                    }
+                    if event_rounds:
+                        action_query += "AND act.round IN $event_rounds "
+                    action_query += (
+                        "RETURN ag.name AS agent_name, act.uid AS uid, act.action_type AS action_type, "
+                        "act.platform AS platform, act.round AS round_num, substring(act.content, 0, 120) AS content_preview "
+                        "ORDER BY act.round DESC LIMIT $limit"
+                    )
 
-            link_result = session.run(
-                "MATCH (a:SimAgent {graph_id: $gid})-[:CORRESPONDS_TO]->(e) "
-                "RETURN a.name AS agent_name, elementId(e) AS entity_eid, e.name AS entity_name, labels(e) AS entity_labels",
-                gid=graph_id
-            )
-            for rec in link_result:
-                entity_id = f"entity_{rec['entity_eid']}"
-                agent_id = f"agent_{rec['agent_name']}"
-                add_node({
-                    "id": entity_id,
-                    "label": rec["entity_name"] or "Entity",
-                    "type": "entity",
-                    "entity_labels": rec["entity_labels"],
-                })
-                edges.append({
-                    "source": agent_id,
-                    "target": entity_id,
-                    "type": "CORRESPONDS_TO",
-                })
+                    action_result = session.run(action_query, **params)
+                    for rec in action_result:
+                        action_id = f"action_{rec['uid']}"
+                        agent_id = f"agent_{rec['agent_name']}"
+                        action_row = {
+                            "id": action_id,
+                            "agent_id": agent_id,
+                            "label": rec["action_type"],
+                            "type": "action",
+                            "platform": rec["platform"],
+                            "round_num": rec["round_num"],
+                            "content_preview": rec["content_preview"] or "",
+                        }
+                        action_rows.append(action_row)
+                        add_node(action_row)
+                        edges.append({
+                            "source": agent_id,
+                            "target": action_id,
+                            "type": "PERFORMED",
+                        })
 
-            stats_result = session.run(
-                "MATCH (act:SimAction {graph_id: $gid}) "
-                "RETURN count(act) AS total_actions, count(DISTINCT act.platform) AS platforms, max(act.round) AS max_round",
-                gid=graph_id
-            ).single()
+                    link_result = session.run(
+                        "MATCH (a:SimAgent {graph_id: $gid})-[:CORRESPONDS_TO]->(e) "
+                        "RETURN a.name AS agent_name, elementId(e) AS entity_eid, e.name AS entity_name, labels(e) AS entity_labels",
+                        gid=graph_id
+                    )
+                    for rec in link_result:
+                        entity_id = f"entity_{rec['entity_eid']}"
+                        agent_id = f"agent_{rec['agent_name']}"
+                        add_node({
+                            "id": entity_id,
+                            "label": rec["entity_name"] or "Entity",
+                            "type": "entity",
+                            "entity_labels": rec["entity_labels"],
+                        })
+                        edges.append({
+                            "source": agent_id,
+                            "target": entity_id,
+                            "type": "CORRESPONDS_TO",
+                        })
 
-            agent_count = session.run(
-                "MATCH (a:SimAgent {graph_id: $gid}) RETURN count(a) AS c",
-                gid=graph_id
-            ).single()["c"]
+                    stats_result = session.run(
+                        "MATCH (act:SimAction {graph_id: $gid}) "
+                        "RETURN count(act) AS total_actions, count(DISTINCT act.platform) AS platforms, max(act.round) AS max_round",
+                        gid=graph_id
+                    ).single()
 
-        driver.close()
+                    agent_count = session.run(
+                        "MATCH (a:SimAgent {graph_id: $gid}) RETURN count(a) AS c",
+                        gid=graph_id
+                    ).single()["c"]
+
+                driver.close()
+            except Exception as neo_err:
+                logger.warning(f"Neo4j 查询失败（graph_id={graph_id}），仅返回事件和因果边: {neo_err}")
 
         variable_meta = {
             "attention_level": "关注度",
@@ -3451,6 +3458,164 @@ def get_sim_graph(simulation_id):
         })
     except Exception as e:
         logger.error(f"获取模拟图谱失败: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
+# ============== 离线对话接口（模拟环境停止后仍可使用） ==============
+
+@simulation_bp.route('/interview/offline', methods=['POST'])
+def interview_agent_offline():
+    """
+    离线采访Agent（无需模拟环境运行）
+
+    使用存储的Agent人设 + 历史行为数据，通过LLM模拟Agent回答。
+    当模拟环境已停止时，自动降级为此模式。
+
+    请求（JSON）：
+        {
+            "simulation_id": "sim_xxxx",
+            "agent_id": 0,
+            "prompt": "你对这个事件怎么看？",
+            "chat_history": []  // 可选
+        }
+
+    返回格式与 /interview/batch 一致，便于前端统一处理。
+    """
+    try:
+        data = request.get_json() or {}
+        simulation_id = data.get('simulation_id')
+        agent_id = data.get('agent_id')
+        prompt = data.get('prompt', '')
+        chat_history = data.get('chat_history', [])
+
+        if not simulation_id:
+            return jsonify({"success": False, "error": "请提供 simulation_id"}), 400
+        if agent_id is None:
+            return jsonify({"success": False, "error": "请提供 agent_id"}), 400
+        if not prompt:
+            return jsonify({"success": False, "error": "请提供 prompt"}), 400
+
+        # 1. 加载Agent人设
+        sim_dir = os.path.join(SimulationRunner.RUN_STATE_DIR, simulation_id)
+        profile = None
+        for profile_file in ['reddit_profiles.json', 'twitter_profiles.csv']:
+            fpath = os.path.join(sim_dir, profile_file)
+            if not os.path.exists(fpath):
+                continue
+            if profile_file.endswith('.json'):
+                import json as _json
+                with open(fpath, 'r', encoding='utf-8') as f:
+                    profiles = _json.load(f)
+                for p in profiles:
+                    if p.get('user_id') == agent_id:
+                        profile = p
+                        break
+            elif profile_file.endswith('.csv'):
+                import csv
+                with open(fpath, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        if int(row.get('user_id', -1)) == agent_id:
+                            profile = row
+                            break
+            if profile:
+                break
+
+        if not profile:
+            return jsonify({"success": False, "error": f"未找到 agent_id={agent_id} 的人设数据"}), 404
+
+        # 2. 加载Agent历史行为（帖子、评论）
+        agent_actions = []
+        for db_file in ['reddit_simulation.db', 'twitter_simulation.db']:
+            db_path = os.path.join(sim_dir, db_file)
+            if not os.path.exists(db_path):
+                continue
+            import sqlite3
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+            platform = 'reddit' if 'reddit' in db_file else 'twitter'
+            try:
+                # 获取该Agent的帖子
+                cur.execute("SELECT content, created_at FROM post WHERE user_id=? ORDER BY created_at", (agent_id,))
+                for row in cur.fetchall():
+                    agent_actions.append({"platform": platform, "type": "post", "content": row[0], "time": row[1]})
+                # 获取该Agent的评论
+                cur.execute("SELECT content, created_at FROM comment WHERE user_id=? ORDER BY created_at", (agent_id,))
+                for row in cur.fetchall():
+                    agent_actions.append({"platform": platform, "type": "comment", "content": row[0], "time": row[1]})
+            except Exception:
+                pass
+            finally:
+                conn.close()
+
+        # 3. 构建System Prompt
+        agent_name = profile.get('name') or profile.get('username', f'Agent_{agent_id}')
+        persona = profile.get('persona', '')
+        bio = profile.get('bio', '')
+        profession = profile.get('profession', '')
+        mbti = profile.get('mbti', '')
+
+        actions_text = ""
+        if agent_actions:
+            actions_text = "\n\n【你在模拟中的历史发言】\n"
+            for a in agent_actions[-20:]:  # 最多20条
+                actions_text += f"- [{a['platform']}][{a['type']}] {a['content'][:200]}\n"
+
+        system_prompt = f"""你现在扮演以下角色，请完全以该角色的身份、性格和立场来回答问题。
+
+【角色名称】{agent_name}
+【职业】{profession}
+【MBTI】{mbti}
+【简介】{bio}
+
+【详细人设】
+{persona}
+{actions_text}
+【规则】
+1. 始终以第一人称回答，保持角色一致性
+2. 基于你的人设、立场和过往发言来回答
+3. 用自然对话的口吻，不要说你是AI或角色扮演
+4. 回答要有实质内容，体现你的个性和观点"""
+
+        # 4. 调用LLM
+        from ..utils.llm_client import LLMClient
+        llm = LLMClient()
+
+        messages = [{"role": "system", "content": system_prompt}]
+        # 添加历史对话
+        for h in chat_history[-6:]:
+            messages.append(h)
+        messages.append({"role": "user", "content": prompt})
+
+        response = llm.chat(messages=messages, temperature=0.7, max_tokens=2048)
+
+        # 5. 返回格式与 batch interview 一致
+        result_key = f"reddit_{agent_id}"
+        return jsonify({
+            "success": True,
+            "data": {
+                "interviews_count": 1,
+                "offline_mode": True,
+                "result": {
+                    "interviews_count": 1,
+                    "results": {
+                        result_key: {
+                            "agent_id": agent_id,
+                            "response": response,
+                            "platform": "offline",
+                            "agent_name": agent_name
+                        }
+                    }
+                }
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"离线对话失败: {str(e)}")
         return jsonify({
             "success": False,
             "error": str(e),
