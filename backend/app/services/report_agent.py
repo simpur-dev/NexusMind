@@ -401,11 +401,13 @@ class ReportSection:
     """报告章节"""
     title: str
     content: str = ""
+    description: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "title": self.title,
-            "content": self.content
+            "content": self.content,
+            "description": self.description
         }
 
     def to_markdown(self, level: int = 2) -> str:
@@ -687,6 +689,11 @@ PLAN_SYSTEM_PROMPT = """\
 - 这些概念应在摘要中引入，在各章节中反复引用和深化
 - 概念命名要精准、可理解，避免堆砌术语
 
+【章节描述要求】
+- 每个章节的 description 必须包含 2-3 个明确的分析问题（以问号结尾），这些问题将指导章节撰写
+- description 还应说明该章节的分析视角和期望的论证深度
+- 相邻章节之间应有清晰的逻辑递进关系（如：现象→原因→影响→对策）
+
 请输出JSON格式的报告大纲，格式如下：
 {
     "title": "报告标题",
@@ -695,7 +702,7 @@ PLAN_SYSTEM_PROMPT = """\
     "sections": [
         {
             "title": "一、章节标题",
-            "description": "章节内容描述（包括要回答的核心问题）"
+            "description": "章节核心任务描述。本章需回答：1. 问题一？2. 问题二？3. 问题三？分析视角：xxx"
         }
     ]
 }
@@ -737,6 +744,7 @@ SECTION_SYSTEM_PROMPT_TEMPLATE = """\
 预测场景（模拟需求）: {simulation_requirement}
 
 当前要撰写的章节: {section_title}
+章节写作指引: {section_description}
 
 ═══════════════════════════════════════════════════════════════
 【核心理念】
@@ -754,10 +762,10 @@ SECTION_SYSTEM_PROMPT_TEMPLATE = """\
 ✅ 要聚焦于"未来会怎样"——模拟结果就是预测的未来
 
 ═══════════════════════════════════════════════════════════════
-【分析纵深要求 - 区分普通报告与高质量报告的关键】
+【⚠️ 写作质量要求 - 这是区分优秀报告与普通报告的关键】
 ═══════════════════════════════════════════════════════════════
 
-每个分析点必须达到三层纵深，不能停留在事实罗列：
+一、分析纵深（每个分析点必须达到三层纵深，不能停留在事实罗列）：
 1. **现象层**：模拟中观察到了什么（引用Agent言行或数据）
 2. **解释层**：这意味着什么（公众/群体如何解读、背后的逻辑是什么）
 3. **推论层**：由此推出什么判断（对信任/风险/决策的含义）
@@ -767,7 +775,25 @@ SECTION_SYSTEM_PROMPT_TEMPLATE = """\
   → 解释：这说明公众将校方行为解码为被动合规而非主动纠错
   → 推论：因此校方修复了结果，却没有修复人们对其治理能力的预期
 
-【概念贯穿】在本章节中应自然引用或回扣上述"核心概念"，使全文形成统一的分析框架。
+二、语句通顺与连贯性（极其重要！）：
+1. **段落间必须有逻辑过渡**：每段开头应自然承接上一段的结论，不能突然跳到新话题。
+   使用过渡句如"在此基础上""与此形成对比的是""值得注意的是""进一步观察发现"等。
+2. **禁止碎片化罗列**：不要写成孤立的要点堆砌，每个分析段落应包含完整的论证链
+   （观察→分析→结论），段落之间要有因果或递进关系。
+3. **句子必须完整通顺**：避免半句话断开、主谓不搭配、成分残缺。
+   每个句子都应独立成立，可以被大声朗读而不觉得别扭。
+4. **避免口语化和套话**：不要使用"总的来说""不难看出""毫无疑问"等空洞套话，
+   用具体分析替代笼统判断。
+5. **控制列表使用**：列表不应超过5项，且每项应有实质内容（不少于一句完整的话）。
+   当列表过长时，改为分段论述。
+
+三、章节写作指引对照：
+上方"章节写作指引"中列出了本章节需要回答的核心问题。
+你的章节内容必须逐一覆盖这些问题，确保每个问题都有基于模拟数据的实质性回答。
+如果某个问题的数据不足，明确说明而非回避。
+
+四、概念贯穿：
+在本章节中应自然引用或回扣上述"核心概念"，使全文形成统一的分析框架。
 不需要每段都提，但关键论点应与核心概念形成呼应。
 
 ═══════════════════════════════════════════════════════════════
@@ -987,18 +1013,42 @@ POLISH_SYSTEM_PROMPT = """\
 【你的任务】
 对全文进行最后一轮编辑优化，提升报告的整体质量。你需要：
 
-1. **概念一致性**：检查核心分析概念在各章节中的使用是否一致，术语表述是否统一
-2. **逻辑衔接**：确保章节之间有自然过渡，前后论点不矛盾、不重复
-3. **论证纵深**：如果某处只有现象描述而缺乏分析推论，补充"这意味着…""由此可以判断…"等推论
-4. **语言风格**：统一为冷静、克制、分析性的语言，消除残余的咨询话术和夸张修辞
-5. **引用质量**：确保引用块（> 格式）前后有空行、与正文分离，引用内容有分析价值
-6. **表格检查**：如有表格，确认表头和列数对齐
-7. **重复消除**：不同章节间如果存在高度相似的论述或引用，合并或删除重复的部分
-8. **格式规范**：
+1. **语句通顺性（最高优先级）**：
+   - 逐句检查主谓搭配、成分完整性，修正病句和半截话
+   - 确保每个句子独立朗读时自然通顺，没有生硬拼接感
+   - 修复因机器生成导致的不自然表述（如主语缺失、指代不明、语序混乱）
+   - 长句拆短：超过60字的句子考虑拆分为两个短句，避免嵌套过深
+
+2. **段落衔接与逻辑连贯**：
+   - 每段开头必须自然承接上一段的结论或观点，不能突然跳到新话题
+   - 补充必要的过渡句（如"在此基础上""与此形成对比的是""进一步观察发现"）
+   - 检查段与段之间是否存在逻辑断裂，如有则补充过渡性分析
+   - 章节之间的衔接：前一章节的结论应在后一章节的开篇有所呼应
+
+3. **概念一致性**：检查核心分析概念在各章节中的使用是否一致，术语表述是否统一
+
+4. **论证纵深**：如果某处只有现象描述而缺乏分析推论，补充"这意味着…""由此可以判断…"等推论层
+
+5. **消除口语化和套话**：
+   - 删除或改写"总的来说""不难看出""毫无疑问""众所周知""显而易见"等空洞套话
+   - 将"很大程度上""在某种意义上"等模糊表述替换为更具体的分析性表述
+   - 消除咨询话术和夸张修辞（如"穿透式诊断""赤字""塌方"等标签化表述）
+
+6. **引用质量**：确保引用块（> 格式）前后有空行、与正文分离，引用内容有分析价值
+
+7. **重复消除**：不同章节间如果存在高度相似的论述、相同引用或雷同结论，合并或删除重复部分
+
+8. **列表优化**：
+   - 超过5项的列表改为分段论述
+   - 每个列表项必须有实质内容（不少于一句完整的话），删除"详见下文""略"等无效项
+   - 避免通篇碎片化罗列，确保列表前后有总结性段落
+
+9. **格式规范**：
    - 章节标题为 ## 格式
    - 子节标题为 ### 格式
    - 不应出现 #### 或更深层级
    - 消除多余空行（连续3个以上空行→2个）
+   - 确保表格表头和列数对齐
 
 【绝对禁止】
 - ❌ 不要添加任何新的事实、数据、引用或案例（你没有数据源）
@@ -1015,7 +1065,15 @@ POLISH_USER_PROMPT = """\
 
 {report_content}
 
-请对全文进行最终润色优化，直接输出润色后的完整 Markdown 报告。"""
+请按以下优先级逐项执行润色（不要跳过任何一项）：
+
+1. 【通顺性】逐句朗读检查，修正所有主谓不搭配、成分残缺、语序混乱的句子
+2. 【衔接性】检查每个段落的开头是否自然承接上段结论，补充缺失的过渡句
+3. 【去套话】删除"总的来说""不难看出""毫无疑问"等空洞表述，替换为具体分析
+4. 【去重复】跨章节检查是否有雷同论述或相同引用，合并或删除
+5. 【格式】确保引用块前后有空行，表格列数对齐，无多余空行
+
+直接输出润色后的完整 Markdown 报告。"""
 
 # ── Chat prompt ──
 
@@ -1473,7 +1531,37 @@ class ReportAgent:
         # 5. 连续重复来源标签去重
         text = re.sub(r'（来源：([^）]+)）(?:\s*（来源：\1）)+', r'（来源：\1）', text)
 
-        # 6. 清理多余空白
+        # 6. 修复引用块格式：确保 > 引用块前后有空行
+        lines = text.split('\n')
+        fixed_lines = []
+        for idx, line in enumerate(lines):
+            is_quote = line.strip().startswith('>')
+            prev_is_blank = (idx == 0) or (fixed_lines and fixed_lines[-1].strip() == '')
+            if is_quote and not prev_is_blank and fixed_lines:
+                fixed_lines.append('')
+            fixed_lines.append(line)
+            # 引用块后面如果紧跟非空行，也加空行
+            if is_quote and idx + 1 < len(lines):
+                next_line = lines[idx + 1].strip()
+                if next_line and not next_line.startswith('>'):
+                    fixed_lines.append('')
+        text = '\n'.join(fixed_lines)
+
+        # 7. 清除残留的空来源标签，如 （来源：） ()
+        text = re.sub(r'[（(]来源：\s*[）)]', '', text)
+
+        # 8. 清除口语化套话开头（如段首 "总的来说，""不难看出，"）
+        cliches = [
+            r'(?m)^总的来说[，,]\s*',
+            r'(?m)^不难看出[，,]\s*',
+            r'(?m)^毫无疑问[，,]\s*',
+            r'(?m)^众所周知[，,]\s*',
+            r'(?m)^显而易见[，,]\s*',
+        ]
+        for pattern in cliches:
+            text = re.sub(pattern, '', text)
+
+        # 9. 清理多余空白
         text = re.sub(r'[ \t]{2,}', ' ', text)
         text = re.sub(r'\n{3,}', '\n\n', text)
 
@@ -1607,7 +1695,8 @@ class ReportAgent:
             for section_data in response.get("sections", []):
                 sections.append(ReportSection(
                     title=section_data.get("title", ""),
-                    content=""
+                    content="",
+                    description=section_data.get("description", "")
                 ))
             
             outline = ReportOutline(
@@ -1630,11 +1719,11 @@ class ReportAgent:
                 title="未来预测报告",
                 summary="基于模拟预测的未来趋势与风险分析",
                 sections=[
-                    ReportSection(title="一、情景设定与分析边界"),
-                    ReportSection(title="二、核心判断"),
-                    ReportSection(title="三、群体反应图谱"),
-                    ReportSection(title="四、风险结构与趋势预测"),
-                    ReportSection(title="五、决策建议与结论")
+                    ReportSection(title="一、情景设定与分析边界", description="本报告的分析视角、方法边界与模拟世界的基本设定。本章需回答：1. 模拟世界的核心变量和边界条件是什么？2. 哪些因素在模拟范围内、哪些不在？"),
+                    ReportSection(title="二、核心判断", description="凝练2-4条核心结论。本章需回答：1. 模拟揭示的最重要发现是什么？2. 这些发现对决策者意味着什么？"),
+                    ReportSection(title="三、群体反应图谱", description="各类群体如何解读和行动。本章需回答：1. 不同群体的主导认知和情绪反应有何差异？2. 哪些群体的反应最具影响力？"),
+                    ReportSection(title="四、风险结构与趋势预测", description="当前策略的隐性风险与演化路径。本章需回答：1. 最大的潜在风险是什么？2. 短/中/长期可能的演化路径是什么？"),
+                    ReportSection(title="五、决策建议与结论", description="可执行的建议与全文收束。本章需回答：1. 若希望改善，优先应采取哪些措施？2. 如何在不同时间窗口内分步行动？")
                 ]
             )
     
@@ -1679,12 +1768,16 @@ class ReportAgent:
         else:
             core_concepts_str = "（由你根据报告摘要提炼）"
         
+        # 获取章节写作指引（大纲中的 description）
+        section_description = section.description or "（无额外指引，请根据章节标题自行规划写作重点）"
+        
         system_prompt = SECTION_SYSTEM_PROMPT_TEMPLATE.format(
             report_title=outline.title,
             report_summary=outline.summary,
             core_concepts=core_concepts_str,
             simulation_requirement=self.simulation_requirement,
             section_title=section.title,
+            section_description=section_description,
             tools_description=self._get_tools_description(),
         )
 
@@ -3001,7 +3094,8 @@ class ReportManager:
             for s in outline_data.get('sections', []):
                 sections.append(ReportSection(
                     title=s['title'],
-                    content=s.get('content', '')
+                    content=s.get('content', ''),
+                    description=s.get('description', '')
                 ))
             outline = ReportOutline(
                 title=outline_data['title'],

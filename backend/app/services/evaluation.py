@@ -142,14 +142,115 @@ class SimulationEvaluator:
         # 3) 世界状态演化
         states = self._load_world_state_history()
         events = self._load_events()
-        report.total_rounds = len(states)
+        dedup_states = self._deduplicate_states(states)
+        report.total_rounds = len(dedup_states)
         report.state_evolution = self._compute_state_evolution(states, events)
 
         # 4) 影响力分析
         report.influence_analysis = self._compute_influence(actions)
         report.total_agents = report.influence_analysis.get("total_agents", 0)
 
+        # ---- 扩展数据（面向评委展示世界模型） ----
+
+        # 5) 世界状态六维演化时序（供折线图绘制）
+        report.state_evolution["world_state_timeline"] = self._build_world_state_timeline(dedup_states)
+
+        # 6) 平台分离统计
+        report.state_evolution["platform_breakdown"] = self._compute_platform_breakdown(actions)
+
+        # 7) 因果图谱统计
+        report.state_evolution["causal_graph_stats"] = self._compute_causal_stats()
+
+        # 8) 世界模型反馈环统计
+        report.state_evolution["feedback_loop_stats"] = self._compute_feedback_stats(dedup_states)
+
         return report
+
+    # ==================== 新增：世界状态时序 ====================
+
+    def _build_world_state_timeline(self, states: list) -> list:
+        """构建六维世界状态时序数据（供前端折线图）"""
+        dims = [
+            "attention_level", "panic_level", "trust_level",
+            "polarization_level", "risk_level", "stability_level"
+        ]
+        result = []
+        for s in states:
+            point = {"round_num": s.get("round_num", 0)}
+            for d in dims:
+                point[d] = round(s.get(d, 0.0), 4)
+            # 同时带上活跃Agent数、总帖子数
+            point["active_agent_count"] = s.get("active_agent_count", 0)
+            point["total_posts"] = s.get("total_posts", 0)
+            result.append(point)
+        return result
+
+    # ==================== 新增：平台分离统计 ====================
+
+    def _compute_platform_breakdown(self, actions: list) -> dict:
+        """按平台拆分动作统计"""
+        platforms = defaultdict(lambda: {"total": 0, "posts": 0, "comments": 0, "reposts": 0, "likes": 0, "searches": 0})
+        for a in actions:
+            p = a.get("platform", "unknown")
+            atype = a.get("action_type", "").upper()
+            platforms[p]["total"] += 1
+            if "CREATE_POST" in atype:
+                platforms[p]["posts"] += 1
+            elif "COMMENT" in atype:
+                platforms[p]["comments"] += 1
+            elif "REPOST" in atype or "QUOTE" in atype:
+                platforms[p]["reposts"] += 1
+            elif "LIKE" in atype or "UPVOTE" in atype or "DOWNVOTE" in atype:
+                platforms[p]["likes"] += 1
+            elif "SEARCH" in atype:
+                platforms[p]["searches"] += 1
+        return dict(platforms)
+
+    # ==================== 新增：因果图谱统计 ====================
+
+    def _compute_causal_stats(self) -> dict:
+        """加载 causal_edges.jsonl 并统计"""
+        path = os.path.join(self.sim_dir, "causal_edges.jsonl")
+        edges = self._load_jsonl(path)
+        if not edges:
+            return {"total_edges": 0, "edge_types": {}, "top_causes": [], "top_effects": []}
+
+        edge_types = Counter(e.get("relation", "unknown") for e in edges)
+        cause_counter = Counter(e.get("source", "") for e in edges)
+        effect_counter = Counter(e.get("target", "") for e in edges)
+
+        return {
+            "total_edges": len(edges),
+            "edge_types": dict(edge_types.most_common(10)),
+            "top_causes": [{"name": k, "count": v} for k, v in cause_counter.most_common(5)],
+            "top_effects": [{"name": k, "count": v} for k, v in effect_counter.most_common(5)],
+        }
+
+    # ==================== 新增：反馈环统计 ====================
+
+    def _compute_feedback_stats(self, states: list) -> dict:
+        """分析世界模型反馈环的作用：哪些轮次触发了干预"""
+        if len(states) < 2:
+            return {"injection_rounds": 0, "avg_deviation": 0.0, "max_deviation_round": 0}
+        dims = ["attention_level", "panic_level", "trust_level",
+                "polarization_level", "risk_level", "stability_level"]
+        # 用相邻轮次变化量作为 proxy
+        deltas = []
+        for i in range(1, len(states)):
+            prev, curr = states[i - 1], states[i]
+            d = sum(abs(curr.get(k, 0) - prev.get(k, 0)) for k in dims) / len(dims)
+            deltas.append({"round_num": curr.get("round_num", i), "delta": round(d, 4)})
+        # 超过阈值 0.15 视为"有干预"
+        injection_rounds = [d for d in deltas if d["delta"] > 0.03]
+        max_d = max(deltas, key=lambda x: x["delta"]) if deltas else {"round_num": 0, "delta": 0}
+        avg_d = sum(d["delta"] for d in deltas) / len(deltas) if deltas else 0
+        return {
+            "round_deltas": deltas,
+            "injection_rounds": len(injection_rounds),
+            "avg_deviation": round(avg_d, 4),
+            "max_deviation_round": max_d["round_num"],
+            "max_deviation": round(max_d["delta"], 4),
+        }
 
     # ==================== 情感演化 ====================
 

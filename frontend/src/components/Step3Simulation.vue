@@ -210,10 +210,10 @@
         :simulation-id="simulationId"
       />
 
-      <!-- Section 4 — Dual Platform Agent Actions -->
+      <!-- Section 4 — Dual Platform Simulation Display -->
       <div class="actions-section">
         <div class="actions-head">
-          <h3 class="section-title">智能体行为流</h3>
+          <h3 class="section-title">🌐 双平台模拟推演</h3>
           <div class="actions-head-right">
             <label class="idle-toggle">
               <input type="checkbox" v-model="hideIdleActions" />
@@ -228,46 +228,85 @@
         <div class="dual-columns">
           <!-- Twitter / Info Plaza -->
           <div class="col-panel twitter-col">
-            <div class="col-head">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-              </svg>
-              <span class="col-name">信息广场</span>
-              <span class="col-count mono">{{ twitterActionsCount }}</span>
+            <div class="col-head twitter-head">
+              <div class="col-brand">
+                <div class="brand-icon twitter-icon">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                </div>
+                <div class="brand-text">
+                  <span class="col-name">Twitter</span>
+                  <span class="col-subtitle">微博型平台 · 信息广场</span>
+                </div>
+              </div>
+              <div class="col-stats">
+                <span class="col-stat-num mono">{{ twitterActionsCount }}</span>
+                <span class="col-stat-label">条动态</span>
+              </div>
             </div>
-            <div class="col-body">
+            <div class="col-body twitter-feed">
               <TransitionGroup name="timeline-item">
-                <AgentActionCard
-                  v-for="action in twitterActions"
-                  :key="action._uniqueId || action.id || `${action.timestamp}-${action.agent_id}`"
-                  :action="action"
-                />
+                <template v-for="item in twitterFeedItems" :key="item._key || item._uniqueId || item.id || `${item.timestamp}-${item.agent_id}`">
+                  <div v-if="item._isSeparator" class="round-sep">
+                    <span class="round-sep-line"></span>
+                    <span class="round-sep-label">Round {{ item.round_num }}</span>
+                    <span class="round-sep-line"></span>
+                  </div>
+                  <AgentActionCard v-else :action="item" />
+                </template>
               </TransitionGroup>
               <div v-if="twitterActions.length === 0" class="col-empty">
-                等待信息广场的智能体活动…
+                <div class="empty-icon">📡</div>
+                <span>等待 Twitter 平台智能体活动…</span>
               </div>
             </div>
           </div>
 
           <!-- Reddit / Topic Community -->
           <div class="col-panel reddit-col">
-            <div class="col-head">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
-              </svg>
-              <span class="col-name">话题社区</span>
-              <span class="col-count mono">{{ redditActionsCount }}</span>
+            <div class="col-head reddit-head">
+              <div class="col-brand">
+                <div class="brand-icon reddit-icon">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 01-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 01.042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 014.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 01.14-.197.35.35 0 01.238-.042l2.906.617a1.214 1.214 0 011.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 00-.231.094.33.33 0 000 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 000-.463.327.327 0 00-.462 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 00-.205-.094z"/></svg>
+                </div>
+                <div class="brand-text">
+                  <span class="col-name">Reddit</span>
+                  <span class="col-subtitle">论坛型平台 · 话题社区</span>
+                </div>
+              </div>
+              <div class="col-stats">
+                <span class="col-stat-num mono">{{ redditActionsCount }}</span>
+                <span class="col-stat-label">条动态</span>
+              </div>
             </div>
-            <div class="col-body">
+            <div class="col-body reddit-feed">
               <TransitionGroup name="timeline-item">
-                <AgentActionCard
-                  v-for="action in redditActions"
-                  :key="action._uniqueId || action.id || `${action.timestamp}-${action.agent_id}`"
-                  :action="action"
-                />
+                <template v-for="item in redditFeedItems" :key="item._key || item._uniqueId || item.id || `${item.timestamp}-${item.agent_id}`">
+                  <div v-if="item._isSeparator" class="round-sep reddit-sep">
+                    <span class="round-sep-line"></span>
+                    <span class="round-sep-label">Round {{ item.round_num }}</span>
+                    <span class="round-sep-line"></span>
+                  </div>
+                  <!-- 折叠的轻量操作组 -->
+                  <div v-else-if="item._isGroup" class="action-group">
+                    <div class="ag-header" @click="toggleGroup(item._key)">
+                      <span class="ag-count">{{ item.count }} 条互动</span>
+                      <span class="ag-pills">{{ formatGroupSummary(item.typeCounts) }}</span>
+                      <span class="ag-toggle">{{ expandedGroups.has(item._key) ? '▴ 收起' : '▾ 展开' }}</span>
+                    </div>
+                    <div v-if="expandedGroups.has(item._key)" class="ag-body">
+                      <AgentActionCard
+                        v-for="a in item.items"
+                        :key="a._uniqueId || a.id || `${a.timestamp}-${a.agent_id}`"
+                        :action="a"
+                      />
+                    </div>
+                  </div>
+                  <AgentActionCard v-else :action="item" />
+                </template>
               </TransitionGroup>
               <div v-if="redditActions.length === 0" class="col-empty">
-                等待话题社区的智能体活动…
+                <div class="empty-icon">💬</div>
+                <span>等待 Reddit 平台智能体活动…</span>
               </div>
             </div>
           </div>
@@ -320,7 +359,7 @@ const props = defineProps({
   freshStart: Boolean, // Step2 点"开始推演"时为 true，跳过旧数据恢复直接启动新模拟
   minutesPerRound: {
     type: Number,
-    default: 30 // 默认每轮30分钟
+    default: 60 // 默认每轮60分钟（与后端 simulation_config_generator 一致）
   },
   projectData: Object,
   graphData: Object,
@@ -373,6 +412,88 @@ const twitterActions = computed(() =>
 const redditActions = computed(() =>
   hideIdleActions.value ? redditActionsAll.value.filter(a => !_isIdle(a)) : redditActionsAll.value
 )
+
+// 轻量操作类型集合（可折叠分组）
+const _LIGHTWEIGHT = new Set([
+  'LIKE_POST', 'LIKE_COMMENT', 'SEARCH_POSTS', 'SEARCH_USER',
+  'FOLLOW', 'UPVOTE_POST', 'DOWNVOTE_POST', 'DISLIKE_POST',
+  'TREND', 'DO_NOTHING'
+])
+
+// Twitter: 简单插入轮次分隔符
+function _interleaveSimple(actions) {
+  const result = []
+  let lastRound = null
+  for (const a of actions) {
+    const rn = a.round_num
+    if (rn !== lastRound) {
+      result.push({ _isSeparator: true, _key: `sep-${rn}`, round_num: rn })
+      lastRound = rn
+    }
+    result.push(a)
+  }
+  return result
+}
+
+// Reddit: 连续 3+ 轻量操作折叠成组
+const _GROUP_ICONS = {
+  LIKE_POST: '♥', LIKE_COMMENT: '♥',
+  UPVOTE_POST: '▲', DOWNVOTE_POST: '▼', DISLIKE_POST: '👎',
+  SEARCH_POSTS: '🔍', SEARCH_USER: '🔍',
+  FOLLOW: '➕', TREND: '📈', DO_NOTHING: '💤'
+}
+const _GROUP_LABELS = {
+  LIKE_POST: '赞', LIKE_COMMENT: '赞',
+  UPVOTE_POST: '赞同', DOWNVOTE_POST: '反对', DISLIKE_POST: '踩',
+  SEARCH_POSTS: '搜索', SEARCH_USER: '查人',
+  FOLLOW: '关注', TREND: '热搜', DO_NOTHING: '静默'
+}
+
+function _interleaveWithGroups(actions) {
+  const result = []
+  let lastRound = null
+  let i = 0
+  while (i < actions.length) {
+    const a = actions[i]
+    const rn = a.round_num
+    if (rn !== lastRound) {
+      result.push({ _isSeparator: true, _key: `sep-${rn}`, round_num: rn })
+      lastRound = rn
+    }
+    if (_LIGHTWEIGHT.has(a.action_type)) {
+      let j = i + 1
+      while (j < actions.length && actions[j].round_num === rn && _LIGHTWEIGHT.has(actions[j].action_type)) j++
+      const count = j - i
+      if (count >= 3) {
+        const items = actions.slice(i, j)
+        const typeCounts = {}
+        items.forEach(it => { typeCounts[it.action_type] = (typeCounts[it.action_type] || 0) + 1 })
+        result.push({ _isGroup: true, _key: `grp-${rn}-${i}`, round_num: rn, items, count, typeCounts })
+        i = j
+        continue
+      }
+    }
+    result.push(a)
+    i++
+  }
+  return result
+}
+
+const expandedGroups = ref(new Set())
+const toggleGroup = (key) => {
+  const s = new Set(expandedGroups.value)
+  s.has(key) ? s.delete(key) : s.add(key)
+  expandedGroups.value = s
+}
+const formatGroupSummary = (typeCounts) => {
+  return Object.entries(typeCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([t, n]) => `${_GROUP_ICONS[t] || '•'}${n}`)
+    .join('  ')
+}
+
+const twitterFeedItems = computed(() => _interleaveSimple(twitterActions.value))
+const redditFeedItems = computed(() => _interleaveWithGroups(redditActions.value))
 
 // 各平台动作计数（显示后的）
 const twitterActionsCount = computed(() => twitterActions.value.length)
@@ -1362,15 +1483,15 @@ onUnmounted(() => {
   gap: 16px;
 }
 
-/* Section 4: Agent Actions Stream */
+/* Section 4: Dual Platform Simulation */
 .actions-section {
   background: #0f0f14;
   border: 1px solid #2a2a33;
   border-radius: 12px;
-  padding: 16px 20px;
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .actions-head {
@@ -1381,11 +1502,9 @@ onUnmounted(() => {
 
 .actions-head .section-title {
   margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: 15px;
+  font-weight: 700;
+  color: #e5e7eb;
 }
 
 .actions-head-right {
@@ -1397,20 +1516,20 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: #94a3b8;
   cursor: pointer;
   user-select: none;
 }
 .idle-toggle input {
   accent-color: #60a5fa;
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
 }
 .idle-toggle:hover { color: #cbd5e1; }
 
 .actions-stat {
-  font-size: 12px;
+  font-size: 13px;
   color: #94a3b8;
 }
 .actions-stat .mono {
@@ -1435,388 +1554,155 @@ onUnmounted(() => {
 }
 
 .col-panel {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid #22222a;
-  border-radius: 10px;
+  background: #0c0c14;
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  min-height: 500px;
+  max-height: 80vh;
   overflow: hidden;
 }
+.twitter-col { border-top: 2px solid #1d9bf0; }
+.reddit-col { border-top: 2px solid #ff4500; }
 
 .col-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-bottom: 1px solid #22222a;
-  background: rgba(255, 255, 255, 0.02);
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #1e1e2a;
 }
-.twitter-col .col-head { color: #93c5fd; }
-.reddit-col .col-head { color: #fdba74; }
+.twitter-head { background: linear-gradient(135deg, rgba(29,155,240,.06), transparent); }
+.reddit-head { background: linear-gradient(135deg, rgba(255,69,0,.06), transparent); }
 
+.col-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-icon {
+  width: 34px; height: 34px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+}
+.twitter-icon { background: rgba(29,155,240,.15); color: #1d9bf0; }
+.reddit-icon { background: rgba(255,69,0,.15); color: #ff4500; }
+.brand-text { display: flex; flex-direction: column; }
 .col-name {
-  font-size: 13px;
-  font-weight: 600;
-  flex: 1;
+  font-size: 14px;
+  font-weight: 700;
+  color: #e5e7eb;
+}
+.col-subtitle {
+  font-size: 11px;
+  color: #555;
+  margin-top: 1px;
 }
 
-.col-count {
-  background: rgba(255, 255, 255, 0.08);
+.col-stats {
+  display: flex; align-items: baseline; gap: 4px;
+}
+.col-stat-num {
+  font-size: 22px;
+  font-weight: 800;
   color: #e5e7eb;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.col-stat-label {
+  font-size: 12px;
+  color: #64748b;
 }
 
 .col-body {
-  padding: 10px;
-  max-height: 560px;
+  padding: 0;
+  flex: 1;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+}
+.col-body::-webkit-scrollbar { width: 4px; }
+.col-body::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+.col-body::-webkit-scrollbar-track { background: transparent; }
+.twitter-feed { gap: 0; }
+.reddit-feed { gap: 0; padding: 4px 0; }
+
+/* ---- 轮次分隔线 ---- */
+.round-sep {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px;
+}
+.round-sep-line {
+  flex: 1; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(29,155,240,.25), transparent);
+}
+.round-sep-label {
+  font-size: 10px; font-weight: 700; letter-spacing: .8px;
+  color: #1d9bf0; text-transform: uppercase;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.reddit-sep .round-sep-line {
+  background: linear-gradient(90deg, transparent, rgba(255,69,0,.25), transparent);
+}
+.reddit-sep .round-sep-label { color: #ff6b3a; }
+
+/* ---- 轻量操作折叠组 ---- */
+.action-group {
+  margin: 2px 8px;
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 8px;
+  background: rgba(255,255,255,.02);
+  overflow: hidden;
+}
+.ag-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: background .15s;
+}
+.ag-header:hover { background: rgba(255,255,255,.04); }
+.ag-count {
+  font-size: 11px; font-weight: 700; color: #ff6b3a;
+  white-space: nowrap;
+}
+.ag-pills {
+  flex: 1; font-size: 11px; color: #888;
+  letter-spacing: 1px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ag-toggle {
+  font-size: 10px; color: #666;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.ag-body {
+  border-top: 1px solid rgba(255,255,255,.04);
+  padding: 2px 0;
 }
 
 .col-empty {
   color: #64748b;
-  font-size: 12px;
-  font-style: italic;
-  padding: 24px 12px;
+  font-size: 13px;
+  padding: 40px 12px;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
+.empty-icon { font-size: 28px; opacity: 0.5; }
 
 /* TransitionGroup animations for action cards */
-.timeline-item-enter-active {
-  transition: all 0.35s ease-out;
+.timeline-item-enter-active,
+.timeline-item-leave-active {
+  transition: all 0.35s cubic-bezier(0.165, 0.84, 0.44, 1);
 }
 .timeline-item-enter-from {
   opacity: 0;
   transform: translateY(10px);
 }
-
-/* --- (Legacy) Main Content Area / Timeline Feed styles kept below for reference; unused in narrative layout --- */
-.main-content-area {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-  position: relative;
-  background: #FFF;
-}
-
-.timeline-container {
-  flex: 1;
-  overflow-y: auto;
-  position: relative;
-}
-
-.world-state-container {
-  width: 320px;
-  flex-shrink: 0;
-  border-left: 1px solid #EAEAEA;
-  overflow-y: auto;
-  background: #1e1e24;
-}
-
-/* Timeline Header */
-.timeline-header {
-  position: sticky;
-  top: 0;
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(8px);
-  padding: 12px 24px;
-  border-bottom: 1px solid #EAEAEA;
-  z-index: 5;
-  display: flex;
-  justify-content: center;
-}
-
-.timeline-stats {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  font-size: 11px;
-  color: #666;
-  background: #F5F5F5;
-  padding: 4px 12px;
-  border-radius: 20px;
-}
-
-.total-count {
-  font-weight: 600;
-  color: #333;
-}
-
-.platform-breakdown {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.breakdown-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.breakdown-divider { color: #DDD; }
-.breakdown-item.twitter { color: #000; }
-.breakdown-item.reddit { color: #000; }
-
-/* --- Timeline Feed --- */
-.timeline-feed {
-  padding: 24px 0;
-  position: relative;
-  min-height: 100%;
-  max-width: 900px;
-  margin: 0 auto;
-}
-
-.timeline-axis {
-  position: absolute;
-  left: 50%;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: #EAEAEA; /* Cleaner line */
-  transform: translateX(-50%);
-}
-
-.timeline-item {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 32px;
-  position: relative;
-  width: 100%;
-}
-
-.timeline-marker {
-  position: absolute;
-  left: 50%;
-  top: 24px;
-  width: 10px;
-  height: 10px;
-  background: #FFF;
-  border: 1px solid #CCC;
-  border-radius: 50%;
-  transform: translateX(-50%);
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.marker-dot {
-  width: 4px;
-  height: 4px;
-  background: #CCC;
-  border-radius: 50%;
-}
-
-.timeline-item.twitter .marker-dot { background: #000; }
-.timeline-item.reddit .marker-dot { background: #000; }
-.timeline-item.twitter .timeline-marker { border-color: #000; }
-.timeline-item.reddit .timeline-marker { border-color: #000; }
-
-/* Card Layout */
-.timeline-card {
-  width: calc(100% - 48px);
-  background: #FFF;
-  border-radius: 2px;
-  padding: 16px 20px;
-  border: 1px solid #EAEAEA;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.02);
-  position: relative;
-  transition: all 0.2s;
-}
-
-.timeline-card:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-  border-color: #DDD;
-}
-
-/* Left side (Twitter) */
-.timeline-item.twitter {
-  justify-content: flex-start;
-  padding-right: 50%;
-}
-.timeline-item.twitter .timeline-card {
-  margin-left: auto;
-  margin-right: 32px; /* Gap from axis */
-}
-
-/* Right side (Reddit) */
-.timeline-item.reddit {
-  justify-content: flex-end;
-  padding-left: 50%;
-}
-.timeline-item.reddit .timeline-card {
-  margin-right: auto;
-  margin-left: 32px; /* Gap from axis */
-}
-
-/* Card Content Styles */
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #F5F5F5;
-}
-
-.agent-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.avatar-placeholder {
-  width: 24px;
-  height: 24px;
-  background: #000;
-  color: #FFF;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.agent-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: #000;
-}
-
-.header-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.platform-indicator {
-  color: #999;
-  display: flex;
-  align-items: center;
-}
-
-.action-badge {
-  font-size: 9px;
-  padding: 2px 6px;
-  border-radius: 2px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border: 1px solid transparent;
-}
-
-/* Monochromatic Badges */
-.badge-post { background: #F0F0F0; color: #333; border-color: #E0E0E0; }
-.badge-comment { background: #F0F0F0; color: #666; border-color: #E0E0E0; }
-.badge-action { background: #FFF; color: #666; border: 1px solid #E0E0E0; }
-.badge-meta { background: #FAFAFA; color: #999; border: 1px dashed #DDD; }
-.badge-idle { opacity: 0.5; }
-
-.content-text {
-  font-size: 13px;
-  line-height: 1.6;
-  color: #333;
-  margin-bottom: 10px;
-}
-
-.content-text.main-text {
-  font-size: 14px;
-  color: #000;
-}
-
-/* Info Blocks (Quote, Repost, etc) */
-.quoted-block, .repost-content {
-  background: #F9F9F9;
-  border: 1px solid #EEE;
-  padding: 10px 12px;
-  border-radius: 2px;
-  margin-top: 8px;
-  font-size: 12px;
-  color: #555;
-}
-
-.quote-header, .repost-info, .like-info, .search-info, .follow-info, .vote-info, .idle-info, .comment-context {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
-  font-size: 11px;
-  color: #666;
-}
-
-.icon-small {
-  color: #999;
-}
-.icon-small.filled {
-  color: #999; /* Keep icons neutral unless highlighted */
-}
-
-.search-query {
-  font-family: 'JetBrains Mono', monospace;
-  background: #F0F0F0;
-  padding: 0 4px;
-  border-radius: 2px;
-}
-
-.card-footer {
-  margin-top: 12px;
-  display: flex;
-  justify-content: flex-end;
-  font-size: 10px;
-  color: #BBB;
-  font-family: 'JetBrains Mono', monospace;
-}
-
-/* Waiting State */
-.waiting-state {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  color: #CCC;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-
-.pulse-ring {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 1px solid #EAEAEA;
-  animation: ripple 2s infinite;
-}
-
-@keyframes ripple {
-  0% { transform: scale(0.8); opacity: 1; border-color: #CCC; }
-  100% { transform: scale(2.5); opacity: 0; border-color: #EAEAEA; }
-}
-
-/* Animation */
-.timeline-item-enter-active,
-.timeline-item-leave-active {
-  transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
-}
-
-.timeline-item-enter-from {
-  opacity: 0;
-  transform: translateY(20px);
-}
-
 .timeline-item-leave-to {
   opacity: 0;
 }

@@ -175,6 +175,14 @@
                 <span class="btn-text">环境搭建</span>
               </button>
               <button 
+                class="modal-btn btn-step3" 
+                @click="goToStep3"
+              >
+                <span class="btn-step">Step3</span>
+                <span class="btn-icon">▶</span>
+                <span class="btn-text">开始模拟</span>
+              </button>
+              <button 
                 class="modal-btn btn-report" 
                 @click="goToReport"
                 :disabled="!selectedProject.report_id"
@@ -183,10 +191,14 @@
                 <span class="btn-icon">◆</span>
                 <span class="btn-text">分析报告</span>
               </button>
-            </div>
-            <!-- 不可回放提示 -->
-            <div class="modal-playback-hint">
-              <span class="hint-text">Step3「开始模拟」与 Step5「深度互动」需在运行中启动，不支持历史回放</span>
+              <button 
+                class="modal-btn btn-step5" 
+                @click="goToStep5"
+              >
+                <span class="btn-step">Step5</span>
+                <span class="btn-icon">💬</span>
+                <span class="btn-text">深度互动</span>
+              </button>
             </div>
           </div>
         </div>
@@ -455,6 +467,18 @@ const goToSimulation = () => {
   }
 }
 
+// 导航到开始模拟页面
+const goToStep3 = () => {
+  if (selectedProject.value?.project_id) {
+    router.push({
+      name: 'Process',
+      params: { projectId: selectedProject.value.project_id },
+      query: { step: 3 }
+    })
+    closeModal()
+  }
+}
+
 // 导航到分析报告页面
 // 跳转到 Process 页面，通过 query.step=4 强制定位到 Step 4
 const goToReport = () => {
@@ -463,6 +487,18 @@ const goToReport = () => {
       name: 'Process',
       params: { projectId: selectedProject.value.project_id },
       query: { step: 4 }
+    })
+    closeModal()
+  }
+}
+
+// 导航到深度互动页面
+const goToStep5 = () => {
+  if (selectedProject.value?.project_id) {
+    router.push({
+      name: 'Process',
+      params: { projectId: selectedProject.value.project_id },
+      query: { step: 5 }
     })
     closeModal()
   }
@@ -1372,27 +1408,11 @@ onUnmounted(() => {
 
 .modal-btn.btn-project .btn-icon { color: #3B82F6; }
 .modal-btn.btn-simulation .btn-icon { color: #F59E0B; }
+.modal-btn.btn-step3 .btn-icon { color: #8B5CF6; }
 .modal-btn.btn-report .btn-icon { color: #10B981; }
+.modal-btn.btn-step5 .btn-icon { color: #EC4899; }
 
 .modal-btn:hover:not(:disabled) .btn-text {
   color: #111827;
-}
-
-/* 不可回放提示 */
-.modal-playback-hint {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 32px 20px;
-  background: #FFFFFF;
-}
-
-.hint-text {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.7rem;
-  color: #9CA3AF;
-  letter-spacing: 0.3px;
-  text-align: center;
-  line-height: 1.5;
 }
 </style>

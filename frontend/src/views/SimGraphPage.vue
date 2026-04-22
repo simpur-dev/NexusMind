@@ -1,5 +1,5 @@
 <template>
-  <div class="sim-graph-page">
+  <div class="causal-page">
     <!-- Background -->
     <div class="page-bg">
       <div class="bg-orb bg-orb-1"></div>
@@ -16,18 +16,13 @@
       </button>
       <h1 class="page-title">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"/><circle cx="4" cy="6" r="2"/><circle cx="20" cy="6" r="2"/>
-          <circle cx="4" cy="18" r="2"/><circle cx="20" cy="18" r="2"/>
-          <line x1="6" y1="7" x2="10" y2="11"/><line x1="14" y1="11" x2="18" y2="7"/>
-          <line x1="6" y1="17" x2="10" y2="13"/><line x1="14" y1="13" x2="18" y2="17"/>
+          <path d="M4 4h6v6H4z"/><path d="M14 4h6v6h-6z"/><path d="M9 14h6v6H9z"/>
+          <path d="M7 10v2l2 2"/><path d="M17 10v2l-2 2"/>
         </svg>
-        模拟知识图谱
+        事件因果图谱
       </h1>
       <div class="stats-bar" v-if="stats">
-        <span class="stat"><strong>{{ stats.total_agents }}</strong> 智能体</span>
-        <span class="stat"><strong>{{ stats.total_actions }}</strong> 行为</span>
         <span class="stat"><strong>{{ stats.total_events }}</strong> 事件</span>
-        <span class="stat"><strong>{{ stats.total_variables }}</strong> 变量</span>
         <span class="stat"><strong>{{ stats.causal_edges }}</strong> 因果边</span>
         <span class="stat"><strong>{{ stats.max_round }}</strong> 轮</span>
       </div>
@@ -36,7 +31,7 @@
     <!-- Loading / Error -->
     <div v-if="loading" class="center-state">
       <div class="spinner"></div>
-      <span>正在加载模拟知识图谱...</span>
+      <span>正在加载因果图谱...</span>
     </div>
     <div v-else-if="error" class="center-state error">
       <span>{{ error }}</span>
@@ -45,36 +40,19 @@
 
     <!-- Main content -->
     <template v-else-if="loaded">
-      <!-- Toolbar -->
+      <!-- Legend bar -->
       <div class="toolbar">
-        <div class="filter-group">
-          <button :class="['filter-btn', { active: filterPlatform === '' }]" @click="filterPlatform = ''">全部</button>
-          <button :class="['filter-btn twitter', { active: filterPlatform === 'twitter' }]" @click="filterPlatform = 'twitter'">信息广场</button>
-          <button :class="['filter-btn reddit', { active: filterPlatform === 'reddit' }]" @click="filterPlatform = 'reddit'">话题社区</button>
+        <div class="legend-section">
+          <span class="legend-title">事件类型</span>
+          <span class="legend-item" v-for="(label, key) in EVENT_TYPE_LABELS" :key="key">
+            <span class="dot" :style="{ background: EVENT_COLORS[key] || '#f43f5e' }"></span>{{ label }}
+          </span>
         </div>
-        <div class="legend">
-          <span class="legend-item"><span class="dot agent"></span>智能体</span>
-          <span class="legend-item"><span class="dot action"></span>行为</span>
-          <span class="legend-item"><span class="dot event"></span>事件</span>
-          <span class="legend-item"><span class="dot variable"></span>变量</span>
-          <span class="legend-item"><span class="dot entity"></span>知识实体</span>
-          <span class="legend-item"><span class="line performed"></span>执行</span>
-          <span class="legend-item"><span class="line contributes"></span>汇聚为事件</span>
-          <span class="legend-item"><span class="line causal"></span>因果链</span>
-          <span class="legend-item"><span class="line affects"></span>影响变量</span>
-          <span class="legend-item"><span class="line corresponds"></span>对应实体</span>
-        </div>
-        <div class="view-controls">
-          <label class="ctrl-label">
-            智能体上限
-            <input type="range" min="5" max="50" v-model.number="topAgentCount" class="range-input" />
-            {{ topAgentCount }} 个
-          </label>
-          <label class="ctrl-label">
-            每事件行为上限
-            <input type="range" min="1" max="15" v-model.number="actionsPerAgent" class="range-input" />
-            {{ actionsPerAgent }} 条
-          </label>
+        <div class="legend-section">
+          <span class="legend-title">因果关系</span>
+          <span class="legend-item" v-for="(label, key) in RELATION_LABELS" :key="key">
+            <span class="edge-sample" :style="{ background: RELATION_COLORS[key] }"></span>{{ label }}
+          </span>
         </div>
       </div>
 
@@ -85,52 +63,47 @@
 
       <!-- Detail panel -->
       <Transition name="slide-right">
-        <div v-if="selectedNode" class="detail-panel">
+        <div v-if="selectedEvent" class="detail-panel">
           <div class="detail-header">
-            <span class="detail-type-badge" :class="selectedNode.type">{{ typeLabel(selectedNode.type) }}</span>
-            <button class="close-btn" @click="selectedNode = null">&times;</button>
+            <span class="detail-type-badge" :style="{ background: EVENT_COLORS[selectedEvent.event_type] + '30', color: EVENT_COLORS[selectedEvent.event_type] }">
+              {{ eventTypeLabel(selectedEvent.event_type) }}
+            </span>
+            <button class="close-btn" @click="selectedEvent = null">&times;</button>
           </div>
-          <h3 class="detail-name">{{ selectedNode.label }}</h3>
+          <h3 class="detail-name">{{ eventTypeLabel(selectedEvent.event_type) }} · R{{ selectedEvent.round_num }}</h3>
           <div class="detail-fields">
-            <div v-if="selectedNode.platform" class="field">
-              <span class="field-key">平台</span>
-              <span class="field-val">{{ selectedNode.platform === 'twitter' ? '信息广场' : selectedNode.platform === 'reddit' ? '话题社区' : selectedNode.platform }}</span>
-            </div>
-            <div v-if="selectedNode.round_num !== undefined" class="field">
+            <div class="field">
               <span class="field-key">轮次</span>
-              <span class="field-val">R{{ selectedNode.round_num }}</span>
+              <span class="field-val">第 {{ selectedEvent.round_num }} 轮</span>
             </div>
-            <div v-if="selectedNode.severity !== undefined" class="field">
+            <div class="field">
               <span class="field-key">严重度</span>
-              <span class="field-val">{{ formatMetric(selectedNode.severity) }}</span>
+              <span class="field-val">{{ (selectedEvent.severity || 0).toFixed(2) }}</span>
             </div>
-            <div v-if="selectedNode.value !== undefined" class="field">
-              <span class="field-key">当前值</span>
-              <span class="field-val">{{ formatMetric(selectedNode.value) }}</span>
-            </div>
-            <div v-if="selectedNode.delta !== undefined" class="field">
-              <span class="field-key">变化量</span>
-              <span class="field-val">{{ formatSignedMetric(selectedNode.delta) }}</span>
-            </div>
-            <div v-if="selectedNode.action_count" class="field">
-              <span class="field-key">行为数</span>
-              <span class="field-val">{{ selectedNode.action_count }}</span>
-            </div>
-            <div v-if="selectedNode.description" class="field full">
+            <div v-if="selectedEvent.description" class="field full">
               <span class="field-key">事件描述</span>
-              <p class="field-val content">{{ selectedNode.description }}</p>
+              <p class="field-val content">{{ selectedEvent.description }}</p>
             </div>
-            <div v-if="selectedNode.content_preview" class="field full">
-              <span class="field-key">内容预览</span>
-              <p class="field-val content">{{ selectedNode.content_preview }}</p>
-            </div>
-            <div v-if="selectedNode.affected_variables && Object.keys(selectedNode.affected_variables).length > 0" class="field full">
+            <div v-if="selectedEvent.affected_variables && Object.keys(selectedEvent.affected_variables).length" class="field full">
               <span class="field-key">影响变量</span>
-              <p class="field-val content">{{ formatAffectedVariables(selectedNode.affected_variables) }}</p>
+              <p class="field-val content">{{ formatAffectedVars(selectedEvent.affected_variables) }}</p>
             </div>
-            <div v-if="selectedNode.entity_labels" class="field">
-              <span class="field-key">实体类型</span>
-              <span class="field-val">{{ selectedNode.entity_labels.join(', ') }}</span>
+            <!-- 相关因果边 -->
+            <div v-if="relatedEdges.length" class="field full">
+              <span class="field-key">相关因果 ({{ relatedEdges.length }})</span>
+              <div class="related-edges">
+                <div v-for="re in relatedEdges" :key="re.id" class="re-card" :style="{ borderLeftColor: RELATION_COLORS[re.relation_type] }">
+                  <div class="re-head">
+                    <span class="re-rel">{{ RELATION_LABELS[re.relation_type] || re.relation_type }}</span>
+                    <span class="re-strength">{{ (re.strength || 0).toFixed(2) }}</span>
+                  </div>
+                  <div class="re-pair">
+                    {{ eventTypeLabel(re.source_type) }} R{{ re.source_round }}
+                    → {{ eventTypeLabel(re.target_type) }} R{{ re.target_round }}
+                  </div>
+                  <div v-if="re.evidence" class="re-evidence">{{ re.evidence }}</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -141,12 +114,13 @@
     <div v-if="tooltip.show" class="graph-tooltip" :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }">
       <div class="tt-label">{{ tooltip.label }}</div>
       <div class="tt-meta">{{ tooltip.meta }}</div>
+      <div v-if="tooltip.desc" class="tt-desc">{{ tooltip.desc }}</div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import * as d3 from 'd3'
 import { getSimGraph } from '../api/simulation'
@@ -160,55 +134,13 @@ const projectId = route.query.project_id
 
 function goBack() {
   if (projectId) {
-    router.replace({
-      name: 'Process',
-      params: { projectId },
-      query: { step: '3' }
-    })
+    router.replace({ name: 'Process', params: { projectId }, query: { step: '3' } })
     return
   }
   router.back()
 }
 
-const loading = ref(true)
-const loaded = ref(false)
-const error = ref(null)
-const stats = ref(null)
-const filterPlatform = ref('')
-const topAgentCount = ref(24)
-const actionsPerAgent = ref(6)
-const selectedNode = ref(null)
-const tooltip = ref({ show: false, x: 0, y: 0, label: '', meta: '' })
-
-const svgEl = ref(null)
-const containerEl = ref(null)
-
-let graphData = null
-let sim = null
-
-const NODE_COLORS = {
-  agent: '#6366f1',
-  action: '#f59e0b',
-  entity: '#10b981',
-  event: '#f43f5e',
-  variable: '#38bdf8'
-}
-const NODE_COLORS_DIM = {
-  agent: '#6366f140',
-  action: '#f59e0b40',
-  entity: '#10b98140',
-  event: '#f43f5e40',
-  variable: '#38bdf840'
-}
-const VARIABLE_LABELS = {
-  attention_level: '关注度',
-  panic_level: '恐慌度',
-  trust_level: '信任度',
-  polarization_level: '极化度',
-  risk_level: '风险等级',
-  stability_level: '稳定性'
-}
-const VARIABLE_ORDER = ['attention_level', 'panic_level', 'trust_level', 'polarization_level', 'risk_level', 'stability_level']
+// ============== 常量 ==============
 const EVENT_TYPE_LABELS = {
   heat_spike: '热度飙升',
   sentiment_shift: '情绪转折',
@@ -219,477 +151,366 @@ const EVENT_TYPE_LABELS = {
   calm_restored: '恢复平稳',
   topic_outbreak: '议题爆发'
 }
-
-function typeLabel(type) {
-  if (type === 'agent') return '智能体'
-  if (type === 'action') return '行为'
-  if (type === 'event') return '系统事件'
-  if (type === 'variable') return '状态变量'
-  return '知识实体'
+const EVENT_COLORS = {
+  heat_spike: '#f97316',
+  sentiment_shift: '#a855f7',
+  trust_drop: '#ef4444',
+  official_response: '#3b82f6',
+  stabilization: '#10b981',
+  polarization_surge: '#ec4899',
+  calm_restored: '#06b6d4',
+  topic_outbreak: '#f59e0b'
+}
+const RELATION_COLORS = {
+  triggered: '#3b82f6',
+  amplified: '#ef4444',
+  suppressed: '#10b981',
+  correlated: '#f59e0b'
+}
+const RELATION_LABELS = {
+  triggered: '触发',
+  amplified: '放大',
+  suppressed: '抑制',
+  correlated: '关联'
+}
+const VARIABLE_LABELS = {
+  attention_level: '关注度', panic_level: '恐慌度', trust_level: '信任度',
+  polarization_level: '极化度', risk_level: '风险等级', stability_level: '稳定性'
 }
 
-function formatPlatform(platform) {
-  if (!platform) return '全平台'
-  return String(platform).split(',').filter(Boolean).map(item => {
-    if (item === 'twitter') return '信息广场'
-    if (item === 'reddit') return '话题社区'
-    return item
-  }).join(' / ')
-}
-
-function eventTypeLabel(eventType) {
-  return EVENT_TYPE_LABELS[eventType] || String(eventType || '').replace(/_/g, ' ')
-}
-
-function formatMetric(value) {
-  return Number(value || 0).toFixed(2)
-}
-
-function formatSignedMetric(value) {
-  const num = Number(value || 0)
-  return `${num >= 0 ? '+' : ''}${num.toFixed(2)}`
-}
-
-function formatAffectedVariables(affected) {
-  return Object.entries(affected || {}).map(([key, value]) => {
-    return `${VARIABLE_LABELS[key] || key} ${formatSignedMetric(value)}`
+function eventTypeLabel(t) { return EVENT_TYPE_LABELS[t] || String(t || '').replace(/_/g, ' ') }
+function formatAffectedVars(affected) {
+  return Object.entries(affected || {}).map(([k, v]) => {
+    const num = Number(v || 0)
+    return `${VARIABLE_LABELS[k] || k} ${num >= 0 ? '+' : ''}${num.toFixed(2)}`
   }).join('，')
 }
 
-function edgeSourceId(edge) {
-  return edge.source?.id || edge.source
-}
+// ============== 状态 ==============
+const loading = ref(true)
+const loaded = ref(false)
+const error = ref(null)
+const stats = ref(null)
+const selectedEvent = ref(null)
+const tooltip = ref({ show: false, x: 0, y: 0, label: '', meta: '', desc: '' })
+const svgEl = ref(null)
+const containerEl = ref(null)
 
-function edgeTargetId(edge) {
-  return edge.target?.id || edge.target
-}
+let rawEvents = []
+let rawCausalEdges = []
+let sim = null
 
+// 选中事件的相关因果边
+const relatedEdges = computed(() => {
+  if (!selectedEvent.value) return []
+  const id = selectedEvent.value.id
+  const eventMap = new Map(rawEvents.map(e => [e.id, e]))
+  return rawCausalEdges
+    .filter(e => e.source === id || e.target === id)
+    .map(e => {
+      const src = eventMap.get(typeof e.source === 'object' ? e.source.id : e.source) || {}
+      const tgt = eventMap.get(typeof e.target === 'object' ? e.target.id : e.target) || {}
+      return {
+        id: `${e.source}-${e.target}`,
+        relation_type: e.relation_type,
+        strength: e.strength,
+        evidence: e.evidence,
+        source_type: src.event_type,
+        source_round: src.round_num,
+        target_type: tgt.event_type,
+        target_round: tgt.round_num
+      }
+    })
+})
+
+// ============== 数据加载 ==============
 async function fetchGraph() {
   loading.value = true
   error.value = null
   try {
     const res = await getSimGraph(simulationId, {
-      limit: 420,
-      event_limit: 18,
-      action_links_per_event: 15,
+      limit: 10,
+      event_limit: 60,
+      action_links_per_event: 0,
       graph_id: graphId
     })
     if (res.success && res.data) {
-      graphData = res.data
-      stats.value = res.data.stats
+      // 只提取事件节点和因果边
+      rawEvents = (res.data.nodes || []).filter(n => n.type === 'event')
+      rawCausalEdges = (res.data.edges || []).filter(e => e.type === 'CAUSAL')
+      stats.value = {
+        total_events: rawEvents.length,
+        causal_edges: rawCausalEdges.length,
+        max_round: res.data.stats?.max_round || 0
+      }
       loaded.value = true
+      loading.value = false
       await nextTick()
       renderGraph()
     } else {
       error.value = res.error || '无数据'
+      loading.value = false
     }
   } catch (e) {
     error.value = e.message || '请求失败'
-  } finally {
     loading.value = false
   }
 }
 
-function normalizeGraph(nodes, edges) {
-  const entityKeyToId = new Map()
-  const mergedNodes = []
-  const mergedIds = new Set()
-  const nodeById = new Map(nodes.map(node => [node.id, node]))
-
-  for (const node of nodes) {
-    if (node.type === 'entity') {
-      const entityKey = String(node.label || '').trim().toLowerCase()
-      if (!entityKeyToId.has(entityKey)) {
-        entityKeyToId.set(entityKey, node.id)
-        mergedNodes.push(node)
-        mergedIds.add(node.id)
-      }
-      continue
-    }
-    mergedNodes.push(node)
-    mergedIds.add(node.id)
-  }
-
-  const mergedEdges = []
-  const edgeKeys = new Set()
-  for (const edge of edges) {
-    let sourceId = edgeSourceId(edge)
-    let targetId = edgeTargetId(edge)
-    const sourceNode = nodeById.get(sourceId)
-    const targetNode = nodeById.get(targetId)
-    if (sourceNode?.type === 'entity') {
-      sourceId = entityKeyToId.get(String(sourceNode.label || '').trim().toLowerCase())
-    }
-    if (targetNode?.type === 'entity') {
-      targetId = entityKeyToId.get(String(targetNode.label || '').trim().toLowerCase())
-    }
-    if (!mergedIds.has(sourceId) || !mergedIds.has(targetId) || sourceId === targetId) continue
-    const edgeKey = `${sourceId}|${targetId}|${edge.type}|${edge.relation_type || ''}`
-    if (edgeKeys.has(edgeKey)) continue
-    edgeKeys.add(edgeKey)
-    mergedEdges.push({ ...edge, source: sourceId, target: targetId })
-  }
-
-  return {
-    nodes: mergedNodes,
-    edges: mergedEdges
-  }
-}
+// ============== 渲染 ==============
+function truncate(s, n) { return !s ? '' : s.length > n ? s.slice(0, n) + '…' : s }
 
 function renderGraph() {
-  if (!svgEl.value || !graphData) return
+  if (!svgEl.value || !rawEvents.length) return
 
-  const width = containerEl.value?.clientWidth || window.innerWidth
-  const height = containerEl.value?.clientHeight || 760
+  const cRect = containerEl.value?.getBoundingClientRect()
+  const W = cRect?.width || window.innerWidth
+  const H = cRect?.height || 700
+  const pad = { top: 80, bottom: 50, left: 100, right: 100 }
 
-  let baseNodes = graphData.nodes || []
-  let baseEdges = graphData.edges || []
-
-  if (filterPlatform.value) {
-    const visibleIds = new Set(baseNodes.filter(node => {
-      if (node.type === 'event' || node.type === 'variable' || node.type === 'entity') return true
-      if (!node.platform) return true
-      return String(node.platform).split(',').includes(filterPlatform.value)
-    }).map(node => node.id))
-    baseNodes = baseNodes.filter(node => visibleIds.has(node.id))
-    baseEdges = baseEdges.filter(edge => visibleIds.has(edgeSourceId(edge)) && visibleIds.has(edgeTargetId(edge)))
-  }
-
-  const normalized = normalizeGraph(baseNodes, baseEdges)
-  const nodes = normalized.nodes
-  const edges = normalized.edges
-
-  const eventNodes = nodes.filter(node => node.type === 'event').sort((a, b) => (a.round_num || 0) - (b.round_num || 0))
-  const variableNodes = nodes.filter(node => node.type === 'variable').sort((a, b) => VARIABLE_ORDER.indexOf(a.key) - VARIABLE_ORDER.indexOf(b.key))
-  const eventIds = new Set(eventNodes.map(node => node.id))
-  const variableIds = new Set(variableNodes.map(node => node.id))
-
-  const contributionBuckets = new Map()
-  for (const edge of edges) {
-    if (edge.type === 'CONTRIBUTES_TO' && eventIds.has(edgeTargetId(edge))) {
-      const targetId = edgeTargetId(edge)
-      if (!contributionBuckets.has(targetId)) contributionBuckets.set(targetId, [])
-      contributionBuckets.get(targetId).push(edgeSourceId(edge))
-    }
-  }
-
-  const candidateActionIds = new Set()
-  for (const eventNode of eventNodes) {
-    const actionIds = contributionBuckets.get(eventNode.id) || []
-    actionIds.slice(0, actionsPerAgent.value).forEach(actionId => candidateActionIds.add(actionId))
-  }
-
-  const actionToAgent = new Map()
-  const candidateAgentIds = new Set()
-  for (const edge of edges) {
-    if (edge.type === 'PERFORMED' && candidateActionIds.has(edgeTargetId(edge))) {
-      actionToAgent.set(edgeTargetId(edge), edgeSourceId(edge))
-      candidateAgentIds.add(edgeSourceId(edge))
-    }
-  }
-
-  const selectedAgentNodes = nodes
-    .filter(node => node.type === 'agent' && candidateAgentIds.has(node.id))
-    .sort((a, b) => (b.action_count || 0) - (a.action_count || 0))
-    .slice(0, topAgentCount.value)
-  const selectedAgentIds = new Set(selectedAgentNodes.map(node => node.id))
-  const selectedActionIds = new Set([...candidateActionIds].filter(actionId => selectedAgentIds.has(actionToAgent.get(actionId))))
-
-  const selectedEntityIds = new Set()
-  for (const edge of edges) {
-    if (edge.type === 'CORRESPONDS_TO' && selectedAgentIds.has(edgeSourceId(edge))) {
-      selectedEntityIds.add(edgeTargetId(edge))
-    }
-  }
-
-  const displayIds = new Set([
-    ...selectedEntityIds,
-    ...selectedAgentIds,
-    ...selectedActionIds,
-    ...eventIds,
-    ...variableIds
-  ])
-
-  const displayNodes = nodes.filter(node => displayIds.has(node.id))
-  const displayEdges = edges.filter(edge => {
-    const sourceId = edgeSourceId(edge)
-    const targetId = edgeTargetId(edge)
-    if (!displayIds.has(sourceId) || !displayIds.has(targetId)) return false
-    if (edge.type === 'PERFORMED') return selectedAgentIds.has(sourceId) && selectedActionIds.has(targetId)
-    if (edge.type === 'CORRESPONDS_TO') return selectedAgentIds.has(sourceId) && selectedEntityIds.has(targetId)
-    if (edge.type === 'CONTRIBUTES_TO') return selectedActionIds.has(sourceId) && eventIds.has(targetId)
-    if (edge.type === 'CAUSAL') return eventIds.has(sourceId) && eventIds.has(targetId)
-    if (edge.type === 'AFFECTS') return eventIds.has(sourceId) && variableIds.has(targetId)
-    return true
+  // 按轮次分组
+  const rounds = [...new Set(rawEvents.map(e => e.round_num))].sort((a, b) => a - b)
+  const roundIndex = new Map(rounds.map((r, i) => [r, i]))
+  const eventsByRound = new Map()
+  rawEvents.forEach(e => {
+    if (!eventsByRound.has(e.round_num)) eventsByRound.set(e.round_num, [])
+    eventsByRound.get(e.round_num).push(e)
   })
+
+  // 布局：扩展画布让节点不挤
+  const canvasW = Math.max(W, rounds.length * 200)
+  const canvasH = Math.max(H, (Math.max(...[...eventsByRound.values()].map(b => b.length)) + 1) * 110)
+  const maxRI = Math.max(rounds.length - 1, 1)
+  const xScale = d3.scaleLinear().domain([0, maxRI]).range([pad.left, canvasW - pad.right])
+
+  const nodeIds = new Set(rawEvents.map(e => e.id))
+  const nodes = rawEvents.map(e => {
+    const ri = roundIndex.get(e.round_num)
+    const bucket = eventsByRound.get(e.round_num)
+    const idx = bucket.indexOf(e)
+    const ySpan = canvasH - pad.top - pad.bottom
+    const yStep = ySpan / (bucket.length + 1)
+    return { ...e, x: xScale(ri), y: pad.top + yStep * (idx + 1), fx: xScale(ri) }
+  })
+
+  const edges = rawCausalEdges
+    .map(e => ({ ...e, source: e.source?.id || e.source, target: e.target?.id || e.target }))
+    .filter(e => nodeIds.has(e.source) && nodeIds.has(e.target))
 
   const svg = d3.select(svgEl.value)
   svg.selectAll('*').remove()
-  svg.attr('width', width).attr('height', height)
+  svg.attr('width', W).attr('height', H)
+
+  // 箭头标记
+  const defs = svg.append('defs')
+  for (const [rel, color] of Object.entries(RELATION_COLORS)) {
+    defs.append('marker')
+      .attr('id', `arrow-${rel}`)
+      .attr('viewBox', '0 -5 10 10')
+      .attr('refX', 22).attr('refY', 0)
+      .attr('markerWidth', 8).attr('markerHeight', 8)
+      .attr('orient', 'auto')
+      .append('path').attr('d', 'M0,-4L10,0L0,4Z').attr('fill', color)
+  }
+  // 发光
+  const glow = defs.append('filter').attr('id', 'glow').attr('x', '-40%').attr('y', '-40%').attr('width', '180%').attr('height', '180%')
+  glow.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'blur')
+  glow.append('feMerge').selectAll('feMergeNode').data(['blur', 'SourceGraphic']).join('feMergeNode').attr('in', d => d)
 
   const g = svg.append('g')
-  svg.call(d3.zoom().scaleExtent([0.2, 5]).on('zoom', event => g.attr('transform', event.transform)))
+  const zoom = d3.zoom().scaleExtent([0.15, 4]).on('zoom', ev => g.attr('transform', ev.transform))
+  svg.call(zoom)
+  // zoom-to-fit：缩放到能看到全部内容，但保证最小 0.5 倍不会太小
+  const rawScale = Math.min(W / canvasW, H / canvasH)
+  const fitScale = Math.max(rawScale * 0.88, 0.45)
+  const fitTx = (W - canvasW * fitScale) / 2
+  const fitTy = (H - canvasH * fitScale) / 2
+  svg.call(zoom.transform, d3.zoomIdentity.translate(fitTx, fitTy).scale(fitScale))
 
-  const eventYMap = new Map()
-  const variableYMap = new Map()
-  eventNodes.forEach((node, index) => {
-    eventYMap.set(node.id, ((height - 120) / Math.max(eventNodes.length, 1)) * (index + 0.5) + 60)
+  // ── 轮次列标记 ──
+  rounds.forEach((r, i) => {
+    const x = xScale(i)
+    // 竖线
+    g.append('line')
+      .attr('x1', x).attr('y1', pad.top - 10).attr('x2', x).attr('y2', canvasH - pad.bottom)
+      .attr('stroke', '#ffffff08').attr('stroke-dasharray', '6 4')
+    // 轮次标签（顶部 pill 样式）
+    const labelG = g.append('g').attr('transform', `translate(${x}, ${pad.top - 35})`)
+    labelG.append('rect').attr('x', -30).attr('y', -12).attr('width', 60).attr('height', 24)
+      .attr('rx', 12).attr('fill', '#1a1a2e').attr('stroke', '#2a2a3e').attr('stroke-width', 1)
+    labelG.append('text').attr('text-anchor', 'middle').attr('dy', 4)
+      .attr('fill', '#8888aa').attr('font-size', 12).attr('font-weight', 600).text(`第 ${r} 轮`)
   })
-  variableNodes.forEach((node, index) => {
-    variableYMap.set(node.id, ((height - 140) / Math.max(variableNodes.length, 1)) * (index + 0.5) + 70)
-  })
 
-  const actionYBuckets = new Map()
-  const agentYBuckets = new Map()
-  const entityYBuckets = new Map()
-  for (const edge of displayEdges) {
-    if (edge.type === 'CONTRIBUTES_TO' && eventYMap.has(edgeTargetId(edge))) {
-      const actionId = edgeSourceId(edge)
-      if (!actionYBuckets.has(actionId)) actionYBuckets.set(actionId, [])
-      actionYBuckets.get(actionId).push(eventYMap.get(edgeTargetId(edge)))
-    }
-  }
-  for (const edge of displayEdges) {
-    if (edge.type === 'PERFORMED' && actionYBuckets.has(edgeTargetId(edge))) {
-      const agentId = edgeSourceId(edge)
-      if (!agentYBuckets.has(agentId)) agentYBuckets.set(agentId, [])
-      agentYBuckets.get(agentId).push(...actionYBuckets.get(edgeTargetId(edge)))
-    }
-  }
-  for (const edge of displayEdges) {
-    if (edge.type === 'CORRESPONDS_TO' && agentYBuckets.has(edgeSourceId(edge))) {
-      const entityId = edgeTargetId(edge)
-      if (!entityYBuckets.has(entityId)) entityYBuckets.set(entityId, [])
-      entityYBuckets.get(entityId).push(...agentYBuckets.get(edgeSourceId(edge)))
-    }
-  }
-
-  const average = values => values && values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : height / 2
-  const simNodes = displayNodes.map(node => ({
-    ...node,
-    x: layerX(node, width),
-    y: layerY(node, height, eventYMap, variableYMap, actionYBuckets, agentYBuckets, entityYBuckets, average)
-  }))
-  const simEdges = displayEdges.map(edge => ({
-    ...edge,
-    source: edgeSourceId(edge),
-    target: edgeTargetId(edge)
-  }))
-
+  // ── 力模拟（加大间距）──
   if (sim) sim.stop()
-  sim = d3.forceSimulation(simNodes)
-    .force('link', d3.forceLink(simEdges).id(node => node.id).distance(edgeDistance).strength(edgeStrength))
-    .force('charge', d3.forceManyBody().strength(nodeCharge))
-    .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('x', d3.forceX(node => layerX(node, width)).strength(node => node.type === 'event' || node.type === 'variable' ? 0.35 : 0.18))
-    .force('y', d3.forceY(node => layerY(node, height, eventYMap, variableYMap, actionYBuckets, agentYBuckets, entityYBuckets, average)).strength(node => node.type === 'event' || node.type === 'variable' ? 0.24 : 0.06))
-    .force('collide', d3.forceCollide().radius(node => radius(node) + 10))
-    .alphaDecay(0.08)
+  sim = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(edges).id(n => n.id).distance(140).strength(0.12))
+    .force('charge', d3.forceManyBody().strength(-400))
+    .force('y', d3.forceY(canvasH / 2).strength(0.03))
+    .force('collide', d3.forceCollide().radius(45).strength(0.8))
+    .alphaDecay(0.05)
 
-  const link = g.append('g').selectAll('line').data(simEdges).join('line')
-    .attr('stroke', edgeColor)
-    .attr('stroke-width', edgeWidth)
-    .attr('stroke-dasharray', edgeDasharray)
+  // ── 因果边 ──
+  const edgeG = g.append('g')
+  const causalPath = edgeG.selectAll('path').data(edges).join('path')
+    .attr('fill', 'none')
+    .attr('stroke', e => RELATION_COLORS[e.relation_type] || '#555')
+    .attr('stroke-width', e => 1.2 + (e.strength || 0.5) * 1.8)
+    .attr('stroke-opacity', 0.6)
+    .attr('marker-end', e => `url(#arrow-${e.relation_type || 'correlated'})`)
 
-  const node = g.append('g').selectAll('circle').data(simNodes).join('circle')
-    .attr('r', radius)
-    .attr('fill', item => NODE_COLORS[item.type])
-    .attr('stroke', '#111')
-    .attr('stroke-width', 1.5)
+  // 边标签（带背景 pill）
+  const edgeLabelG = g.append('g')
+  const edgeLabelItems = edgeLabelG.selectAll('g').data(edges).join('g')
+    .attr('pointer-events', 'none')
+  edgeLabelItems.append('rect')
+    .attr('rx', 6).attr('fill', '#12121e').attr('stroke', e => RELATION_COLORS[e.relation_type] || '#555')
+    .attr('stroke-width', 0.8).attr('stroke-opacity', 0.5)
+  edgeLabelItems.append('text')
+    .text(e => RELATION_LABELS[e.relation_type] || '')
+    .attr('font-size', 9).attr('font-weight', 600)
+    .attr('fill', e => RELATION_COLORS[e.relation_type] || '#888')
+    .attr('text-anchor', 'middle').attr('dy', 3.5)
+
+  // ── 事件节点 ──
+  const nodeG = g.append('g')
+  const R = 16 // 统一半径，severity 用不同效果体现
+  const nodeItems = nodeG.selectAll('g').data(nodes).join('g')
+    .attr('transform', n => `translate(${n.x},${n.y})`)
     .attr('cursor', 'pointer')
     .call(d3.drag()
-      .on('start', (event, item) => {
-        if (!event.active) sim.alphaTarget(0.3).restart()
-        item.fx = item.x
-        item.fy = item.y
-      })
-      .on('drag', (event, item) => {
-        item.fx = event.x
-        item.fy = event.y
-      })
-      .on('end', (event, item) => {
-        if (!event.active) sim.alphaTarget(0)
-        item.fx = null
-        item.fy = null
-      })
+      .on('start', (ev, d) => { if (!ev.active) sim.alphaTarget(0.3).restart(); d.fy = d.y })
+      .on('drag', (ev, d) => { d.fy = ev.y })
+      .on('end', (ev, d) => { if (!ev.active) sim.alphaTarget(0); d.fy = null })
     )
+  // 外圈光晕
+  nodeItems.append('circle')
+    .attr('r', R + 4)
+    .attr('fill', n => EVENT_COLORS[n.event_type] || '#f43f5e')
+    .attr('opacity', 0.15)
+    .attr('filter', 'url(#glow)')
+  // 主圆
+  nodeItems.append('circle')
+    .attr('r', R)
+    .attr('fill', n => EVENT_COLORS[n.event_type] || '#f43f5e')
+    .attr('stroke', '#0a0a14').attr('stroke-width', 2.5)
+  // 严重度小标记（右上角小圆）
+  nodeItems.filter(n => (n.severity || 0) > 0.5).append('circle')
+    .attr('cx', 10).attr('cy', -10).attr('r', 4)
+    .attr('fill', '#ff4444').attr('stroke', '#0a0a14').attr('stroke-width', 1.5)
 
-  const label = g.append('g').selectAll('text').data(simNodes.filter(node => node.type !== 'action')).join('text')
-    .text(nodeLabel)
-    .attr('font-size', item => item.type === 'event' ? 11 : item.type === 'variable' ? 10 : 10)
-    .attr('fill', item => {
-      if (item.type === 'agent') return '#c7d2fe'
-      if (item.type === 'entity') return '#6ee7b7'
-      if (item.type === 'event') return '#fda4af'
-      return '#7dd3fc'
-    })
-    .attr('text-anchor', 'middle')
-    .attr('dy', item => radius(item) + 14)
-    .attr('pointer-events', 'none')
+  // ── 节点标签（类型 pill + 截断描述）──
+  const labelOffset = R + 8
+  // 类型标签 pill
+  const labelItems = nodeG.selectAll('g.label-g').data(nodes).join('g')
+    .attr('class', 'label-g').attr('pointer-events', 'none')
+  // 背景 rect
+  labelItems.append('rect')
+    .attr('rx', 8).attr('fill', n => EVENT_COLORS[n.event_type] + '20')
+    .attr('stroke', n => EVENT_COLORS[n.event_type] + '40').attr('stroke-width', 1)
+  // 类型文字
+  labelItems.append('text')
+    .attr('class', 'node-type-text')
+    .text(n => eventTypeLabel(n.event_type))
+    .attr('font-size', 10).attr('font-weight', 700)
+    .attr('fill', n => EVENT_COLORS[n.event_type] || '#fda4af')
+    .attr('text-anchor', 'middle').attr('dy', 3.5)
+  // 描述文字（第二行）
+  labelItems.append('text')
+    .attr('class', 'node-desc-text')
+    .text(n => truncate(n.description, 12))
+    .attr('font-size', 9).attr('fill', '#888')
+    .attr('text-anchor', 'middle').attr('dy', 16)
 
-  const actionLabel = g.append('g').selectAll('text').data(simNodes.filter(node => node.type === 'action')).join('text')
-    .text(node => `${node.label} R${node.round_num}`)
-    .attr('font-size', 9)
-    .attr('fill', '#fbbf2480')
-    .attr('text-anchor', 'middle')
-    .attr('dy', node => radius(node) + 12)
-    .attr('pointer-events', 'none')
+  // 调整标签背景大小
+  labelItems.each(function() {
+    const grp = d3.select(this)
+    const typeText = grp.select('.node-type-text').node()
+    if (!typeText) return
+    const bbox = typeText.getBBox()
+    grp.select('rect')
+      .attr('x', bbox.x - 6).attr('y', bbox.y - 4)
+      .attr('width', bbox.width + 12).attr('height', bbox.height + 8)
+  })
 
-  node.on('mouseover', (event, item) => {
+  // ── Hover ──
+  nodeItems.on('mouseover', (event, d) => {
     tooltip.value = {
       show: true,
-      x: event.pageX + 12,
-      y: event.pageY - 10,
-      label: item.label,
-      meta: nodeMeta(item)
+      x: event.pageX + 14, y: event.pageY - 14,
+      label: `${eventTypeLabel(d.event_type)} · 第${d.round_num}轮`,
+      meta: `严重度 ${(d.severity || 0).toFixed(2)}`,
+      desc: d.description || ''
     }
-    const connected = new Set([item.id])
-    simEdges.forEach(edge => {
-      if (edge.source.id === item.id) connected.add(edge.target.id)
-      if (edge.target.id === item.id) connected.add(edge.source.id)
+    const connected = new Set([d.id])
+    edges.forEach(e => {
+      const sid = e.source?.id || e.source, tid = e.target?.id || e.target
+      if (sid === d.id) connected.add(tid)
+      if (tid === d.id) connected.add(sid)
     })
-    node.attr('fill', nodeItem => connected.has(nodeItem.id) ? NODE_COLORS[nodeItem.type] : NODE_COLORS_DIM[nodeItem.type])
-    link.attr('stroke-opacity', edge => edge.source.id === item.id || edge.target.id === item.id ? 1 : 0.1)
-    label.attr('opacity', nodeItem => connected.has(nodeItem.id) ? 1 : 0.15)
-    actionLabel.attr('opacity', nodeItem => connected.has(nodeItem.id) ? 1 : 0.15)
+    nodeItems.attr('opacity', n => connected.has(n.id) ? 1 : 0.15)
+    labelItems.attr('opacity', n => connected.has(n.id) ? 1 : 0.1)
+    causalPath.attr('stroke-opacity', e => {
+      const sid = e.source?.id || e.source, tid = e.target?.id || e.target
+      return sid === d.id || tid === d.id ? 0.9 : 0.05
+    })
+    edgeLabelItems.attr('opacity', e => {
+      const sid = e.source?.id || e.source, tid = e.target?.id || e.target
+      return sid === d.id || tid === d.id ? 1 : 0.05
+    })
   })
   .on('mouseout', () => {
     tooltip.value.show = false
-    node.attr('fill', item => NODE_COLORS[item.type])
-    link.attr('stroke-opacity', 1)
-    label.attr('opacity', 1)
-    actionLabel.attr('opacity', 1)
+    nodeItems.attr('opacity', 1)
+    labelItems.attr('opacity', 1)
+    causalPath.attr('stroke-opacity', 0.6)
+    edgeLabelItems.attr('opacity', 1)
   })
-  .on('click', (_, item) => {
-    selectedNode.value = { ...item }
-  })
+  .on('click', (_, d) => { selectedEvent.value = { ...d } })
 
+  // ── Tick ──
   sim.on('tick', () => {
-    link
-      .attr('x1', edge => edge.source.x)
-      .attr('y1', edge => edge.source.y)
-      .attr('x2', edge => edge.target.x)
-      .attr('y2', edge => edge.target.y)
-    node
-      .attr('cx', item => item.x)
-      .attr('cy', item => item.y)
-    label
-      .attr('x', item => item.x)
-      .attr('y', item => item.y)
-    actionLabel
-      .attr('x', item => item.x)
-      .attr('y', item => item.y)
+    // 边曲线
+    causalPath.attr('d', e => {
+      const sx = e.source.x, sy = e.source.y, tx = e.target.x, ty = e.target.y
+      if (isNaN(sx) || isNaN(sy) || isNaN(tx) || isNaN(ty)) return ''
+      const dx = tx - sx, dy = ty - sy
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1
+      const sameCol = Math.abs(e.source.fx - e.target.fx) < 5
+      const dr = sameCol ? dist * 0.35 : dist * 0.8
+      return `M${sx},${sy} A${dr},${dr} 0 0,${sy < ty ? 1 : 0} ${tx},${ty}`
+    })
+    // 边标签
+    edgeLabelItems.each(function(e) {
+      const mx = (e.source.x + e.target.x) / 2
+      const my = (e.source.y + e.target.y) / 2
+      const dx = e.target.x - e.source.x, dy = e.target.y - e.source.y
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1
+      const off = 16
+      const nx = mx + (-dy / dist * off), ny = my + (dx / dist * off)
+      const grp = d3.select(this)
+      grp.select('text').attr('x', nx).attr('y', ny)
+      const bbox = grp.select('text').node().getBBox()
+      grp.select('rect')
+        .attr('x', bbox.x - 5).attr('y', bbox.y - 2)
+        .attr('width', bbox.width + 10).attr('height', bbox.height + 4)
+    })
+    // 节点
+    nodeItems.attr('transform', n => `translate(${n.x},${n.y})`)
+    // 节点标签
+    labelItems.each(function(n) {
+      d3.select(this).attr('transform', `translate(${n.x},${n.y + labelOffset})`)
+    })
   })
 }
 
-function radius(node) {
-  if (node.type === 'variable') return 12
-  if (node.type === 'event') return 10 + Math.min((node.severity || 0) * 10, 10)
-  if (node.type === 'agent') return 10 + Math.min((node.action_count || 0) * 0.5, 20)
-  if (node.type === 'entity') return 9
-  return 5
-}
-
-function trunc(value, limit) {
-  return !value ? '' : value.length > limit ? `${value.slice(0, limit)}…` : value
-}
-
-function layerX(node, width) {
-  if (node.type === 'entity') return width * 0.08
-  if (node.type === 'agent') return width * 0.24
-  if (node.type === 'action') return width * 0.46
-  if (node.type === 'event') return width * 0.70
-  if (node.type === 'variable') return width * 0.88
-  return width * 0.5
-}
-
-function layerY(node, height, eventYMap, variableYMap, actionYBuckets, agentYBuckets, entityYBuckets, average) {
-  if (node.type === 'event') return eventYMap.get(node.id) || height / 2
-  if (node.type === 'variable') return variableYMap.get(node.id) || height / 2
-  if (node.type === 'action') return average(actionYBuckets.get(node.id))
-  if (node.type === 'agent') return average(agentYBuckets.get(node.id))
-  if (node.type === 'entity') return average(entityYBuckets.get(node.id))
-  return height / 2
-}
-
-function edgeDistance(edge) {
-  if (edge.type === 'CAUSAL') return 110
-  if (edge.type === 'AFFECTS') return 90
-  if (edge.type === 'CONTRIBUTES_TO') return 95
-  if (edge.type === 'PERFORMED') return 72
-  if (edge.type === 'CORRESPONDS_TO') return 84
-  return 70
-}
-
-function edgeStrength(edge) {
-  if (edge.type === 'CAUSAL') return 0.72
-  if (edge.type === 'AFFECTS') return 0.88
-  if (edge.type === 'CONTRIBUTES_TO') return 0.66
-  if (edge.type === 'PERFORMED') return 0.48
-  if (edge.type === 'CORRESPONDS_TO') return 0.34
-  return 0.4
-}
-
-function edgeColor(edge) {
-  if (edge.type === 'CAUSAL') return '#fb718580'
-  if (edge.type === 'AFFECTS') return '#38bdf880'
-  if (edge.type === 'CONTRIBUTES_TO') return '#f59e0b80'
-  if (edge.type === 'CORRESPONDS_TO') return '#10b98160'
-  return '#6366f150'
-}
-
-function edgeWidth(edge) {
-  if (edge.type === 'CAUSAL') return 2.2
-  if (edge.type === 'AFFECTS') return 2
-  if (edge.type === 'CONTRIBUTES_TO') return 1.6
-  if (edge.type === 'CORRESPONDS_TO') return 1.5
-  return 1.2
-}
-
-function edgeDasharray(edge) {
-  if (edge.type === 'CAUSAL') return '6 4'
-  if (edge.type === 'AFFECTS') return '4 4'
-  return null
-}
-
-function nodeCharge(node) {
-  if (node.type === 'variable') return -420
-  if (node.type === 'event') return -260
-  if (node.type === 'entity') return -160
-  return -120
-}
-
-function nodeMeta(node) {
-  if (node.type === 'agent') return `${node.action_count || 0} 条行为 · ${formatPlatform(node.platform)}`
-  if (node.type === 'action') return `${node.label} · R${node.round_num} · ${formatPlatform(node.platform)}`
-  if (node.type === 'event') return `${eventTypeLabel(node.event_type || node.label)} · R${node.round_num} · 严重度 ${formatMetric(node.severity)}`
-  if (node.type === 'variable') return `当前值 ${formatMetric(node.value)} · 变化 ${formatSignedMetric(node.delta)}`
-  return '知识实体'
-}
-
-function nodeLabel(node) {
-  if (node.type === 'agent') return `[智] ${trunc(node.label, 6)}`
-  if (node.type === 'entity') return `${trunc(node.label, 8)} (实体)`
-  if (node.type === 'event') return `${eventTypeLabel(node.event_type || node.label)} · R${node.round_num}`
-  if (node.type === 'variable') return `${node.label} ${formatMetric(node.value)}`
-  return trunc(node.label, 10)
-}
-
-watch([filterPlatform, topAgentCount, actionsPerAgent], () => {
-  if (loaded.value) renderGraph()
-})
-
-onMounted(() => {
-  fetchGraph()
-})
-
-onBeforeUnmount(() => {
-  if (sim) sim.stop()
-})
+onMounted(() => { fetchGraph() })
+onBeforeUnmount(() => { if (sim) sim.stop() })
 </script>
 
 <style scoped>
-.sim-graph-page {
+.causal-page {
   position: fixed;
   inset: 0;
   background: #0a0a14;
@@ -703,94 +524,51 @@ onBeforeUnmount(() => {
 
 /* BG */
 .page-bg { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.bg-orb {
-  position: absolute; border-radius: 50%; filter: blur(120px); opacity: .15;
-}
-.bg-orb-1 { width: 500px; height: 500px; background: #6366f1; top: -100px; left: -100px; }
-.bg-orb-2 { width: 400px; height: 400px; background: #10b981; bottom: -80px; right: -80px; }
+.bg-orb { position: absolute; border-radius: 50%; filter: blur(140px); opacity: .12; }
+.bg-orb-1 { width: 500px; height: 500px; background: #6366f1; top: -120px; left: -120px; }
+.bg-orb-2 { width: 400px; height: 400px; background: #10b981; bottom: -100px; right: -100px; }
 
 /* Top bar */
 .top-bar {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 16px;
+  display: flex; align-items: center; gap: 16px;
   padding: 12px 20px;
   background: rgba(10,10,20,0.85);
   border-bottom: 1px solid #1a1a2e;
   backdrop-filter: blur(10px);
-  z-index: 2;
-  flex-shrink: 0;
+  z-index: 2; flex-shrink: 0;
 }
 .back-btn {
-  display: flex; align-items: center; gap: 4px;
+  display: flex; align-items: center; gap: 6px;
   background: none; border: 1px solid #333; border-radius: 8px;
-  color: #aaa; padding: 6px 12px; font-size: 13px; cursor: pointer;
+  color: #aaa; padding: 8px 16px; font-size: 15px; cursor: pointer;
   transition: all .15s;
 }
 .back-btn:hover { border-color: #6366f1; color: #c7d2fe; }
 .page-title {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 17px; font-weight: 600; margin: 0; color: #e8e8f0;
+  display: flex; align-items: center; gap: 10px;
+  font-size: 20px; font-weight: 700; margin: 0; color: #e8e8f0;
 }
 .page-title svg { opacity: .7; }
-.stats-bar {
-  margin-left: auto;
-  display: flex; gap: 16px; font-size: 13px; color: #888;
-}
+.stats-bar { margin-left: auto; display: flex; gap: 20px; font-size: 16px; color: #888; }
 .stat strong { color: #c7d2fe; margin-right: 2px; }
 
-/* Toolbar */
+/* Toolbar / Legend */
 .toolbar {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  padding: 10px 20px;
-  background: rgba(10,10,20,0.6);
+  display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+  padding: 10px 24px;
+  background: rgba(10,10,20,0.5);
   border-bottom: 1px solid #1a1a2e;
-  flex-shrink: 0;
-  z-index: 2;
-  position: relative;
+  flex-shrink: 0; z-index: 2; position: relative;
 }
-.filter-group { display: flex; gap: 4px; }
-.filter-btn {
-  font-size: 12px; padding: 4px 12px; border-radius: 6px;
-  border: 1px solid #2a2a3a; background: transparent; color: #888; cursor: pointer;
-  transition: all .15s;
-}
-.filter-btn.active { border-color: #6366f1; color: #a5b4fc; background: #6366f118; }
-.filter-btn.twitter.active { border-color: #3b82f6; color: #93c5fd; background: #3b82f618; }
-.filter-btn.reddit.active { border-color: #f97316; color: #fdba74; background: #f9731618; }
-.legend {
-  display: flex; align-items: center; gap: 12px; font-size: 11px; color: #777;
-}
-.legend-item { display: flex; align-items: center; gap: 4px; }
-.dot { width: 8px; height: 8px; border-radius: 50%; }
-.dot.agent { background: #6366f1; }
-.dot.action { background: #f59e0b; }
-.dot.event { background: #f43f5e; }
-.dot.variable { background: #38bdf8; }
-.dot.entity { background: #10b981; }
-.line { width: 16px; height: 2px; border-radius: 1px; }
-.line.performed { background: #6366f160; }
-.line.contributes { background: #f59e0b80; }
-.line.causal { background: #fb718580; }
-.line.affects { background: #38bdf880; }
-.line.corresponds { background: #10b98160; }
-.view-controls {
-  margin-left: auto;
-  display: flex; gap: 16px; align-items: center;
-}
-.ctrl-label {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 12px; color: #888;
-}
-.range-input {
-  width: 80px; accent-color: #6366f1;
-}
+.legend-section { display: flex; align-items: center; gap: 10px; }
+.legend-title { font-size: 13px; color: #666; font-weight: 700; margin-right: 6px; }
+.legend-item { display: flex; align-items: center; gap: 5px; font-size: 13px; color: #999; }
+.dot { width: 12px; height: 12px; border-radius: 50%; }
+.edge-sample { width: 22px; height: 3px; border-radius: 2px; }
 
 /* Graph */
-.graph-container {
-  flex: 1; position: relative; overflow: hidden;
-}
+.graph-container { flex: 1; position: relative; overflow: hidden; }
 .graph-svg { width: 100%; height: 100%; }
 
 /* Center state */
@@ -815,7 +593,7 @@ onBeforeUnmount(() => {
 /* Detail panel */
 .detail-panel {
   position: absolute; right: 0; top: 0; bottom: 0;
-  width: 320px; background: rgba(14,14,28,0.95);
+  width: 340px; background: rgba(14,14,28,0.96);
   border-left: 1px solid #1a1a2e; padding: 20px;
   overflow-y: auto; z-index: 5;
   backdrop-filter: blur(12px);
@@ -827,11 +605,6 @@ onBeforeUnmount(() => {
 .detail-type-badge {
   font-size: 11px; padding: 3px 10px; border-radius: 10px; font-weight: 600;
 }
-.detail-type-badge.agent { background: #6366f130; color: #a5b4fc; }
-.detail-type-badge.action { background: #f59e0b20; color: #fbbf24; }
-.detail-type-badge.event { background: #f43f5e20; color: #fda4af; }
-.detail-type-badge.variable { background: #38bdf820; color: #7dd3fc; }
-.detail-type-badge.entity { background: #10b98120; color: #6ee7b7; }
 .close-btn {
   background: none; border: none; color: #666; font-size: 22px;
   cursor: pointer; line-height: 1;
@@ -841,9 +614,7 @@ onBeforeUnmount(() => {
   font-size: 16px; font-weight: 600; margin: 0 0 16px; color: #f0f0f8;
 }
 .detail-fields { display: flex; flex-direction: column; gap: 10px; }
-.field {
-  display: flex; gap: 8px; align-items: baseline;
-}
+.field { display: flex; gap: 8px; align-items: baseline; }
 .field.full { flex-direction: column; }
 .field-key { font-size: 11px; color: #666; min-width: 50px; flex-shrink: 0; }
 .field-val { font-size: 13px; color: #ccc; }
@@ -853,15 +624,29 @@ onBeforeUnmount(() => {
   padding: 8px 10px; border-radius: 6px;
 }
 
+/* Related edges in detail panel */
+.related-edges { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.re-card {
+  background: rgba(255,255,255,0.03);
+  border-left: 3px solid #555;
+  border-radius: 6px; padding: 8px 10px;
+}
+.re-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.re-rel { font-size: 12px; font-weight: 700; }
+.re-strength { font-size: 11px; color: #888; }
+.re-pair { font-size: 12px; color: #bbb; }
+.re-evidence { font-size: 11px; color: #888; margin-top: 4px; line-height: 1.4; }
+
 /* Tooltip */
 .graph-tooltip {
-  position: fixed; padding: 8px 14px;
-  background: #1e1e2e; border: 1px solid #333; border-radius: 8px;
+  position: fixed; padding: 10px 16px;
+  background: #1a1a2e; border: 1px solid #333; border-radius: 10px;
   font-size: 12px; color: #ddd; pointer-events: none; z-index: 20;
-  max-width: 280px;
+  max-width: 320px;
 }
-.tt-label { font-weight: 600; }
+.tt-label { font-weight: 600; font-size: 13px; }
 .tt-meta { font-size: 11px; color: #999; margin-top: 2px; }
+.tt-desc { font-size: 11px; color: #777; margin-top: 4px; line-height: 1.4; }
 
 /* Transitions */
 .slide-right-enter-active, .slide-right-leave-active {

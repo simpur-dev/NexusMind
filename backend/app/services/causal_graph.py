@@ -384,7 +384,7 @@ class CausalGraphEngine:
             new_ids = {e.event_id for e in new_events}
             existing_pairs = {(e.source_event_id, e.target_event_id) for e in self._edges}
             
-            prompt = f"""你是一个社会模拟因果关系分析器。请分析以下事件序列中的因果关系。
+            prompt = f"""你是一个社会舆情模拟的因果关系分析器。请分析以下事件序列中的因果关系。
 
 事件列表（按时间顺序）：
 {events_text}
@@ -402,7 +402,7 @@ class CausalGraphEngine:
     "target_id": "结果事件ID", 
     "relation": "triggered/amplified/suppressed/correlated",
     "strength": 0.0到1.0,
-    "evidence": "简要因果解释"
+    "evidence": "中文因果解释"
   }}
 ]
 ```
@@ -411,7 +411,8 @@ class CausalGraphEngine:
 1. 只输出你有较高把握的因果关系（strength >= 0.4）
 2. target_id 必须是本轮新增事件之一
 3. 不要重复已有的因果关系
-4. 只输出 JSON 数组，不要其他内容"""
+4. evidence 必须全部使用中文，不得包含任何英文，必须讲清因果逻辑
+5. 只输出 JSON 数组，不要其他内容"""
 
             response = client.chat.completions.create(
                 model=Config.LLM_MODEL_NAME,

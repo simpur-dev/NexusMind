@@ -405,6 +405,7 @@
                 v-else-if="currentStep === 3"
                 :simulationId="currentSimulationId"
                 :maxRounds="maxRounds"
+                :minutesPerRound="minutesPerRound"
                 :freshStart="pendingFreshStart"
                 :projectData="projectData"
                 :graphData="graphData"
@@ -481,6 +482,7 @@ const stepNames = ['图谱构建', '环境搭建', '世界模型推演', '报告
 const currentSimulationId = ref(null)
 const currentReportId = ref(null)
 const maxRounds = ref(null) // 从 Step2 传入的模拟轮数配置
+const minutesPerRound = ref(60) // 每轮分钟数，默认60（与后端 simulation_config_generator 一致）
 const pendingFreshStart = ref(false) // Step2 点击"开始推演"时置 true，让 Step3 跳过 resume 直接启动
 const stepStatus = ref('') // 子组件通过 emit('update-status') 上报的状态: processing / completed / error
 const systemLogs = ref([])
@@ -596,7 +598,10 @@ const handleNextStep = (params = {}) => {
     if (currentStep.value === 2) {
       pendingFreshStart.value = true
     }
-    addLog(`配置模拟轮数: ${params.maxRounds} 轮`)
+    if (params.minutesPerRound) {
+      minutesPerRound.value = params.minutesPerRound
+    }
+    addLog(`配置模拟轮数: ${params.maxRounds} 轮, 每轮 ${minutesPerRound.value} 分钟`)
   } else {
     maxRounds.value = null
   }
@@ -842,7 +847,7 @@ const loadProject = async () => {
         // 报告已生成，恢复关联数据
         currentSimulationId.value = response.data.simulation_id
         currentReportId.value = response.data.report_id
-        maxReachedStep.value = 4
+        maxReachedStep.value = 5
         if (response.data.graph_id) {
           currentPhase.value = 2
           await loadGraph(response.data.graph_id)
@@ -852,15 +857,17 @@ const loadProject = async () => {
         currentStep.value = targetStep
         addLog(`从历史记录恢复项目，进入 Step ${targetStep} (${stepNames[targetStep - 1]})`)
       } else if (response.data.simulation_id) {
-        // 模拟已创建，恢复到 Step 2（环境搭建会自动检查是否已准备完成）
+        // 模拟已创建，恢复关联数据
         currentSimulationId.value = response.data.simulation_id
-        currentStep.value = 2
-        maxReachedStep.value = 3
+        maxReachedStep.value = 5
         if (response.data.graph_id) {
           currentPhase.value = 2
           await loadGraph(response.data.graph_id)
         }
-        addLog(`从历史记录恢复项目，模拟ID: ${response.data.simulation_id}`)
+        // 优先使用 URL 指定的步骤，否则默认 Step 2
+        const targetStep = (requestedStep >= 1 && requestedStep <= maxReachedStep.value) ? requestedStep : 2
+        currentStep.value = targetStep
+        addLog(`从历史记录恢复项目，进入 Step ${targetStep} (${stepNames[targetStep - 1]})，模拟ID: ${response.data.simulation_id}`)
       } else if (response.data.status === 'graph_completed' && response.data.graph_id) {
         // 图谱构建完成，默认在 Step 1
         currentPhase.value = 2
@@ -1487,6 +1494,17 @@ const renderGraph = () => {
 watch(graphData, () => {
   if (graphData.value) {
     nextTick(() => renderGraph())
+  }
+})
+
+// 当从 Step 3+ 切回 Step 1/2 时，左侧图谱面板由 v-if 重新创建，
+// 但 graphData 引用未变不会触发上面的 watcher，需要手动重新渲染
+// 需等待 panel-slide 过渡动画（300ms）结束后再渲染，否则容器宽度为 0。
+watch(currentStep, (newStep, oldStep) => {
+  if (newStep <= 2 && oldStep > 2 && graphData.value) {
+    setTimeout(() => {
+      nextTick(() => renderGraph())
+    }, 360)
   }
 })
 

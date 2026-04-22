@@ -1,112 +1,213 @@
 <template>
-  <div class="action-card" :class="action.platform">
-    <div class="card-header">
-      <div class="agent-info">
-        <div class="avatar-placeholder">{{ realisticName(action.agent_name)[0] }}</div>
-        <span class="agent-name" :title="action.agent_name">{{ realisticName(action.agent_name) }}</span>
+  <div class="action-card-wrapper">
+    <!-- ====== Twitter 风格 ====== -->
+    <div v-if="action.platform === 'twitter'" class="tweet-card">
+      <div class="tweet-avatar" :style="{ background: avatarGradient }">
+        {{ realisticName(action.agent_name)[0] }}
       </div>
-      <div class="action-badge" :class="getActionTypeClass(action.action_type)">
-        {{ getActionTypeLabel(action.action_type) }}
-      </div>
-    </div>
-
-    <div class="card-body">
-      <!-- CREATE_POST -->
-      <div v-if="action.action_type === 'CREATE_POST' && action.action_args?.content"
-           class="content-text main-text">
-        {{ cleanContent(action.action_args.content) }}
-      </div>
-
-      <!-- QUOTE_POST -->
-      <template v-if="action.action_type === 'QUOTE_POST'">
-        <div v-if="action.action_args?.quote_content" class="content-text">
-          {{ cleanContent(action.action_args.quote_content) }}
+      <div class="tweet-main">
+        <div class="tweet-header">
+          <span class="tweet-name">{{ realisticName(action.agent_name) }}</span>
+          <span class="tweet-handle">@{{ handleName(action.agent_name) }}</span>
+          <span class="tweet-dot">·</span>
+          <span class="tweet-time">R{{ action.round_num }}</span>
+          <span class="tweet-badge" :class="getActionTypeClass(action.action_type)">{{ getActionTypeLabel(action.action_type) }}</span>
         </div>
-        <div v-if="action.action_args?.original_content" class="quoted-block">
-          <div class="quote-header">
-            <span class="quote-label">@{{ prettifyAuthor(action.action_args.original_author_name) }}</span>
-          </div>
-          <div class="quote-text">{{ truncate(cleanContent(action.action_args.original_content), 150) }}</div>
+        <div class="tweet-body">
+          <!-- 有内容的类型：发帖/引用/转发 -->
+          <template v-if="hasContent">
+            <!-- REPOST: 显示转发标记 + 原帖引用块 -->
+            <template v-if="action.action_type === 'REPOST'">
+              <div class="tweet-repost-tag">↻ 转发</div>
+              <div class="tweet-quote">
+                <span v-if="prettifyAuthor(action.action_args?.original_author_name)" class="tq-author">@{{ prettifyAuthor(action.action_args.original_author_name) }}</span>
+                <span class="tq-text">{{ expanded ? fullText : collapsedText }}</span>
+              </div>
+              <button v-if="needsFold" class="fold-btn" @click.stop="expanded = !expanded">
+                {{ expanded ? '收起 ▴' : '展开全文 ▾' }}
+              </button>
+            </template>
+            <!-- QUOTE: 自己的内容 + 原帖引用块 -->
+            <template v-else-if="action.action_type === 'QUOTE_POST'">
+              <p class="tweet-text">{{ expanded ? fullText : collapsedText }}</p>
+              <button v-if="needsFold" class="fold-btn" @click.stop="expanded = !expanded">
+                {{ expanded ? '收起 ▴' : '展开全文 ▾' }}
+              </button>
+              <div v-if="action.action_args?.original_content" class="tweet-quote">
+                <span v-if="prettifyAuthor(action.action_args?.original_author_name)" class="tq-author">@{{ prettifyAuthor(action.action_args.original_author_name) }}</span>
+                <span class="tq-text">{{ truncate(cleanContent(action.action_args.original_content), 100) }}</span>
+              </div>
+            </template>
+            <!-- 普通发帖/评论 -->
+            <template v-else>
+              <p class="tweet-text">{{ expanded ? fullText : collapsedText }}</p>
+              <button v-if="needsFold" class="fold-btn" @click.stop="expanded = !expanded">
+                {{ expanded ? '收起 ▴' : '展开全文 ▾' }}
+              </button>
+            </template>
+          </template>
+          <!-- 轻量操作 -->
+          <template v-else>
+            <div v-if="action.action_type === 'LIKE_POST' || action.action_type === 'LIKE_COMMENT'" class="tweet-action-line"><span class="heart">♥</span> 赞了 <b v-if="prettifyAuthor(action.action_args?.post_author_name)">@{{ prettifyAuthor(action.action_args.post_author_name) }}</b><span v-else>一条动态</span></div>
+            <div v-else-if="action.action_type === 'FOLLOW'" class="tweet-action-line">关注了 <b>@{{ prettifyAuthor(action.action_args?.target_user || action.action_args?.user_id) || '某用户' }}</b></div>
+            <div v-else-if="action.action_type === 'SEARCH_POSTS'" class="tweet-action-line">🔍 "{{ action.action_args?.query || '' }}"</div>
+            <div v-else-if="action.action_type === 'SEARCH_USER'" class="tweet-action-line">🔍 查找用户</div>
+            <div v-else-if="action.action_type === 'UPVOTE_POST' || action.action_type === 'DOWNVOTE_POST' || action.action_type === 'DISLIKE_POST'" class="tweet-action-line">{{ action.action_type === 'UPVOTE_POST' ? '👍' : '👎' }} {{ getActionTypeLabel(action.action_type) }}</div>
+            <div v-else-if="action.action_type === 'TREND'" class="tweet-action-line">📈 浏览热门</div>
+            <div v-else-if="action.action_type === 'DO_NOTHING'" class="tweet-action-line dim">💤 静默</div>
+            <div v-else class="tweet-action-line dim">{{ getActionTypeLabel(action.action_type) }}</div>
+          </template>
         </div>
-      </template>
-
-      <!-- REPOST -->
-      <template v-if="action.action_type === 'REPOST'">
-        <div class="meta-info">
-          <span>↻ 转发自 @{{ prettifyAuthor(action.action_args?.original_author_name) }}</span>
+        <!-- 只有有内容的卡片才显示底部操作栏 -->
+        <div v-if="hasContent" class="tweet-foot">
+          <span class="tf-btn">💬</span>
+          <span class="tf-btn">🔁</span>
+          <span class="tf-btn">♡</span>
+          <span class="tf-btn">↗</span>
         </div>
-        <div v-if="action.action_args?.original_content" class="quoted-block">
-          {{ truncate(cleanContent(action.action_args.original_content), 180) }}
-        </div>
-      </template>
-
-      <!-- LIKE_POST / LIKE_COMMENT -->
-      <template v-if="action.action_type === 'LIKE_POST' || action.action_type === 'LIKE_COMMENT'">
-        <div class="meta-info">
-          <span>♡ 点赞 @{{ prettifyAuthor(action.action_args?.post_author_name) }}</span>
-        </div>
-        <div v-if="action.action_args?.post_content" class="quoted-block mini">
-          "{{ truncate(cleanContent(action.action_args.post_content), 100) }}"
-        </div>
-      </template>
-
-      <!-- CREATE_COMMENT -->
-      <template v-if="action.action_type === 'CREATE_COMMENT'">
-        <div v-if="action.action_args?.content" class="content-text">
-          {{ cleanContent(action.action_args.content) }}
-        </div>
-        <div v-if="action.action_args?.post_id" class="meta-info dim">
-          ↳ 回复帖子 #{{ action.action_args.post_id }}
-        </div>
-      </template>
-
-      <!-- SEARCH_POSTS -->
-      <template v-if="action.action_type === 'SEARCH_POSTS'">
-        <div class="meta-info">
-          <span>🔍 "{{ action.action_args?.query || '' }}"</span>
-        </div>
-      </template>
-
-      <!-- FOLLOW -->
-      <template v-if="action.action_type === 'FOLLOW'">
-        <div class="meta-info">
-          <span>+ 关注 @{{ prettifyAuthor(action.action_args?.target_user || action.action_args?.user_id) }}</span>
-        </div>
-      </template>
-
-      <!-- UPVOTE / DOWNVOTE -->
-      <template v-if="action.action_type === 'UPVOTE_POST' || action.action_type === 'DOWNVOTE_POST'">
-        <div class="meta-info">
-          <span>{{ action.action_type === 'UPVOTE_POST' ? '▲' : '▼' }}
-            {{ action.action_type === 'UPVOTE_POST' ? '赞同' : '反对' }}</span>
-        </div>
-        <div v-if="action.action_args?.post_content" class="quoted-block mini">
-          "{{ truncate(cleanContent(action.action_args.post_content), 100) }}"
-        </div>
-      </template>
-
-      <!-- DO_NOTHING -->
-      <template v-if="action.action_type === 'DO_NOTHING'">
-        <div class="meta-info dim"><span>∘ 静默</span></div>
-      </template>
-
-      <!-- Fallback: unknown type but content available -->
-      <div v-if="!KNOWN_TYPES.includes(action.action_type) && action.action_args?.content"
-           class="content-text">
-        {{ cleanContent(action.action_args.content) }}
       </div>
     </div>
 
-    <div class="card-footer">
-      <span class="time-tag">R{{ action.round_num }} · {{ formatTime(action.timestamp) }}</span>
+    <!-- ====== Reddit 完整卡片 ====== -->
+    <div v-else-if="isRedditFullCard" class="reddit-card">
+      <div class="reddit-votes">
+        <span class="vote-arrow up" :class="{ active: action.action_type === 'UPVOTE_POST' }">▲</span>
+        <span class="vote-score">{{ randomScore(action) }}</span>
+        <span class="vote-arrow down" :class="{ active: action.action_type === 'DOWNVOTE_POST' }">▼</span>
+      </div>
+      <div class="reddit-main">
+        <div class="reddit-meta">
+          <span class="reddit-sub">r/topic</span>
+          <span class="reddit-author">u/{{ realisticName(action.agent_name) }}</span>
+          <span class="reddit-time">· R{{ action.round_num }}</span>
+          <span class="reddit-badge" :class="getActionTypeClass(action.action_type)">{{ getActionTypeLabel(action.action_type) }}</span>
+        </div>
+        <div class="reddit-body">
+          <!-- REPOST -->
+          <template v-if="action.action_type === 'REPOST'">
+            <div class="reddit-repost-tag">⟳ 转帖</div>
+            <div class="reddit-quote-block">
+              <span v-if="prettifyAuthor(action.action_args?.original_author_name)" class="rq-author">u/{{ prettifyAuthor(action.action_args.original_author_name) }}</span>
+              <span class="rq-text">{{ expanded ? fullText : collapsedText }}</span>
+            </div>
+            <button v-if="needsFold" class="fold-btn reddit-fold" @click.stop="expanded = !expanded">
+              {{ expanded ? '收起 ▴' : '展开全文 ▾' }}
+            </button>
+          </template>
+          <!-- QUOTE -->
+          <template v-else-if="action.action_type === 'QUOTE_POST'">
+            <p class="reddit-text">{{ expanded ? fullText : collapsedText }}</p>
+            <button v-if="needsFold" class="fold-btn reddit-fold" @click.stop="expanded = !expanded">
+              {{ expanded ? '收起 ▴' : '展开全文 ▾' }}
+            </button>
+            <div v-if="action.action_args?.original_content" class="reddit-quote-block">
+              <span v-if="prettifyAuthor(action.action_args?.original_author_name)" class="rq-author">u/{{ prettifyAuthor(action.action_args.original_author_name) }}</span>
+              <span class="rq-text">{{ truncate(cleanContent(action.action_args.original_content), 100) }}</span>
+            </div>
+          </template>
+          <!-- 普通发帖/评论 -->
+          <template v-else>
+            <p class="reddit-text" :class="{ 'comment-style': action.action_type === 'CREATE_COMMENT' }">
+              {{ expanded ? fullText : collapsedText }}
+            </p>
+            <button v-if="needsFold" class="fold-btn reddit-fold" @click.stop="expanded = !expanded">
+              {{ expanded ? '收起 ▴' : '展开全文 ▾' }}
+            </button>
+          </template>
+        </div>
+        <div class="reddit-foot">
+          <span class="rf-btn">💬 评论</span>
+          <span class="rf-btn">↗ 分享</span>
+          <span class="rf-btn">⚑ 收藏</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== Reddit 紧凑 mini-card ====== -->
+    <div v-else class="reddit-mini" :class="getActionTypeClass(action.action_type)">
+      <span class="rm-icon">{{ miniIcon }}</span>
+      <span class="rm-user">{{ realisticName(action.agent_name) }}</span>
+      <span class="rm-desc">
+        <template v-if="action.action_type === 'LIKE_POST' || action.action_type === 'LIKE_COMMENT'">赞了 <b v-if="prettifyAuthor(action.action_args?.post_author_name)">{{ prettifyAuthor(action.action_args.post_author_name) }}</b><span v-else>一篇帖子</span></template>
+        <template v-else-if="action.action_type === 'UPVOTE_POST'">赞同了一篇帖子</template>
+        <template v-else-if="action.action_type === 'DOWNVOTE_POST'">反对了一篇帖子</template>
+        <template v-else-if="action.action_type === 'DISLIKE_POST'">踩了一篇帖子</template>
+        <template v-else-if="action.action_type === 'SEARCH_POSTS'">搜索 "{{ truncate(action.action_args?.query || '', 20) }}"</template>
+        <template v-else-if="action.action_type === 'SEARCH_USER'">查找用户</template>
+        <template v-else-if="action.action_type === 'FOLLOW'">关注了 {{ prettifyAuthor(action.action_args?.target_user || action.action_args?.user_id) || '某用户' }}</template>
+        <template v-else-if="action.action_type === 'TREND'">浏览热门话题</template>
+        <template v-else-if="action.action_type === 'DO_NOTHING'">静默浏览</template>
+        <template v-else>{{ getActionTypeLabel(action.action_type) }}</template>
+      </span>
+      <span class="rm-round">R{{ action.round_num }}</span>
     </div>
   </div>
 </template>
 
 <script setup>
+import { ref, computed } from 'vue'
+
 const props = defineProps({
   action: { type: Object, required: true }
 })
+
+const FOLD_LIMIT = 120
+
+const expanded = ref(false)
+
+const fullText = computed(() => {
+  const a = props.action
+  const args = a.action_args || {}
+  const raw = args.content || args.quote_content || args.original_content || ''
+  return cleanContent(raw)
+})
+
+const hasContent = computed(() => {
+  const t = props.action.action_type
+  const hasText = !!fullText.value
+  return hasText && ['CREATE_POST', 'CREATE_COMMENT', 'QUOTE_POST', 'REPOST'].includes(t)
+})
+
+const needsFold = computed(() => fullText.value.length > FOLD_LIMIT)
+
+const collapsedText = computed(() => {
+  if (!needsFold.value) return fullText.value
+  return fullText.value.slice(0, FOLD_LIMIT) + '…'
+})
+
+const MINI_ICONS = {
+  LIKE_POST: '♥', LIKE_COMMENT: '♥',
+  UPVOTE_POST: '▲', DOWNVOTE_POST: '▼', DISLIKE_POST: '👎',
+  SEARCH_POSTS: '🔍', SEARCH_USER: '🔍',
+  FOLLOW: '➕', TREND: '📈', DO_NOTHING: '💤'
+}
+const miniIcon = computed(() => MINI_ICONS[props.action.action_type] || '•')
+
+// Avatar gradient based on agent name hash
+const GRADIENTS = [
+  'linear-gradient(135deg, #3b82f6, #8b5cf6)',
+  'linear-gradient(135deg, #6366f1, #ec4899)',
+  'linear-gradient(135deg, #f59e0b, #ef4444)',
+  'linear-gradient(135deg, #10b981, #3b82f6)',
+  'linear-gradient(135deg, #8b5cf6, #06b6d4)',
+  'linear-gradient(135deg, #ec4899, #f97316)',
+  'linear-gradient(135deg, #14b8a6, #a855f7)',
+  'linear-gradient(135deg, #f43e5c, #f59e0b)',
+]
+const avatarGradient = computed(() => {
+  const h = _simpleHash(props.action.agent_name || '')
+  return GRADIENTS[h % GRADIENTS.length]
+})
+
+function handleName(raw) {
+  const nick = realisticName(raw)
+  return nick.replace(/\s/g, '_').slice(0, 10)
+}
+
+function randomScore(action) {
+  const h = _simpleHash((action.agent_name || '') + (action.timestamp || '') + (action.round_num || 0))
+  return (h % 120) + 1
+}
 
 // ---- 自然化昵称映射 ----
 // 图谱实体名 → 社交媒体风格用户名，确定性哈希选取
@@ -167,11 +268,15 @@ function realisticName(raw) {
   return nick
 }
 
-const KNOWN_TYPES = [
-  'CREATE_POST', 'QUOTE_POST', 'REPOST', 'LIKE_POST', 'LIKE_COMMENT',
-  'CREATE_COMMENT', 'SEARCH_POSTS', 'FOLLOW', 'UPVOTE_POST',
-  'DOWNVOTE_POST', 'DO_NOTHING'
-]
+// Reddit full-card types (have real text content)
+const REDDIT_FULL_TYPES = new Set([
+  'CREATE_POST', 'CREATE_COMMENT', 'QUOTE_POST', 'REPOST'
+])
+const isRedditFullCard = computed(() => {
+  if (props.action.platform === 'twitter') return false
+  const args = props.action.action_args || {}
+  return REDDIT_FULL_TYPES.has(props.action.action_type) && (args.content || args.original_content || args.quote_content)
+})
 
 const ACTION_LABELS = {
   CREATE_POST: '发帖',
@@ -181,9 +286,12 @@ const ACTION_LABELS = {
   LIKE_COMMENT: '点赞',
   CREATE_COMMENT: '评论',
   SEARCH_POSTS: '搜索',
+  SEARCH_USER: '查人',
   FOLLOW: '关注',
   UPVOTE_POST: '赞同',
   DOWNVOTE_POST: '反对',
+  DISLIKE_POST: '踩',
+  TREND: '热搜',
   DO_NOTHING: '静默'
 }
 
@@ -234,7 +342,7 @@ function cleanContent(text) {
 }
 
 const prettifyAuthor = (name) => {
-  if (!name) return '用户'
+  if (!name || name === 'None' || name === 'null' || name === 'undefined') return null
   return realisticName(name)
 }
 
@@ -248,8 +356,11 @@ const getActionTypeClass = (type) => {
     LIKE_COMMENT: 'like',
     UPVOTE_POST: 'vote-up',
     DOWNVOTE_POST: 'vote-down',
+    DISLIKE_POST: 'vote-down',
     SEARCH_POSTS: 'search',
+    SEARCH_USER: 'search',
     FOLLOW: 'follow',
+    TREND: 'search',
     DO_NOTHING: 'idle'
   }
   return map[type] || 'generic'
@@ -273,119 +384,168 @@ const formatTime = (ts) => {
 </script>
 
 <style scoped>
-.action-card {
-  background: #18181f;
-  border: 1px solid #2a2a33;
-  border-left: 3px solid #64748b;
-  border-radius: 8px;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.action-card.twitter { border-left-color: #3b82f6; }
-.action-card.reddit { border-left-color: #f97316; }
+/* ============ 通用 ============ */
+.action-card-wrapper { width: 100%; }
 
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+.fold-btn {
+  background: none; border: none; cursor: pointer;
+  color: #1d9bf0; font-size: 12px; font-weight: 600;
+  padding: 2px 0; margin-top: 2px;
+  transition: color .15s;
 }
-.agent-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+.fold-btn:hover { color: #60a5fa; text-decoration: underline; }
+.fold-btn.reddit-fold { color: #ff6b3a; }
+.fold-btn.reddit-fold:hover { color: #ff8c5a; }
+
+/* ============ Twitter 推文卡片 ============ */
+.tweet-card {
+  display: flex; gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  transition: background .15s;
 }
-.avatar-placeholder {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.tweet-card:hover { background: rgba(29,155,240,.04); }
+
+.tweet-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  color: #fff; font-size: 15px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
-.agent-name {
-  color: #e5e7eb;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.action-badge {
-  background: rgba(255, 255, 255, 0.06);
-  color: #94a3b8;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  flex-shrink: 0;
-}
-.action-badge.post { background: rgba(59, 130, 246, 0.18); color: #93c5fd; }
-.action-badge.comment { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; }
-.action-badge.like { background: rgba(239, 68, 68, 0.18); color: #fca5a5; }
-.action-badge.quote,
-.action-badge.repost { background: rgba(168, 85, 247, 0.18); color: #d8b4fe; }
-.action-badge.vote-up { background: rgba(34, 197, 94, 0.18); color: #86efac; }
-.action-badge.vote-down { background: rgba(249, 115, 22, 0.18); color: #fdba74; }
-.action-badge.idle { background: rgba(148, 163, 184, 0.12); color: #94a3b8; }
-
-.card-body {
-  font-size: 13px;
-  line-height: 1.45;
-  color: #e5e7eb;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.content-text { color: #f1f5f9; }
-.content-text.main-text { font-weight: 500; }
-
-.quoted-block {
-  background: rgba(255, 255, 255, 0.03);
-  border-left: 2px solid #2a2a33;
-  padding: 6px 10px;
-  font-size: 12px;
-  color: #cbd5e1;
-  border-radius: 0 4px 4px 0;
-}
-.quoted-block.mini { font-size: 11px; color: #94a3b8; }
-.quote-header {
-  font-size: 10px;
-  color: #60a5fa;
+.tweet-main { flex: 1; min-width: 0; }
+.tweet-header {
+  display: flex; align-items: baseline; gap: 5px; flex-wrap: wrap;
   margin-bottom: 2px;
-  font-weight: 600;
 }
-.quote-text { color: #cbd5e1; }
+.tweet-name { font-size: 13px; font-weight: 700; color: #e7e9ea; white-space: nowrap; }
+.tweet-handle { font-size: 12px; color: #71767b; white-space: nowrap; }
+.tweet-dot { color: #71767b; font-size: 11px; }
+.tweet-time { font-size: 11px; color: #71767b; }
+.tweet-badge {
+  font-size: 9px; font-weight: 700; padding: 1px 6px;
+  border-radius: 9px; margin-left: auto; letter-spacing: .3px;
+}
+.tweet-badge.post { background: rgba(29,78,216,.15); color: #60a5fa; }
+.tweet-badge.comment { background: rgba(16,185,129,.12); color: #6ee7b7; }
+.tweet-badge.like { background: rgba(239,68,68,.12); color: #fca5a5; }
+.tweet-badge.quote, .tweet-badge.repost { background: rgba(168,85,247,.12); color: #d8b4fe; }
+.tweet-badge.follow { background: rgba(59,130,246,.12); color: #93c5fd; }
+.tweet-badge.search { background: rgba(245,158,11,.12); color: #fbbf24; }
+.tweet-badge.vote-up { background: rgba(239,68,68,.12); color: #fca5a5; }
+.tweet-badge.vote-down { background: rgba(113,147,255,.12); color: #7193ff; }
+.tweet-badge.idle { background: rgba(100,116,139,.1); color: #71767b; }
 
-.meta-info {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #cbd5e1;
-  font-size: 12px;
-}
-.meta-info.dim { color: #64748b; font-size: 11px; }
+.tweet-body { font-size: 13px; line-height: 1.5; color: #e7e9ea; margin-bottom: 4px; }
+.tweet-text { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.tweet-action-line { color: #71767b; font-size: 12px; line-height: 1.4; }
+.tweet-action-line .heart { color: #f91880; }
+.tweet-action-line.dim { color: #555e68; font-style: italic; }
+.tweet-action-line b { color: #60a5fa; font-weight: 600; }
 
-.card-footer {
-  border-top: 1px solid #22222a;
-  padding-top: 5px;
-  display: flex;
-  justify-content: flex-end;
+.tweet-repost-tag { font-size: 11px; color: #6ee7b7; font-weight: 600; margin-bottom: 2px; }
+.tweet-quote {
+  border: 1px solid rgba(255,255,255,.08); border-radius: 10px;
+  padding: 8px 10px; margin-top: 6px;
 }
-.time-tag {
+.tq-author { color: #60a5fa; font-size: 11px; font-weight: 600; display: block; margin-bottom: 2px; }
+.tq-text { color: #94a3b8; font-size: 12px; line-height: 1.35; }
+
+.tweet-foot {
+  display: flex; gap: 20px; padding-top: 4px;
+}
+.tf-btn {
+  font-size: 13px; color: #555e68; cursor: pointer;
+  transition: color .15s;
+}
+.tf-btn:hover { color: #1d9bf0; }
+
+/* ============ Reddit 完整帖子卡片 ============ */
+.reddit-card {
+  display: flex;
+  background: #161620;
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 8px; overflow: hidden;
+  transition: border-color .15s;
+  margin: 6px 8px;
+}
+.reddit-card:hover { border-color: rgba(255,69,0,.25); }
+
+.reddit-votes {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 10px 6px; gap: 2px; background: rgba(255,255,255,.02);
+  min-width: 34px;
+}
+.vote-arrow {
+  color: #555; font-size: 13px; cursor: pointer;
+  transition: color .15s; line-height: 1;
+}
+.vote-arrow.up:hover, .vote-arrow.up.active { color: #ff4500; }
+.vote-arrow.down:hover, .vote-arrow.down.active { color: #7193ff; }
+.vote-score {
+  font-size: 11px; font-weight: 700; color: #d7dadc;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10px;
-  color: #64748b;
-  letter-spacing: 0.05em;
+}
+
+.reddit-main { flex: 1; padding: 8px 10px; min-width: 0; }
+.reddit-meta {
+  display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+  margin-bottom: 4px; font-size: 11px;
+}
+.reddit-sub { color: #d7dadc; font-weight: 700; }
+.reddit-author { color: #4a9eff; }
+.reddit-time { color: #555; }
+.reddit-badge {
+  font-size: 9px; font-weight: 700; padding: 1px 6px;
+  border-radius: 9px; margin-left: auto;
+}
+.reddit-badge.post { background: rgba(255,69,0,.15); color: #ff6b3a; }
+.reddit-badge.comment { background: rgba(16,185,129,.12); color: #6ee7b7; }
+.reddit-badge.quote, .reddit-badge.repost { background: rgba(168,85,247,.12); color: #d8b4fe; }
+
+.reddit-body { font-size: 13px; line-height: 1.5; color: #d7dadc; margin-bottom: 6px; }
+.reddit-text { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.reddit-text.comment-style {
+  border-left: 2px solid #ff4500; padding-left: 8px;
+}
+.reddit-repost-tag { font-size: 11px; color: #6ee7b7; font-weight: 600; margin-bottom: 2px; }
+.reddit-quote-block {
+  border-left: 2px solid #333; padding: 6px 10px; margin-top: 4px;
+  background: rgba(255,255,255,.02); border-radius: 0 4px 4px 0;
+}
+.rq-author { color: #4a9eff; font-size: 11px; font-weight: 600; display: block; margin-bottom: 2px; }
+.rq-text { color: #818384; font-size: 12px; line-height: 1.35; }
+
+.reddit-foot {
+  display: flex; gap: 12px; padding-top: 4px; font-size: 11px; color: #818384;
+}
+.rf-btn { cursor: pointer; transition: color .15s; font-weight: 600; }
+.rf-btn:hover { color: #d7dadc; }
+
+/* ============ Reddit mini-card（轻量操作） ============ */
+.reddit-mini {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px;
+  margin: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255,255,255,.02);
+  border-left: 3px solid #333;
+  font-size: 12px; color: #818384;
+  transition: all .15s;
+}
+.reddit-mini:hover { background: rgba(255,255,255,.04); }
+.reddit-mini.like { border-left-color: #ff4500; }
+.reddit-mini.vote-up { border-left-color: #ff4500; }
+.reddit-mini.vote-down { border-left-color: #7193ff; }
+.reddit-mini.search { border-left-color: #fbbf24; }
+.reddit-mini.follow { border-left-color: #3b82f6; }
+.reddit-mini.idle { border-left-color: #444; opacity: .7; }
+
+.rm-icon { font-size: 13px; flex-shrink: 0; width: 18px; text-align: center; }
+.rm-user { color: #4a9eff; font-weight: 600; white-space: nowrap; }
+.rm-desc { color: #aaa; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rm-desc b { color: #4a9eff; font-weight: 600; }
+.rm-round {
+  color: #555; font-size: 10px; margin-left: auto; flex-shrink: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 </style>
