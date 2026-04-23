@@ -38,6 +38,132 @@
     <!-- Main content -->
     <div v-else-if="report" class="eval-content">
 
+      <!-- ========== Section 0: Benchmark Tier Report ========== -->
+      <div v-if="benchmark" class="benchmark-hero">
+        <div class="bm-glow"></div>
+        <div class="benchmark-header">
+          <div class="bm-icon">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 15l-2 5l9-11h-5l2-5l-9 11z"/>
+            </svg>
+          </div>
+          <div>
+            <h2 class="bm-title">基准评测报告</h2>
+            <p class="bm-subtitle">三级知识门控对照实验 · 量化模型真实预测能力</p>
+          </div>
+          <div class="bm-tag">BENCHMARK</div>
+        </div>
+
+        <div class="tier-cards">
+          <!-- Tier A -->
+          <div class="tier-card tier-a" :class="{ active: benchmark.tiers['A (Full)'] }">
+            <div class="tier-glow-ring"></div>
+            <div class="tier-top">
+              <div class="tier-badge">A</div>
+              <div class="tier-tag">全知模式</div>
+            </div>
+            <div class="tier-label">开卷测试 · 事件复现能力</div>
+            <div class="tier-score-wrap">
+              <div class="tier-score">
+                {{ benchmark.tiers['A (Full)'] ? benchmark.tiers['A (Full)'].total.toFixed(1) : '—' }}
+              </div>
+              <div class="tier-unit" v-if="benchmark.tiers['A (Full)']">/ 100</div>
+            </div>
+            <div class="tier-grade" v-if="benchmark.tiers['A (Full)']">
+              {{ benchmark.tiers['A (Full)'].grade }} 级
+              <span class="grade-hint">{{ tierAHint }}</span>
+            </div>
+            <div class="tier-desc">完整事件上下文 + 分阶段记忆门控</div>
+            <div class="tier-metrics" v-if="benchmark.tiers['A (Full)']">
+              <div class="tm-item"><span class="tm-name">趋势一致</span><span class="tm-val">{{ benchmark.tiers['A (Full)'].TCS }}</span></div>
+              <div class="tm-item"><span class="tm-name">转折命中</span><span class="tm-val">{{ benchmark.tiers['A (Full)'].TPH }}</span></div>
+              <div class="tm-item"><span class="tm-name">主体覆盖</span><span class="tm-val">{{ benchmark.tiers['A (Full)'].KAC }}</span></div>
+              <div class="tm-item"><span class="tm-name">事件顺序</span><span class="tm-val">{{ benchmark.tiers['A (Full)'].EOA }}</span></div>
+            </div>
+            <div class="tier-waiting" v-if="!benchmark.tiers['A (Full)']">等待实验数据</div>
+          </div>
+
+          <!-- Tier B -->
+          <div class="tier-card tier-b" :class="{ active: benchmark.tiers['B (Gated)'] }">
+            <div class="tier-glow-ring"></div>
+            <div class="tier-top">
+              <div class="tier-badge">B</div>
+              <div class="tier-tag">限知模式</div>
+            </div>
+            <div class="tier-label">半开卷 · 舆情响应质量</div>
+            <div class="tier-score-wrap">
+              <div class="tier-score">
+                {{ benchmark.tiers['B (Gated)'] ? benchmark.tiers['B (Gated)'].total.toFixed(1) : '—' }}
+              </div>
+              <div class="tier-unit" v-if="benchmark.tiers['B (Gated)']">/ 100</div>
+            </div>
+            <div class="tier-grade" v-if="benchmark.tiers['B (Gated)']">
+              {{ benchmark.tiers['B (Gated)'].grade }} 级
+            </div>
+            <div class="tier-desc">仅提供初始阶段信息 + 泄漏自动剥离</div>
+            <div class="tier-metrics" v-if="benchmark.tiers['B (Gated)']">
+              <div class="tm-item"><span class="tm-name">趋势一致</span><span class="tm-val">{{ benchmark.tiers['B (Gated)'].TCS }}</span></div>
+              <div class="tm-item"><span class="tm-name">转折命中</span><span class="tm-val">{{ benchmark.tiers['B (Gated)'].TPH }}</span></div>
+              <div class="tm-item"><span class="tm-name">主体覆盖</span><span class="tm-val">{{ benchmark.tiers['B (Gated)'].KAC }}</span></div>
+              <div class="tm-item"><span class="tm-name">事件顺序</span><span class="tm-val">{{ benchmark.tiers['B (Gated)'].EOA }}</span></div>
+            </div>
+            <div class="tier-waiting" v-if="!benchmark.tiers['B (Gated)']">等待实验数据</div>
+          </div>
+
+          <!-- Tier C -->
+          <div class="tier-card tier-c" :class="{ active: benchmark.tiers['C (Blind)'] }">
+            <div class="tier-glow-ring"></div>
+            <div class="tier-top">
+              <div class="tier-badge">C</div>
+              <div class="tier-tag">盲测模式</div>
+            </div>
+            <div class="tier-label">闭卷测试 · 真实预测能力</div>
+            <div class="tier-score-wrap">
+              <div class="tier-score">
+                {{ benchmark.tiers['C (Blind)'] ? benchmark.tiers['C (Blind)'].total.toFixed(1) : '—' }}
+              </div>
+              <div class="tier-unit" v-if="benchmark.tiers['C (Blind)']">/ 100</div>
+            </div>
+            <div class="tier-grade" v-if="benchmark.tiers['C (Blind)']">
+              {{ benchmark.tiers['C (Blind)'].grade }} 级
+            </div>
+            <div class="tier-desc">零事件上下文 · 纯身份推断 · 最严苛</div>
+            <div class="tier-metrics" v-if="benchmark.tiers['C (Blind)']">
+              <div class="tm-item"><span class="tm-name">趋势一致</span><span class="tm-val">{{ benchmark.tiers['C (Blind)'].TCS }}</span></div>
+              <div class="tm-item"><span class="tm-name">转折命中</span><span class="tm-val">{{ benchmark.tiers['C (Blind)'].TPH }}</span></div>
+              <div class="tm-item"><span class="tm-name">主体覆盖</span><span class="tm-val">{{ benchmark.tiers['C (Blind)'].KAC }}</span></div>
+              <div class="tm-item"><span class="tm-name">事件顺序</span><span class="tm-val">{{ benchmark.tiers['C (Blind)'].EOA }}</span></div>
+            </div>
+            <div class="tier-waiting" v-if="!benchmark.tiers['C (Blind)']">等待实验数据</div>
+          </div>
+        </div>
+
+        <!-- 信息溢价条 -->
+        <div class="info-premium" v-if="benchmark.information_premium !== null && benchmark.information_premium !== undefined">
+          <div class="ip-header">
+            <span class="ip-label">信息溢价指数</span>
+            <span class="ip-formula">全知得分 − 盲测得分 = <strong class="ip-value">{{ benchmark.information_premium.toFixed(1) }}</strong> 分</span>
+          </div>
+          <div class="ip-bar">
+            <div class="ip-fill" :style="{ width: Math.min(Math.abs(benchmark.information_premium), 100) + '%' }"></div>
+            <div class="ip-marker" style="left: 10%"><span>低</span></div>
+            <div class="ip-marker" style="left: 30%"><span>中</span></div>
+            <div class="ip-marker" style="left: 60%"><span>高</span></div>
+          </div>
+          <div class="ip-verdict">
+            <span v-if="benchmark.information_premium > 30" class="verdict-bad">差值较大 — 模型严重依赖「开卷」信息，独立预测能力不足</span>
+            <span v-else-if="benchmark.information_premium > 10" class="verdict-mid">差值适中 — 模型具备一定独立预测能力，仍有提升空间</span>
+            <span v-else class="verdict-good">差值极小 — 模型真正具备预测能力，不依赖信息泄漏</span>
+          </div>
+        </div>
+
+        <!-- 待实验提示 -->
+        <div class="bm-pending" v-if="!benchmark.tiers['B (Gated)'] || !benchmark.tiers['C (Blind)']">
+          <div class="pending-pulse"></div>
+          <span>部分层级尚未完成对照实验 · 运行对应知识等级的模拟后将自动填充数据</span>
+        </div>
+      </div>
+
       <!-- ========== Section 1: KPI Overview ========== -->
       <div class="section-header">
         <div class="section-num">01</div>
@@ -383,7 +509,7 @@
 
 <script>
 import * as d3 from 'd3'
-import { getEvaluationReport } from '../api/evaluation'
+import { getEvaluationReport, getBenchmarkScores } from '../api/evaluation'
 
 export default {
   name: 'EvaluationView',
@@ -393,6 +519,7 @@ export default {
   data() {
     return {
       report: null,
+      benchmark: null,
       loading: true,
       error: null
     }
@@ -413,6 +540,14 @@ export default {
     },
     causalStats() {
       return this.report?.state_evolution?.causal_graph_stats || null
+    },
+    tierAHint() {
+      const t = this.benchmark?.tiers?.['A (Full)']
+      if (!t) return ''
+      if (t.total >= 95) return '高度接近现实，可作为核心展示案例'
+      if (t.total >= 85) return '整体复现良好'
+      if (t.total >= 70) return '基本复现，仍有优化空间'
+      return '复现偏差较大'
     }
   },
   mounted() {
@@ -440,8 +575,14 @@ export default {
       this.loading = true
       this.error = null
       try {
-        const res = await getEvaluationReport(this.simulationId)
-        this.report = res.data
+        const [reportRes, bmRes] = await Promise.all([
+          getEvaluationReport(this.simulationId),
+          getBenchmarkScores(this.simulationId).catch(() => null)
+        ])
+        this.report = reportRes.data
+        if (bmRes && bmRes.data) {
+          this.benchmark = bmRes.data
+        }
         this.loading = false
         this.$nextTick(() => {
           requestAnimationFrame(() => {
@@ -1175,6 +1316,228 @@ export default {
   padding-left: 34px; line-height: 1.4;
 }
 
+/* ==================== Benchmark Hero ==================== */
+.benchmark-hero {
+  position: relative;
+  background: linear-gradient(160deg, rgba(99, 102, 241, 0.10) 0%, rgba(168, 85, 247, 0.07) 40%, rgba(14, 16, 28, 0.95) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 20px;
+  padding: 32px 36px;
+  margin-bottom: 36px;
+  overflow: hidden;
+}
+.bm-glow {
+  position: absolute; top: -60px; right: -60px;
+  width: 200px; height: 200px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(99,102,241,0.25) 0%, transparent 70%);
+  pointer-events: none;
+  animation: bmGlowPulse 4s ease-in-out infinite;
+}
+@keyframes bmGlowPulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+.benchmark-header {
+  display: flex; align-items: center; gap: 14px; margin-bottom: 28px; position: relative; z-index: 1;
+}
+.bm-icon {
+  width: 48px; height: 48px; border-radius: 14px;
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; flex-shrink: 0;
+  box-shadow: 0 0 24px rgba(99, 102, 241, 0.4);
+}
+.bm-title {
+  font-size: 22px; font-weight: 900; color: #f0f0f8;
+  letter-spacing: -0.5px; margin: 0;
+}
+.bm-subtitle {
+  font-size: 13px; color: #777; margin: 4px 0 0; letter-spacing: 0.5px;
+}
+.bm-tag {
+  margin-left: auto;
+  font-size: 10px; font-weight: 800; letter-spacing: 2px;
+  padding: 4px 12px; border-radius: 20px;
+  background: rgba(99, 102, 241, 0.15); color: #818cf8;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+/* Tier Cards */
+.tier-cards {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px;
+  position: relative; z-index: 1;
+}
+.tier-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  padding: 24px 20px 20px;
+  text-align: center;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+.tier-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+.tier-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+}
+.tier-a::before { background: linear-gradient(90deg, #22c55e, #4ade80, #86efac); }
+.tier-b::before { background: linear-gradient(90deg, #f59e0b, #fbbf24, #fde68a); }
+.tier-c::before { background: linear-gradient(90deg, #6366f1, #a78bfa, #c4b5fd); }
+
+.tier-card.active { border-color: rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.04); }
+
+.tier-glow-ring {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 140px; height: 140px; border-radius: 50%; opacity: 0;
+  transition: opacity 0.4s;
+  pointer-events: none;
+}
+.tier-card.active .tier-glow-ring { opacity: 1; }
+.tier-a .tier-glow-ring { background: radial-gradient(circle, rgba(34,197,94,0.12) 0%, transparent 70%); }
+.tier-b .tier-glow-ring { background: radial-gradient(circle, rgba(245,158,11,0.12) 0%, transparent 70%); }
+.tier-c .tier-glow-ring { background: radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%); }
+
+.tier-top {
+  display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 6px;
+  position: relative; z-index: 1;
+}
+.tier-badge {
+  width: 32px; height: 32px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 900;
+}
+.tier-a .tier-badge { background: rgba(34,197,94,0.15); color: #4ade80; }
+.tier-b .tier-badge { background: rgba(245,158,11,0.15); color: #fbbf24; }
+.tier-c .tier-badge { background: rgba(99,102,241,0.15); color: #a5b4fc; }
+
+.tier-tag {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+}
+.tier-a .tier-tag { color: #4ade80; }
+.tier-b .tier-tag { color: #fbbf24; }
+.tier-c .tier-tag { color: #a5b4fc; }
+
+.tier-label {
+  font-size: 11px; color: #666; margin-bottom: 14px; position: relative; z-index: 1;
+}
+.tier-score-wrap {
+  display: flex; align-items: baseline; justify-content: center; gap: 4px;
+  margin-bottom: 4px; position: relative; z-index: 1;
+}
+.tier-score {
+  font-size: 46px; font-weight: 900; font-variant-numeric: tabular-nums;
+  line-height: 1;
+  background: linear-gradient(180deg, #ffffff, #a0a0c0);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.tier-unit {
+  font-size: 14px; color: #555; font-weight: 600;
+}
+.tier-grade {
+  font-size: 13px; font-weight: 700; margin-bottom: 8px; position: relative; z-index: 1;
+}
+.tier-a .tier-grade { color: #4ade80; }
+.tier-b .tier-grade { color: #fbbf24; }
+.tier-c .tier-grade { color: #a5b4fc; }
+.grade-hint {
+  display: block; font-size: 10px; font-weight: 500; color: #666; margin-top: 2px;
+}
+
+.tier-desc {
+  font-size: 10px; color: #555; margin-bottom: 14px; position: relative; z-index: 1;
+}
+.tier-metrics {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  position: relative; z-index: 1;
+}
+.tm-item {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 11px; padding: 4px 10px; border-radius: 8px;
+  background: rgba(255,255,255,0.03);
+}
+.tm-name { color: #777; }
+.tm-val { font-weight: 700; color: #ccc; font-variant-numeric: tabular-nums; }
+
+.tier-waiting {
+  font-size: 12px; color: #444; padding: 16px 0;
+  position: relative; z-index: 1;
+  animation: waitPulse 2s ease-in-out infinite;
+}
+@keyframes waitPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+/* Information Premium */
+.info-premium {
+  margin-top: 20px; position: relative; z-index: 1;
+  background: rgba(255,255,255,0.02); border-radius: 12px; padding: 16px 20px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.ip-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;
+}
+.ip-label {
+  font-size: 13px; font-weight: 700; color: #aaa;
+}
+.ip-formula {
+  font-size: 12px; color: #777;
+}
+.ip-value {
+  font-weight: 900; font-size: 18px; color: #a5b4fc;
+  font-variant-numeric: tabular-nums;
+}
+.ip-bar {
+  position: relative;
+  height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: visible;
+  margin-bottom: 12px;
+}
+.ip-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #f59e0b, #ef4444);
+  border-radius: 4px;
+  transition: width 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.3);
+}
+.ip-marker {
+  position: absolute; top: 14px;
+  transform: translateX(-50%);
+}
+.ip-marker span {
+  font-size: 9px; color: #555; letter-spacing: 0.5px;
+}
+.ip-verdict {
+  text-align: center; font-size: 12px; line-height: 1.6;
+}
+.verdict-good { color: #4ade80; }
+.verdict-mid { color: #fbbf24; }
+.verdict-bad { color: #f87171; }
+
+/* Pending */
+.bm-pending {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12px; color: #555;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(255,255,255,0.08);
+  border-radius: 10px; padding: 12px 16px;
+  margin-top: 16px;
+  position: relative; z-index: 1;
+}
+.pending-pulse {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #fbbf24; flex-shrink: 0;
+  animation: pendingBlink 1.5s ease-in-out infinite;
+}
+@keyframes pendingBlink {
+  0%, 100% { opacity: 0.3; box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.4); }
+  50% { opacity: 1; box-shadow: 0 0 8px 2px rgba(251, 191, 36, 0.3); }
+}
+
 /* ==================== Responsive ==================== */
 @media (max-width: 768px) {
   .charts-grid { grid-template-columns: 1fr; }
@@ -1185,5 +1548,8 @@ export default {
   .platform-compare { flex-direction: column; }
   .sentiment-summary-row { flex-direction: column; }
   .section-num { font-size: 22px; }
+  .tier-cards { grid-template-columns: 1fr; }
+  .tier-score { font-size: 32px; }
+  .benchmark-hero { padding: 20px 16px; }
 }
 </style>

@@ -72,6 +72,12 @@ class SimulationState:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
     
+    # Benchmark 知识等级控制
+    # "full": Tier A 完整信息（默认）
+    # "p1_only": Tier B 只保留 P1 阶段信息
+    # "identity": Tier C 盲测模式
+    knowledge_level: str = "full"
+    
     # 错误信息
     error: Optional[str] = None
     
@@ -94,6 +100,7 @@ class SimulationState:
             "reddit_status": self.reddit_status,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "knowledge_level": self.knowledge_level,
             "error": self.error,
         }
     
@@ -191,6 +198,7 @@ class SimulationManager:
             reddit_status=data.get("reddit_status", "not_started"),
             created_at=data.get("created_at", datetime.now().isoformat()),
             updated_at=data.get("updated_at", datetime.now().isoformat()),
+            knowledge_level=data.get("knowledge_level", "full"),
             error=data.get("error"),
         )
         
@@ -203,6 +211,7 @@ class SimulationManager:
         graph_id: str,
         enable_twitter: bool = True,
         enable_reddit: bool = True,
+        knowledge_level: str = "full",
     ) -> SimulationState:
         """
         创建新的模拟（同一项目复用已有模拟，避免重复生成Agent人设）
@@ -212,14 +221,15 @@ class SimulationManager:
             graph_id: 图谱ID
             enable_twitter: 是否启用Twitter模拟
             enable_reddit: 是否启用Reddit模拟
+            knowledge_level: 信息泄漏控制等级 ("full"/"p1_only"/"identity")
             
         Returns:
             SimulationState
         """
-        # 检查该项目是否已有模拟，如果有则复用
-        existing = self._find_simulation_by_project(project_id)
+        # 检查该项目是否已有 *相同 knowledge_level* 的模拟，如果有则复用
+        existing = self._find_simulation_by_project(project_id, knowledge_level=knowledge_level)
         if existing:
-            logger.info(f"复用已有模拟: {existing.simulation_id}, project={project_id}")
+            logger.info(f"复用已有模拟: {existing.simulation_id}, project={project_id}, level={knowledge_level}")
             return existing
         
         import uuid
@@ -231,6 +241,7 @@ class SimulationManager:
             graph_id=graph_id,
             enable_twitter=enable_twitter,
             enable_reddit=enable_reddit,
+            knowledge_level=knowledge_level,
             status=SimulationStatus.CREATED,
         )
         
@@ -239,8 +250,8 @@ class SimulationManager:
         
         return state
     
-    def _find_simulation_by_project(self, project_id: str) -> Optional[SimulationState]:
-        """查找项目对应的已有模拟"""
+    def _find_simulation_by_project(self, project_id: str, knowledge_level: str = "full") -> Optional[SimulationState]:
+        """查找项目对应的已有模拟（同 knowledge_level 才复用）"""
         import os
         sim_base = Config.OASIS_SIMULATION_DATA_DIR
         if not os.path.exists(sim_base):
@@ -256,7 +267,7 @@ class SimulationManager:
                 import json
                 with open(state_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                if data.get("project_id") == project_id:
+                if data.get("project_id") == project_id and data.get("knowledge_level", "full") == knowledge_level:
                     return self._load_simulation_state(sim_dir_name)
             except Exception:
                 continue
@@ -401,7 +412,7 @@ class SimulationManager:
                 )
             
             # 传入graph_id以启用图谱检索功能，获取更丰富的上下文
-            generator = OasisProfileGenerator(graph_id=state.graph_id)
+            generator = OasisProfileGenerator(graph_id=state.graph_id, knowledge_level=state.knowledge_level)
             
             def profile_progress(current, total, msg):
                 if progress_callback:

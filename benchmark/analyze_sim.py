@@ -150,6 +150,7 @@ event_order = [
 eval_result = {
     "simulation_id": "sim_656a9425082e",
     "evaluation_run": "v5_latest_20rounds",
+    "knowledge_tier": "A (Full)",
     "phase_sentiment_directions": directions,
     "turning_points_hit": tp_hits,
     "actor_coverage": [

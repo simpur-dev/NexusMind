@@ -265,9 +265,12 @@ def main():
 
     case_name = reference.get("case_name", os.path.basename(case_dir))
 
+    knowledge_tier = evaluation.get("knowledge_tier", "A (Full)")
+    
     print("=" * 60)
     print(f"  NexusMind Benchmark 评分")
     print(f"  案例：{case_name}")
+    print(f"  知识等级：Tier {knowledge_tier}")
     print("=" * 60)
 
     # 计算各指标
@@ -302,6 +305,7 @@ def main():
     result = {
         "case_id": reference.get("case_id"),
         "case_name": case_name,
+        "knowledge_tier": knowledge_tier,
         "scores": {
             "TCS": tcs_result["score"],
             "TPH": tph_result["score"],

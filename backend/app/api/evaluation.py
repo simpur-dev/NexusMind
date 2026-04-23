@@ -98,6 +98,69 @@ def get_state_evolution(simulation_id: str):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@evaluation_bp.route('/<simulation_id>/benchmark', methods=['GET'])
+def get_benchmark(simulation_id: str):
+    """
+    获取 Benchmark 三级评分（Tier A/B/C）
+
+    扫描 benchmark/ 目录下与该 simulation_id 匹配的 benchmark_score*.json，
+    返回各 Tier 的分数供前端展示。
+    """
+    import os, json, glob
+    from ..config import Config
+
+    try:
+        benchmark_base = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "benchmark")
+        
+        # 扫描所有 case 目录下的 benchmark_score*.json
+        tiers = {}
+        pattern = os.path.join(benchmark_base, "case_*", "benchmark_score*.json")
+        for fpath in glob.glob(pattern):
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                tier = data.get("knowledge_tier", "A (Full)")
+                scores = data.get("scores", {})
+                tiers[tier] = {
+                    "total": scores.get("total", 0),
+                    "grade": scores.get("grade", ""),
+                    "TCS": scores.get("TCS", 0),
+                    "TPH": scores.get("TPH", 0),
+                    "KAC": scores.get("KAC", 0),
+                    "EOA": scores.get("EOA", 0),
+                    "case_name": data.get("case_name", ""),
+                    "file": os.path.basename(fpath),
+                }
+            except Exception:
+                continue
+        
+        # 如果没有找到任何 benchmark 数据，也尝试读取 simulation 目录下的 state.json 获取 knowledge_level
+        sim_dir = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id)
+        knowledge_level = "full"
+        state_file = os.path.join(sim_dir, "state.json")
+        if os.path.exists(state_file):
+            with open(state_file, "r", encoding="utf-8") as f:
+                state_data = json.load(f)
+            knowledge_level = state_data.get("knowledge_level", "full")
+        
+        # 计算 Information Premium
+        tier_a_score = tiers.get("A (Full)", {}).get("total", 0)
+        tier_c_score = tiers.get("C (Blind)", {}).get("total", 0)
+        info_premium = tier_a_score - tier_c_score if tier_a_score and tier_c_score else None
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "tiers": tiers,
+                "current_knowledge_level": knowledge_level,
+                "information_premium": info_premium,
+            }
+        })
+    except Exception as e:
+        logger.error(f"获取 Benchmark 评分失败: {e}\n{traceback.format_exc()}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @evaluation_bp.route('/<simulation_id>/influence', methods=['GET'])
 def get_influence(simulation_id: str):
     """

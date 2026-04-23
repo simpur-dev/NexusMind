@@ -209,6 +209,15 @@ class OasisProfileGenerator:
         "Canada", "Australia", "Brazil", "India", "South Korea"
     ]
     
+    # 后续阶段关键词（P2-P5），用于 knowledge_level 过滤
+    # 当 knowledge_level != "full" 时，包含这些词的 context 条目将被剔除
+    LATE_STAGE_KEYWORDS = [
+        "撤销处分", "二审", "判决", "复核", "百余处", "不规范",
+        "问责", "整改", "通报", "PTSD", "胜诉", "驳回",
+        "暂停招生", "书面检查", "制度反思", "维持原判",
+        "调查结果", "官方声明", "官方回应", "司法进展",
+    ]
+
     # 个人类型实体（需要生成具体人设）
     INDIVIDUAL_ENTITY_TYPES = [
         "student", "alumni", "professor", "person", "publicfigure", 
@@ -227,7 +236,8 @@ class OasisProfileGenerator:
         base_url: Optional[str] = None,
         model_name: Optional[str] = None,
         api_key_unused: Optional[str] = None,
-        graph_id: Optional[str] = None
+        graph_id: Optional[str] = None,
+        knowledge_level: str = "full"
     ):
         self.api_key = api_key or Config.LLM_API_KEY
         self.base_url = base_url or Config.LLM_BASE_URL
@@ -243,6 +253,12 @@ class OasisProfileGenerator:
         
         # Graphiti 用于检索丰富上下文
         self.graph_id = graph_id
+        
+        # knowledge_level 控制信息泄漏等级
+        # "full"      : 传统模式，context 不过滤（Tier A）
+        # "p1_only"   : 过滤掉含 P2-P5 关键词的 context 条目（Tier B）
+        # "identity"  : 只保留实体身份属性，零事件信息（Tier C）
+        self.knowledge_level = knowledge_level
         
         # 熔断器：连续 N 次图谱检索失败后自动跳过，避免 Neo4j 不可用时阻塞整个后端
         self._graph_search_failures = 0
@@ -292,6 +308,9 @@ class OasisProfileGenerator:
                 entity_summary=entity.summary,
                 entity_attributes=entity.attributes
             )
+        
+        # 后验校验：非 full 模式下自动剥离泄漏的后续阶段信息
+        profile_data = self._validate_no_leakage(profile_data, name)
         
         # 解析认知字段（带容错）
         raw_weights = profile_data.get("utility_weights", {})
@@ -465,6 +484,68 @@ class OasisProfileGenerator:
         
         return results
     
+    def _contains_late_stage_info(self, text: str) -> bool:
+        """检查文本是否包含后续阶段（P2-P5）关键词"""
+        if not text:
+            return False
+        return any(kw in text for kw in self.LATE_STAGE_KEYWORDS)
+
+    def _filter_context_lines(self, section_text: str) -> str:
+        """过滤掉包含后续阶段关键词的 context 行（用于 p1_only 模式）"""
+        lines = section_text.split("\n")
+        filtered = []
+        for line in lines:
+            if line.startswith("###"):
+                filtered.append(line)
+            elif not self._contains_late_stage_info(line):
+                filtered.append(line)
+        result = "\n".join(filtered)
+        # 如果一个 section 只剩标题没内容，也去掉
+        clean_lines = [l for l in result.split("\n") if l.strip()]
+        if len(clean_lines) <= 1 and clean_lines and clean_lines[0].startswith("###"):
+            return ""
+        return result
+
+    def _validate_no_leakage(self, profile_data: dict, entity_name: str) -> dict:
+        """后验校验：检查生成的 persona/bio 是否泄漏后续阶段信息
+        
+        如果检测到泄漏，自动剥离含泄漏关键词的句子（而非重新生成，节省 API）
+        """
+        if self.knowledge_level == "full":
+            return profile_data
+        
+        leaked_fields = {}
+        for field_name in ["persona", "bio"]:
+            text = profile_data.get(field_name, "")
+            if not text:
+                continue
+            found_kw = [kw for kw in self.LATE_STAGE_KEYWORDS if kw in text]
+            if found_kw:
+                leaked_fields[field_name] = found_kw
+        
+        if not leaked_fields:
+            return profile_data
+        
+        logger.warning(f"[Leakage] {entity_name}: 检测到信息泄漏 {leaked_fields}，正在自动剥离")
+        
+        for field_name in leaked_fields:
+            text = profile_data[field_name]
+            # 按句子拆分（中文句号、逗号断句太细，用句号/分号/感叹号/问号）
+            import re
+            sentences = re.split(r'(?<=[。！？；\n])', text)
+            clean_sentences = []
+            stripped_count = 0
+            for s in sentences:
+                if self._contains_late_stage_info(s):
+                    stripped_count += 1
+                else:
+                    clean_sentences.append(s)
+            
+            profile_data[field_name] = "".join(clean_sentences)
+            logger.info(f"[Leakage] {entity_name}.{field_name}: 剥离 {stripped_count} 句含后续信息的内容")
+        
+        return profile_data
+
     def _build_entity_context(self, entity: EntityNode) -> str:
         """
         构建实体的完整上下文信息
@@ -473,7 +554,20 @@ class OasisProfileGenerator:
         1. 实体本身的边信息（事实）
         2. 关联节点的详细信息
         3. 图谱混合检索到的丰富信息
+        
+        受 self.knowledge_level 控制：
+        - "full": 不过滤（Tier A）
+        - "p1_only": 过滤掉含 P2-P5 关键词的条目（Tier B）
+        - "identity": 只保留实体名称和类型，零事件信息（Tier C）
         """
+        # Tier C: 只返回身份信息
+        if self.knowledge_level == "identity":
+            entity_type = entity.get_entity_type() or "Entity"
+            return f"实体名称: {entity.name}\n实体类型: {entity_type}\n（盲测模式：不提供事件相关上下文）"
+
+        is_filtered = (self.knowledge_level == "p1_only")
+        filtered_count = 0  # 统计被过滤掉的条目数
+
         context_parts = []
         
         # 1. 添加实体属性信息
@@ -481,7 +575,11 @@ class OasisProfileGenerator:
             attrs = []
             for key, value in entity.attributes.items():
                 if value and str(value).strip():
-                    attrs.append(f"- {key}: {value}")
+                    line = f"- {key}: {value}"
+                    if is_filtered and self._contains_late_stage_info(str(value)):
+                        filtered_count += 1
+                        continue
+                    attrs.append(line)
             if attrs:
                 context_parts.append("### 实体属性\n" + "\n".join(attrs))
         
@@ -495,6 +593,9 @@ class OasisProfileGenerator:
                 direction = edge.get("direction", "")
                 
                 if fact:
+                    if is_filtered and self._contains_late_stage_info(fact):
+                        filtered_count += 1
+                        continue
                     relationships.append(f"- {fact}")
                     existing_facts.add(fact)
                 elif edge_name:
@@ -514,6 +615,11 @@ class OasisProfileGenerator:
                 node_labels = node.get("labels", [])
                 node_summary = node.get("summary", "")
                 
+                # p1_only: 跳过 summary 中含后续信息的节点
+                if is_filtered and self._contains_late_stage_info(node_summary):
+                    filtered_count += 1
+                    continue
+                
                 # 过滤掉默认标签
                 custom_labels = [l for l in node_labels if l not in ["Entity", "Node"]]
                 label_str = f" ({', '.join(custom_labels)})" if custom_labels else ""
@@ -532,11 +638,24 @@ class OasisProfileGenerator:
         if search_results.get("facts"):
             # 去重：排除已存在的事实
             new_facts = [f for f in search_results["facts"] if f not in existing_facts]
+            if is_filtered:
+                before = len(new_facts)
+                new_facts = [f for f in new_facts if not self._contains_late_stage_info(f)]
+                filtered_count += (before - len(new_facts))
             if new_facts:
                 context_parts.append("### 图谱检索到的事实信息\n" + "\n".join(f"- {f}" for f in new_facts[:15]))
         
         if search_results.get("node_summaries"):
-            context_parts.append("### 图谱检索到的相关节点\n" + "\n".join(f"- {s}" for s in search_results["node_summaries"][:10]))
+            summaries = search_results["node_summaries"]
+            if is_filtered:
+                before = len(summaries)
+                summaries = [s for s in summaries if not self._contains_late_stage_info(s)]
+                filtered_count += (before - len(summaries))
+            if summaries:
+                context_parts.append("### 图谱检索到的相关节点\n" + "\n".join(f"- {s}" for s in summaries[:10]))
+        
+        if is_filtered and filtered_count > 0:
+            logger.info(f"[KnowledgeFilter] {entity.name}: p1_only 模式过滤掉 {filtered_count} 条含后续阶段信息的 context 条目")
         
         return "\n\n".join(context_parts)
     
@@ -724,15 +843,46 @@ class OasisProfileGenerator:
         }
     
     def _get_system_prompt(self, is_individual: bool) -> str:
-        """获取系统提示词"""
+        """获取系统提示词（根据 knowledge_level 调整约束强度）"""
         base_prompt = (
             "你是社交媒体用户画像生成专家。生成详细、真实的人设用于舆论模拟,最大程度还原已有现实情况。"
             "必须返回有效的JSON格式，所有字符串值不能包含未转义的换行符。使用中文。"
-            "\n\n【关键约束 - 分阶段知识门控】persona字段中的'个人记忆/机构记忆'部分，"
-            "只能包含事件最初曝光/爆发期的信息（事件起因、初始爆料、初始反应）。"
-            "后续阶段的信息（媒体跟进、官方通报、法院判决、公众质疑、最终定性等）"
-            "必须放入 persona_memory_phases 的对应阶段字段中，不能提前写入 persona。"
         )
+        
+        if self.knowledge_level == "full":
+            # Tier A: 传统模式，允许完整信息
+            base_prompt += (
+                "\n\n【关键约束 - 分阶段知识门控】persona字段中的'个人记忆/机构记忆'部分，"
+                "只能包含事件最初曝光/爆发期的信息（事件起因、初始爆料、初始反应）。"
+                "后续阶段的信息（媒体跟进、官方通报、法院判决、公众质疑、最终定性等）"
+                "必须放入 persona_memory_phases 的对应阶段字段中，不能提前写入 persona。"
+            )
+        elif self.knowledge_level == "p1_only":
+            # Tier B: 严格 P1-only 门控
+            base_prompt += (
+                "\n\n【严格约束 - P1-only 知识门控（Tier B 评测模式）】"
+                "\n⚠️ 这是一个信息控制实验。你所看到的上下文已经过过滤，只包含事件初始阶段的信息。"
+                "\n\n绝对禁止在 persona 和 bio 中出现以下任何后续阶段信息："
+                "\n- 官方通报、调查结果、复核结论"
+                "\n- 法院判决、二审结果、诉讼驳回"
+                "\n- 处分撤销、问责处分、整改措施"
+                "\n- PTSD诊断、制度反思、暂停招生"
+                "\n- 任何「已知结果」类表述"
+                "\n\n如果上下文中仍残留后续信息（过滤可能不完美），你必须主动忽略它。"
+                "\npersona 只能描述：该人物的身份、性格、初始立场、事件起因的初始认知。"
+                "\nbio 只能描述：该人物的身份标签，不能包含任何事件进展或结果。"
+                "\npersona_memory_phases 中的 P2-P5 记忆仍需正常生成（从你的世界知识中推断合理内容）。"
+            )
+        else:
+            # Tier C: 盲测模式，零事件信息
+            base_prompt += (
+                "\n\n【盲测模式 - Tier C】"
+                "\n你只会收到实体的身份信息（名称、类型），没有任何事件相关上下文。"
+                "\n请根据实体类型生成合理的通用人设（性格、职业背景、社交媒体行为特征）。"
+                "\npersona 和 bio 中不能出现任何具体事件信息。"
+                "\npersona_memory_phases 留空。"
+            )
+        
         return base_prompt
     
     def _build_individual_persona_prompt(
@@ -770,7 +920,7 @@ class OasisProfileGenerator:
 
 请生成JSON，包含以下字段:
 
-1. bio: 社交媒体简介，200字
+1. bio: 社交媒体简介，200字（**重要：bio 只能包含人物身份标签和基本特征，禁止包含事件进展、调查结果、判决等后续信息**）
 2. persona: 详细人设描述（2000字的纯文本），需包含:
    - 基本信息（年龄、职业、教育背景、所在地）
    - 人物背景（重要经历、与事件的关联、社会关系）
@@ -841,7 +991,7 @@ class OasisProfileGenerator:
 
 请生成JSON，包含以下字段:
 
-1. bio: 官方账号简介，200字，专业得体
+1. bio: 官方账号简介，200字，专业得体（**重要：bio 只能包含机构身份和职能描述，禁止包含事件进展、调查结果、处分决定等后续信息**）
 2. persona: 详细账号设定描述（2000字的纯文本），需包含:
    - 机构基本信息（正式名称、机构性质、成立背景、主要职能）
    - 账号定位（账号类型、目标受众、核心功能）

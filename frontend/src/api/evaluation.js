@@ -41,6 +41,14 @@ export const getInfluenceAnalysis = (simulationId) => {
 }
 
 /**
+ * 获取 Benchmark 三级评分（Tier A/B/C）
+ * @param {string} simulationId
+ */
+export const getBenchmarkScores = (simulationId) => {
+  return service.get(`/api/evaluation/${simulationId}/benchmark`)
+}
+
+/**
  * 列出所有可评估的模拟
  */
 export const listEvaluableSimulations = () => {
