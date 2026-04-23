@@ -142,6 +142,32 @@ class WorldEvent:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 
+@dataclass
+class TopicState:
+    """
+    话题级状态追踪
+
+    对应 POSIM §4 Topic-level Dynamics：
+    每个话题独立维护热度、情感极性和生命周期阶段，
+    支持话题转移检测和主导话题切换事件。
+    """
+    topic_id: str               # 话题标识（高频关键词）
+    first_seen_round: int       # 首次出现轮次
+    last_seen_round: int        # 最近出现轮次
+    heat: float = 0.0           # 话题热度 [0,1]
+    neg_ratio: float = 0.0      # 话题负面比
+    pos_ratio: float = 0.0      # 话题正面比
+    mention_count: int = 0      # 累计提及次数
+    is_dominant: bool = False   # 是否为当前主导话题
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'TopicState':
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+
+
 # ============== 负面/正面关键词表 ==============
 
 NEGATIVE_KEYWORDS = [
@@ -205,8 +231,21 @@ class WorldStateEngine:
     # LLM 评估间隔（每隔多少轮调用一次 LLM 做深层判断）
     LLM_EVAL_INTERVAL = 5
     
-    # 状态变化的平滑系数（越小越平滑，防止剧烈波动）
+    # 状态变化的平滑系数（基础值，自适应机制会动态调整）
     SMOOTHING_FACTOR = 0.3
+    SMOOTHING_MIN = 0.25
+    SMOOTHING_MAX = 0.55     # 强信号时提高响应速度
+    
+    # 自然衰减：每轮将状态拉向平静基线的比例（模拟“无刺激时情绪自然回落”）
+    DECAY_RATE = 0.06
+    CALM_BASELINE = {
+        "attention_level": 0.1,
+        "panic_level": 0.1,
+        "trust_level": 0.6,
+        "polarization_level": 0.1,
+        "risk_level": 0.1,
+        "stability_level": 0.8,
+    }
     
     # 事件检测阈值
     EVENT_THRESHOLDS = {
@@ -244,6 +283,10 @@ class WorldStateEngine:
         
         # 因果图谱引擎（延迟初始化）
         self._causal_engine = None
+        
+        # 话题状态追踪（Topic State 层）
+        self._topic_states: Dict[str, TopicState] = {}
+        self._prev_dominant_topic: Optional[str] = None
         
         # 加载已有历史
         self._load_history()
@@ -290,6 +333,11 @@ class WorldStateEngine:
     def events(self) -> List[WorldEvent]:
         """获取完整事件列表"""
         return self._events
+    
+    @property
+    def topic_states(self) -> Dict[str, 'TopicState']:
+        """获取当前话题状态字典"""
+        return self._topic_states
     
     @property
     def causal_graph(self):
@@ -339,18 +387,21 @@ class WorldStateEngine:
         # 5. 消费注入事件（上帝视角）
         injected_events = self._consume_injected_events(round_num, new_state)
         
-        # 6. 检测自然事件
+        # 6. 更新话题状态 & 检测话题事件
+        topic_events = self._update_topic_states(round_num, observations)
+        
+        # 7. 检测自然事件
         new_events = self._detect_events(new_state, prev_state, observations)
         
-        # 合并注入事件和自然事件
-        new_events = injected_events + new_events
+        # 合并注入事件、话题事件和自然事件
+        new_events = injected_events + new_events + topic_events
         
-        # 7. 持久化
+        # 8. 持久化
         self._append_state(new_state)
         for event in new_events:
             self._append_event(event)
         
-        # 7. 因果推断
+        # 9. 因果推断
         if new_events:
             try:
                 cg = self.causal_graph
@@ -367,6 +418,127 @@ class WorldStateEngine:
             logger.debug(f"[Round {round_num}] 世界状态已更新，无新事件")
         
         return new_state, new_events
+    
+    # ============== 话题状态追踪 ==============
+    
+    TOPIC_HEAT_DECAY = 0.15       # 未被提及时话题热度衰减
+    TOPIC_MAX_TRACKED = 10        # 最多同时追踪的话题数
+    TOPIC_EMERGE_THRESHOLD = 3    # 话题被视为"新涌现"的最低提及次数
+    
+    def _update_topic_states(
+        self,
+        round_num: int,
+        obs: Dict[str, Any]
+    ) -> List[WorldEvent]:
+        """
+        更新话题级状态并检测话题事件
+        
+        返回话题级事件（话题涌现、主导话题切换等）
+        """
+        events: List[WorldEvent] = []
+        now = datetime.now().isoformat()
+        
+        top_kw = obs.get("top_keywords", [])
+        if not top_kw:
+            return events
+        
+        # 计算当前轮关键词的情感倾向
+        combined = obs.get("combined_text_sample", "")
+        
+        # 更新每个话题的状态
+        mentioned_topics = set()
+        for rank, kw in enumerate(top_kw):
+            mentioned_topics.add(kw)
+            heat_contribution = max(0.1, 1.0 - rank * 0.1)  # 排名越高热度贡献越大
+            
+            if kw in self._topic_states:
+                ts = self._topic_states[kw]
+                ts.last_seen_round = round_num
+                ts.mention_count += 1
+                # 热度平滑更新
+                ts.heat = min(1.0, ts.heat * 0.6 + heat_contribution * 0.4)
+                ts.neg_ratio = ts.neg_ratio * 0.7 + obs["neg_ratio"] * 0.3
+                ts.pos_ratio = ts.pos_ratio * 0.7 + obs["pos_ratio"] * 0.3
+            else:
+                # 新话题出现
+                self._topic_states[kw] = TopicState(
+                    topic_id=kw,
+                    first_seen_round=round_num,
+                    last_seen_round=round_num,
+                    heat=heat_contribution * 0.5,
+                    neg_ratio=obs["neg_ratio"],
+                    pos_ratio=obs["pos_ratio"],
+                    mention_count=1,
+                )
+        
+        # 未被提及的话题热度衰减
+        for tid, ts in self._topic_states.items():
+            if tid not in mentioned_topics:
+                ts.heat = max(0.0, ts.heat - self.TOPIC_HEAT_DECAY)
+        
+        # 清理热度为 0 且超过 5 轮未出现的话题
+        stale = [
+            tid for tid, ts in self._topic_states.items()
+            if ts.heat < 0.01 and (round_num - ts.last_seen_round) > 5
+        ]
+        for tid in stale:
+            del self._topic_states[tid]
+        
+        # 如果追踪话题过多，只保留热度最高的 N 个
+        if len(self._topic_states) > self.TOPIC_MAX_TRACKED:
+            sorted_topics = sorted(
+                self._topic_states.items(),
+                key=lambda x: x[1].heat,
+                reverse=True
+            )
+            self._topic_states = dict(sorted_topics[:self.TOPIC_MAX_TRACKED])
+        
+        # 确定主导话题
+        if self._topic_states:
+            dominant = max(self._topic_states.values(), key=lambda t: t.heat)
+            for ts in self._topic_states.values():
+                ts.is_dominant = (ts.topic_id == dominant.topic_id)
+            
+            # 检测主导话题切换（需要足够热度和稳定性）
+            if (self._prev_dominant_topic is not None
+                    and dominant.topic_id != self._prev_dominant_topic
+                    and dominant.heat > 0.3
+                    and dominant.mention_count >= 2):
+                events.append(WorldEvent(
+                    event_id=self._gen_event_id(),
+                    round_num=round_num,
+                    timestamp=now,
+                    event_type="topic_shift",
+                    description=(
+                        f"主导话题从 '{self._prev_dominant_topic}' "
+                        f"转移到 '{dominant.topic_id}'"
+                    ),
+                    severity=min(1.0, dominant.heat),
+                    affected_variables={"dominant_topic": 1.0},
+                ))
+            
+            self._prev_dominant_topic = dominant.topic_id
+        
+        # 检测新话题涌现
+        for kw in mentioned_topics:
+            ts = self._topic_states.get(kw)
+            if (ts and ts.mention_count == self.TOPIC_EMERGE_THRESHOLD
+                    and ts.first_seen_round >= round_num - 2
+                    and ts.heat >= 0.25):
+                events.append(WorldEvent(
+                    event_id=self._gen_event_id(),
+                    round_num=round_num,
+                    timestamp=now,
+                    event_type="topic_emergence",
+                    description=(
+                        f"新话题涌现: '{kw}' "
+                        f"(热度={ts.heat:.2f}, 提及={ts.mention_count})"
+                    ),
+                    severity=min(1.0, ts.heat),
+                    affected_variables={"topic_heat": ts.heat},
+                ))
+        
+        return events
     
     # ============== 注入事件消费 ==============
     
@@ -603,6 +775,15 @@ class WorldStateEngine:
                 },
             )
         
+        # --- 自然衰减：先将 prev 向平静基线拉近，模拟“无刺激时的自然回落” ---
+        obs_signal = max(obs["neg_ratio"], obs["pos_ratio"])
+        signal_attenuation = max(0.0, 1.0 - min(obs_signal / 0.5, 1.0))
+        decay = self.DECAY_RATE * signal_attenuation  # strong signal => decay ~ 0
+        decayed_panic = prev.panic_level + decay * (self.CALM_BASELINE["panic_level"] - prev.panic_level)
+        decayed_trust = prev.trust_level + decay * (self.CALM_BASELINE["trust_level"] - prev.trust_level)
+        decayed_attention = prev.attention_level + decay * (self.CALM_BASELINE["attention_level"] - prev.attention_level)
+        decayed_polarization = prev.polarization_level + decay * (self.CALM_BASELINE["polarization_level"] - prev.polarization_level)
+        
         # --- 计算各状态变量的原始目标值 ---
         
         # attention: 基于活动量相对基线的偏移
@@ -655,18 +836,45 @@ class WorldStateEngine:
         pos_avg = sum(positive_signals) / max(len(positive_signals), 1)
         stability_target = max(0.0, min(1.0, 1.0 - neg_avg * 3 + pos_avg * 1.5))
         
-        # --- 平滑更新 ---
-        s = self.SMOOTHING_FACTOR
+        # --- 自适应平滑 + 衰减后更新 ---
+        # 平滑系数随信号强度自适应：偏离越大越响应快
+        targets = {
+            "attention_level": attention_target,
+            "panic_level": panic_target,
+            "trust_level": trust_target,
+            "polarization_level": polarization_target,
+            "risk_level": risk_target,
+            "stability_level": stability_target,
+        }
+        decayed_bases = {
+            "attention_level": decayed_attention,
+            "panic_level": decayed_panic,
+            "trust_level": decayed_trust,
+            "polarization_level": decayed_polarization,
+            "risk_level": prev.risk_level,          # risk/stability 无独立衰减
+            "stability_level": prev.stability_level,
+        }
+        
+        new_values = {}
+        for var, target in targets.items():
+            base = decayed_bases[var]
+            gap = abs(target - base)
+            # 自适应：gap 大时提高 smoothing，允许更快追踪
+            s = self._clamp(
+                self.SMOOTHING_MIN + (self.SMOOTHING_MAX - self.SMOOTHING_MIN) * min(gap / 0.4, 1.0),
+                lo=self.SMOOTHING_MIN, hi=self.SMOOTHING_MAX,
+            )
+            new_values[var] = self._clamp(base * (1 - s) + target * s)
         
         new_state = WorldStateSnapshot(
             round_num=round_num,
             timestamp=datetime.now().isoformat(),
-            attention_level=self._clamp(prev.attention_level * (1 - s) + attention_target * s),
-            panic_level=self._clamp(prev.panic_level * (1 - s) + panic_target * s),
-            trust_level=self._clamp(prev.trust_level * (1 - s) + trust_target * s),
-            polarization_level=self._clamp(prev.polarization_level * (1 - s) + polarization_target * s),
-            risk_level=self._clamp(prev.risk_level * (1 - s) + risk_target * s),
-            stability_level=self._clamp(prev.stability_level * (1 - s) + stability_target * s),
+            attention_level=new_values["attention_level"],
+            panic_level=new_values["panic_level"],
+            trust_level=new_values["trust_level"],
+            polarization_level=new_values["polarization_level"],
+            risk_level=new_values["risk_level"],
+            stability_level=new_values["stability_level"],
             total_posts=obs["posts"],
             total_comments=obs["comments"],
             total_reposts=obs["reposts"],
@@ -788,6 +996,15 @@ class WorldStateEngine:
     
     # ============== 事件检测 ==============
     
+    # 滑动窗口配置
+    TREND_WINDOW = 4       # 趋势检测窗口长度
+    TREND_THRESHOLDS = {
+        "sustained_trust_erosion": 0.10,    # 窗口内 trust 累计下降
+        "sustained_panic_rise": 0.10,       # 窗口内 panic 累计上升
+        "sustained_polarization": 0.08,     # 窗口内 polarization 累计上升
+        "secondary_negative_wave": 0.06,    # 恢复后再次恶化
+    }
+    
     def _detect_events(
         self,
         curr: WorldStateSnapshot,
@@ -799,6 +1016,10 @@ class WorldStateEngine:
         
         对应论文 §5.1.3 Social Influence：
         从状态变化中识别信息级联、观点转向等涌现现象
+        
+        两层检测机制：
+        1. 单步 Δ 检测 — 捕捉瞬时跳变（heat_spike 等）
+        2. 滑动窗口趋势检测 — 捕捉持续趋势（sustained_trust_erosion 等）
         """
         events = []
         
@@ -888,6 +1109,82 @@ class WorldStateEngine:
                 severity=min(1.0, stab_delta * 2),
                 affected_variables={"stability_level": stab_delta},
             ))
+        
+        # ── 层 2：滑动窗口趋势事件 ──
+        # 包括 curr 在内的最近 TREND_WINDOW 个状态
+        recent = self._state_history[-(self.TREND_WINDOW - 1):] + [curr] \
+            if len(self._state_history) >= self.TREND_WINDOW - 1 else None
+        
+        if recent and len(recent) >= self.TREND_WINDOW:
+            # 持续信任侵蚀
+            trust_trend = recent[-1].trust_level - recent[0].trust_level
+            if trust_trend < -self.TREND_THRESHOLDS["sustained_trust_erosion"]:
+                events.append(WorldEvent(
+                    event_id=self._gen_event_id(),
+                    round_num=curr.round_num,
+                    timestamp=now,
+                    event_type="sustained_trust_erosion",
+                    description=(
+                        f"信任度持续下滑 ({recent[0].trust_level:.2f} → "
+                        f"{recent[-1].trust_level:.2f}，跨 {len(recent)} 轮)"
+                    ),
+                    severity=min(1.0, abs(trust_trend) * 2),
+                    affected_variables={"trust_level": trust_trend},
+                ))
+            
+            # 持续恐慌攀升
+            panic_trend = recent[-1].panic_level - recent[0].panic_level
+            if panic_trend > self.TREND_THRESHOLDS["sustained_panic_rise"]:
+                events.append(WorldEvent(
+                    event_id=self._gen_event_id(),
+                    round_num=curr.round_num,
+                    timestamp=now,
+                    event_type="sustained_panic_rise",
+                    description=(
+                        f"负面情绪持续蔓延 ({recent[0].panic_level:.2f} → "
+                        f"{recent[-1].panic_level:.2f}，跨 {len(recent)} 轮)"
+                    ),
+                    severity=min(1.0, panic_trend * 2),
+                    affected_variables={"panic_level": panic_trend},
+                ))
+            
+            # 持续极化加剧
+            polar_trend = recent[-1].polarization_level - recent[0].polarization_level
+            if polar_trend > self.TREND_THRESHOLDS["sustained_polarization"]:
+                events.append(WorldEvent(
+                    event_id=self._gen_event_id(),
+                    round_num=curr.round_num,
+                    timestamp=now,
+                    event_type="sustained_polarization",
+                    description=(
+                        f"群体立场持续分化 ({recent[0].polarization_level:.2f} → "
+                        f"{recent[-1].polarization_level:.2f}，跨 {len(recent)} 轮)"
+                    ),
+                    severity=min(1.0, polar_trend * 2.5),
+                    affected_variables={"polarization_level": polar_trend},
+                ))
+            
+            # 二次负面浪潮检测：恐慌曾经下降后重新上升
+            # 在窗口中找到谷值，如果谷值在窗口前半段且之后持续上升
+            panic_vals = [s.panic_level for s in recent]
+            valley_idx = panic_vals.index(min(panic_vals))
+            if 0 < valley_idx < len(panic_vals) - 2:
+                rebound = panic_vals[-1] - panic_vals[valley_idx]
+                pre_drop = panic_vals[0] - panic_vals[valley_idx]
+                if (rebound > self.TREND_THRESHOLDS["secondary_negative_wave"]
+                        and pre_drop > 0.03):
+                    events.append(WorldEvent(
+                        event_id=self._gen_event_id(),
+                        round_num=curr.round_num,
+                        timestamp=now,
+                        event_type="secondary_negative_wave",
+                        description=(
+                            f"负面情绪二次反弹 (谷值 {panic_vals[valley_idx]:.2f} → "
+                            f"{panic_vals[-1]:.2f})"
+                        ),
+                        severity=min(1.0, rebound * 3),
+                        affected_variables={"panic_level": rebound},
+                    ))
         
         return events
     

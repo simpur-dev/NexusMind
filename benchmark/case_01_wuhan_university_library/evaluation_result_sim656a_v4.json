@@ -1,0 +1,54 @@
+{
+  "simulation_id": "sim_656a9425082e",
+  "phase_sentiment_directions": [
+    "negative_rising",
+    "negative_peak",
+    "mixed",
+    "negative_secondary",
+    "neutral_declining"
+  ],
+  "turning_points_hit": [
+    {
+      "tp_id": "T1",
+      "hit": "same_phase"
+    },
+    {
+      "tp_id": "T2",
+      "hit": "same_phase"
+    },
+    {
+      "tp_id": "T3",
+      "hit": "same_phase"
+    }
+  ],
+  "actor_coverage": [
+    {
+      "actor_id": "A1",
+      "in_graph": true,
+      "in_agent": true,
+      "in_report": true
+    },
+    {
+      "actor_id": "A2",
+      "in_graph": true,
+      "in_agent": true,
+      "in_report": true
+    },
+    {
+      "actor_id": "A4",
+      "in_graph": true,
+      "in_agent": true,
+      "in_report": true
+    }
+  ],
+  "event_order_simulation": [
+    "肖某瑫与杨某媛纠纷曝光",
+    "校方通报：撤销处分+论文复核+问责",
+    "热度逐步收敛",
+    "公众质疑论文不规范与问责力度",
+    "肖某瑫被记过处分引发争议",
+    "二次讨论与高校治理制度反思",
+    "法院二审判决驳回杨某媛诉讼请求",
+    "媒体介入报道与不实信息传播"
+  ]
+}

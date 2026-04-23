@@ -628,6 +628,17 @@ class AgentBrainRuntime:
                 "certainty": state.certainty,
             }
 
+            # ── 认知自然衰减：无强刺激时向个体基线回归 ──
+            # 信号强度：世界状态偏离平静基线的程度
+            _signal_strength = (abs(panic - 0.1) + abs(trust - 0.6) + abs(attention - 0.1)) / 3.0
+            _decay = max(0.0, 0.08 * (1.0 - min(_signal_strength / 0.3, 1.0)))
+            if _decay > 0.005:
+                # 情绪向基线回落（基线 = 初始值附近）
+                _ea_base = _clamp(0.2 + prior.susceptibility * 0.15, default=0.3)
+                state.emotional_arousal += _decay * (_ea_base - state.emotional_arousal)
+                _pr_base = _clamp(0.2 + (1.0 - prior.risk_tolerance) * 0.2, default=0.3)
+                state.perceived_risk += _decay * (_pr_base - state.perceived_risk)
+
             # ── 认知状态更新（原有逻辑） ──
             state.emotional_arousal = _clamp(state.emotional_arousal * 0.55 + panic * (0.25 + prior.susceptibility * 0.35) + attention * 0.12 + polarization * 0.08, default=state.emotional_arousal)
             state.perceived_risk = _clamp(risk * 0.55 + panic * 0.2 + (1.0 - trust) * 0.15 + (1.0 - prior.risk_tolerance) * 0.1, default=state.perceived_risk)
