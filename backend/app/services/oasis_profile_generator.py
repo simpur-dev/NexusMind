@@ -68,6 +68,11 @@ class OasisAgentProfile:
     # 受影响敏感度 [0.0 不受影响, 1.0 极易受影响]
     susceptibility: float = 0.5
     
+    # 分阶段记忆知识门控（Phased Knowledge Gating）
+    # P2-P5 的事件记忆片段，在模拟运行时按阶段解锁注入
+    # 格式: {"P2_media": "...", "P3_official": "...", "P4_secondary": "...", "P5_resolution": "..."}
+    persona_memory_phases: Dict[str, str] = field(default_factory=dict)
+    
     # 来源实体信息
     source_entity_uuid: Optional[str] = None
     source_entity_type: Optional[str] = None
@@ -105,6 +110,8 @@ class OasisAgentProfile:
         profile["initial_stance"] = self.initial_stance
         profile["emotional_tendency"] = self.emotional_tendency
         profile["susceptibility"] = self.susceptibility
+        if self.persona_memory_phases:
+            profile["persona_memory_phases"] = self.persona_memory_phases
         
         return profile
     
@@ -141,6 +148,8 @@ class OasisAgentProfile:
         profile["initial_stance"] = self.initial_stance
         profile["emotional_tendency"] = self.emotional_tendency
         profile["susceptibility"] = self.susceptibility
+        if self.persona_memory_phases:
+            profile["persona_memory_phases"] = self.persona_memory_phases
         
         return profile
     
@@ -169,6 +178,7 @@ class OasisAgentProfile:
             "initial_stance": self.initial_stance,
             "emotional_tendency": self.emotional_tendency,
             "susceptibility": self.susceptibility,
+            "persona_memory_phases": self.persona_memory_phases,
             "created_at": self.created_at,
         }
 
@@ -321,6 +331,7 @@ class OasisProfileGenerator:
             initial_stance=_clamp(profile_data.get("initial_stance", 0.0), -1.0, 1.0, 0.0),
             emotional_tendency=_clamp(profile_data.get("emotional_tendency", 0.0), -1.0, 1.0, 0.0),
             susceptibility=_clamp(profile_data.get("susceptibility", 0.5), 0.0, 1.0, 0.5),
+            persona_memory_phases=profile_data.get("persona_memory_phases", {}),
             source_entity_uuid=entity.uuid,
             source_entity_type=entity_type,
         )
@@ -714,7 +725,14 @@ class OasisProfileGenerator:
     
     def _get_system_prompt(self, is_individual: bool) -> str:
         """获取系统提示词"""
-        base_prompt = "你是社交媒体用户画像生成专家。生成详细、真实的人设用于舆论模拟,最大程度还原已有现实情况。必须返回有效的JSON格式，所有字符串值不能包含未转义的换行符。使用中文。"
+        base_prompt = (
+            "你是社交媒体用户画像生成专家。生成详细、真实的人设用于舆论模拟,最大程度还原已有现实情况。"
+            "必须返回有效的JSON格式，所有字符串值不能包含未转义的换行符。使用中文。"
+            "\n\n【关键约束 - 分阶段知识门控】persona字段中的'个人记忆/机构记忆'部分，"
+            "只能包含事件最初曝光/爆发期的信息（事件起因、初始爆料、初始反应）。"
+            "后续阶段的信息（媒体跟进、官方通报、法院判决、公众质疑、最终定性等）"
+            "必须放入 persona_memory_phases 的对应阶段字段中，不能提前写入 persona。"
+        )
         return base_prompt
     
     def _build_individual_persona_prompt(
@@ -725,7 +743,17 @@ class OasisProfileGenerator:
         entity_attributes: Dict[str, Any],
         context: str
     ) -> str:
-        """构建个人实体的详细人设提示词"""
+        """构建个人实体的详细人设提示词（分阶段知识门控版）
+        
+        核心改进（Phased Knowledge Gating）：
+        - persona 字段仅包含 P1 阶段知识（事件曝光/爆发期）
+        - persona_memory_phases 字段包含 P2-P5 阶段的记忆片段
+        - 模拟运行时按阶段解锁记忆，避免 Agent 一开始就知道全部信息
+        
+        论文依据：
+        - Generative Agents: 信息通过时间释放自然传播
+        - SocioVerse §2.1: Agent 感知受限于当前环境状态
+        """
         
         attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else "无"
         context_str = context[:3000] if context else "无额外上下文"
@@ -750,7 +778,10 @@ class OasisProfileGenerator:
    - 社交媒体行为（发帖频率、内容偏好、互动风格、语言特点）
    - 立场观点（对话题的态度、可能被激怒/感动的内容）
    - 独特特征（口头禅、特殊经历、个人爱好）
-   - 个人记忆（人设的重要部分，要介绍这个个体与事件的关联，以及这个个体在事件中的已有动作与反应）
+   - 个人记忆（**极其重要的限制**：只能包含事件最初曝光/爆发阶段的信息！
+     即：事件起因、初始爆料、当事人最初反应。
+     **禁止包含**：后续媒体跟进报道、官方通报结果、法院判决、公众二次质疑、
+     事件最终定性等后续发展信息。这些将在后续阶段逐步释放。）
 3. age: 年龄数字（必须是整数）
 4. gender: 性别，必须是英文: "male" 或 "female"
 5. mbti: MBTI类型（如INTJ、ENFP等）
@@ -766,10 +797,16 @@ class OasisProfileGenerator:
 11. initial_stance: 对核心话题的立场（-1.0强烈反对到1.0强烈支持，0为中立）
 12. emotional_tendency: 情绪基调（-1.0极度悲观到1.0极度乐观，0为中性）
 13. susceptibility: 受外界影响的敏感度（0.0不受影响到1.0极易受影响）
+14. persona_memory_phases: 分阶段记忆知识（**非常重要**），是一个对象，包含以下4个阶段的事件记忆片段:
+    - P2_media: 第2阶段（扩散期）解锁的记忆，内容关于：媒体开始关注报道、舆论开始扩散、该人物可能接收到的外界反馈。以第二人称"你"的视角撰写，100-200字。
+    - P3_official: 第3阶段（官方回应期）解锁的记忆，内容关于：官方声明、调查结果、司法进展、该人物对官方回应的反应。以第二人称撰写，100-200字。
+    - P4_secondary: 第4阶段（二次传播期）解锁的记忆，内容关于：公众质疑、深度追问、二次争议、该人物的立场变化。以第二人称撰写，100-200字。
+    - P5_resolution: 第5阶段（收敛期）解锁的记忆，内容关于：后续发展、制度反思、最终定性、该人物的最终态度。以第二人称撰写，100-200字。
 
 重要:
 - 所有字段值必须是字符串或数字，不要使用换行符
-- persona必须是一段连贯的文字描述
+- persona必须是一段连贯的文字描述，**只能包含事件初始阶段的信息**
+- persona_memory_phases中的每个值都是一段文字，以"你"开头，描述该阶段解锁的新信息
 - 使用中文（除了gender字段必须用英文male/female）
 - 内容要与实体信息保持一致
 - age必须是有效的整数，gender必须是"male"或"female"
@@ -787,7 +824,7 @@ class OasisProfileGenerator:
         entity_attributes: Dict[str, Any],
         context: str
     ) -> str:
-        """构建群体/机构实体的详细人设提示词"""
+        """构建群体/机构实体的详细人设提示词（分阶段知识门控版）"""
         
         attrs_str = json.dumps(entity_attributes, ensure_ascii=False) if entity_attributes else "无"
         context_str = context[:3000] if context else "无额外上下文"
@@ -812,25 +849,33 @@ class OasisProfileGenerator:
    - 发布内容特点（内容类型、发布频率、活跃时间段）
    - 立场态度（对核心话题的官方立场、面对争议的处理方式）
    - 特殊说明（代表的群体画像、运营习惯）
-   - 机构记忆（机构人设的重要部分，要介绍这个机构与事件的关联，以及这个机构在事件中的已有动作与反应）
+   - 机构记忆（**极其重要的限制**：只能包含事件最初曝光/爆发阶段的信息！
+     即：事件起因、初始争议、机构的初始公开立场。
+     **禁止包含**：后续官方通报结果、司法判决、制度改革等后续发展。）
 3. age: 固定填30（机构账号的虚拟年龄）
 4. gender: 固定填"other"（机构账号使用other表示非个人）
 5. mbti: MBTI类型，用于描述账号风格，如ISTJ代表严谨保守
 6. country: 国家（使用中文，如"中国"）
 7. profession: 机构职能描述
 8. interested_topics: 关注领域数组
-
-重要:
-- 所有字段值必须是字符串或数字，不允许null值
-- persona必须是一段连贯的文字描述，不要使用换行符
-- 使用中文（除了gender字段必须用英文"other"）
-- age必须是整数30，gender必须是字符串"other"
-- 机构账号发言要符合其身份定位
 9. internal_goals: 机构目标数组（2-4个，如"维护机构形象"、"引导舆论"、"信息透明化"等）
 10. utility_weights: {{"self_interest": 0.3, "social_conformity": 0.2, "truth_seeking": 0.7, "emotional_expression": 0.2}}（机构通常理性、重视真实性）
 11. initial_stance: 对核心话题的官方立场（-1.0到1.0）
 12. emotional_tendency: 情绪基调（机构通常偏中性，接近0.0）
 13. susceptibility: 受外界影响敏感度（机构通常偏低，0.1-0.3）
+14. persona_memory_phases: 分阶段记忆知识（**非常重要**），是一个对象，包含以下4个阶段的机构动态记忆:
+    - P2_media: 第2阶段（扩散期）解锁的记忆：媒体报道扩散后，该机构面临的舆论压力、接到的问询等。以"你们机构"视角撰写，100-200字。
+    - P3_official: 第3阶段（官方回应期）解锁的记忆：该机构发布的官方声明、调查结果、配合的司法进展。100-200字。
+    - P4_secondary: 第4阶段（二次传播期）解锁的记忆：公众质疑后的二次回应、补充说明、舆情应对。100-200字。
+    - P5_resolution: 第5阶段（收敛期）解锁的记忆：制度整改、后续跟进、事件收尾。100-200字。
+
+重要:
+- 所有字段值必须是字符串或数字，不允许null值
+- persona必须是一段连贯的文字描述，不要使用换行符，**只能包含事件初始阶段信息**
+- persona_memory_phases中的每个值都是一段文字，描述该阶段解锁的机构新动态
+- 使用中文（除了gender字段必须用英文"other"）
+- age必须是整数30，gender必须是字符串"other"
+- 机构账号发言要符合其身份定位
 
 重要（数值格式要求）:
 - internal_goals必须是字符串数组
@@ -1198,6 +1243,9 @@ class OasisProfileGenerator:
             self._save_twitter_csv(profiles, file_path)
         else:
             self._save_reddit_json(profiles, file_path)
+        
+        # 保存分阶段记忆知识到独立文件（Phased Knowledge Gating）
+        self._save_persona_phases(profiles, file_path)
     
     def _save_twitter_csv(self, profiles: List[OasisAgentProfile], file_path: str):
         """
@@ -1249,6 +1297,33 @@ class OasisProfileGenerator:
                 writer.writerow(row)
         
         logger.info(f"已保存 {len(profiles)} 个Twitter Profile到 {file_path} (OASIS CSV格式)")
+    
+    def _save_persona_phases(self, profiles: List[OasisAgentProfile], file_path: str):
+        """保存分阶段记忆知识到独立 JSON 文件（Phased Knowledge Gating）
+        
+        生成 persona_phases.json，格式:
+        {
+            "0": {"P2_media": "...", "P3_official": "...", ...},
+            "1": {"P2_media": "...", ...},
+            ...
+        }
+        
+        此文件与平台无关，Twitter/Reddit 模拟均可读取。
+        """
+        phases_data = {}
+        for idx, profile in enumerate(profiles):
+            if profile.persona_memory_phases:
+                phases_data[str(profile.user_id)] = profile.persona_memory_phases
+        
+        if not phases_data:
+            logger.info("无分阶段记忆知识，跳过 persona_phases.json")
+            return
+        
+        phases_path = os.path.join(os.path.dirname(file_path), "persona_phases.json")
+        with open(phases_path, 'w', encoding='utf-8') as f:
+            json.dump(phases_data, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"已保存 {len(phases_data)} 个 Agent 的分阶段记忆知识到 {phases_path}")
     
     def _normalize_gender(self, gender: Optional[str]) -> str:
         """

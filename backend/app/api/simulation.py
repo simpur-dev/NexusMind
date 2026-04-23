@@ -3558,6 +3558,21 @@ def interview_agent_offline():
         bio = profile.get('bio', '')
         profession = profile.get('profession', '')
         mbti = profile.get('mbti', '')
+        
+        # 分阶段知识门控：离线采访时解锁所有阶段记忆（模拟已结束）
+        phase_knowledge_text = ""
+        phases_path = os.path.join(sim_dir, "persona_phases.json")
+        if os.path.exists(phases_path):
+            try:
+                with open(phases_path, 'r', encoding='utf-8') as pf:
+                    all_phases = json.load(pf)
+                agent_phases = all_phases.get(str(agent_id), {})
+                if agent_phases:
+                    parts = [agent_phases[k] for k in sorted(agent_phases.keys()) if agent_phases.get(k)]
+                    if parts:
+                        phase_knowledge_text = "\n\n【事态发展中你逐渐了解到的信息】\n" + "\n".join(parts)
+            except Exception:
+                pass
 
         actions_text = ""
         if agent_actions:
@@ -3574,6 +3589,7 @@ def interview_agent_offline():
 
 【详细人设】
 {persona}
+{phase_knowledge_text}
 {actions_text}
 【规则】
 1. 始终以第一人称回答，保持角色一致性

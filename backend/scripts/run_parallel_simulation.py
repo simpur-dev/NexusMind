@@ -636,6 +636,12 @@ _agent_role_map: Dict[int, Dict[str, str]] = {}
 # 在主循环开始前从 simulation_config 加载或从 agent_brain_state.json 恢复
 _agent_brain_runtime = None  # type: Optional[AgentBrainRuntime]
 
+# ========== 分阶段 Persona 知识门控（Phased Knowledge Gating）==========
+# agent_id -> {"P2_media": "...", "P3_official": "...", ...}
+_persona_phase_knowledge: Dict[int, Dict[str, str]] = {}
+# 当前已解锁的阶段集合，如 {"P2_media", "P3_official"}
+_unlocked_persona_phases: set = set()
+
 
 def patch_agent_memory_limit(window_size: int = 20):
     """
@@ -712,6 +718,18 @@ def patch_oasis_environment():
                 perception_prompt = _agent_brain_runtime.render_personalized_perception(agent_id, _current_world_state_data)
                 if perception_prompt:
                     original = original + "\n" + perception_prompt
+        
+        # 分阶段 Persona 知识门控：注入已解锁的阶段记忆
+        if agent_id is not None and _unlocked_persona_phases and agent_id in _persona_phase_knowledge:
+            agent_phases = _persona_phase_knowledge[agent_id]
+            unlocked_memories = []
+            for phase_key in sorted(_unlocked_persona_phases):
+                memory_text = agent_phases.get(phase_key)
+                if memory_text:
+                    unlocked_memories.append(memory_text)
+            if unlocked_memories:
+                phase_prompt = "\n[新获知的信息 - 随事态发展你逐渐了解到以下情况]\n" + "\n".join(unlocked_memories)
+                original = original + "\n" + phase_prompt
         
         return original
     
@@ -1684,6 +1702,193 @@ def get_active_agents_for_round(
     return active_agents
 
 
+def load_persona_phase_knowledge(simulation_dir: str) -> Dict[int, Dict[str, str]]:
+    """从 persona_phases.json 加载分阶段 persona 知识
+    
+    优先读取独立的 persona_phases.json 文件（由 oasis_profile_generator 生成）。
+    回退：从 reddit_profiles.json 的 persona_memory_phases 字段提取。
+    
+    Returns:
+        Dict[int, Dict[str, str]]: agent_id -> 阶段记忆映射
+    """
+    phases_map: Dict[int, Dict[str, str]] = {}
+    
+    # 优先读取独立的 persona_phases.json（平台无关）
+    phases_path = os.path.join(simulation_dir, "persona_phases.json")
+    if os.path.exists(phases_path):
+        try:
+            with open(phases_path, 'r', encoding='utf-8') as f:
+                raw = json.load(f)
+            for agent_id_str, phases in raw.items():
+                if isinstance(phases, dict) and phases:
+                    phases_map[int(agent_id_str)] = phases
+            if phases_map:
+                print(f"[PersonaPhases] 已从 persona_phases.json 加载 {len(phases_map)} 个 Agent 的分阶段记忆", flush=True)
+        except Exception as e:
+            print(f"[PersonaPhases] 读取 persona_phases.json 失败: {e}", flush=True)
+    
+    # 回退：从 reddit_profiles.json 提取
+    if not phases_map:
+        reddit_path = os.path.join(simulation_dir, "reddit_profiles.json")
+        if os.path.exists(reddit_path):
+            try:
+                with open(reddit_path, 'r', encoding='utf-8') as f:
+                    profiles = json.load(f)
+                for p in profiles:
+                    agent_id = p.get("user_id")
+                    memory_phases = p.get("persona_memory_phases", {})
+                    if agent_id is not None and memory_phases:
+                        phases_map[agent_id] = memory_phases
+                if phases_map:
+                    print(f"[PersonaPhases] 已从 reddit_profiles.json 加载 {len(phases_map)} 个 Agent 的分阶段记忆", flush=True)
+            except Exception as e:
+                print(f"[PersonaPhases] 读取 reddit_profiles.json 失败: {e}", flush=True)
+    
+    if phases_map:
+        # 统计各阶段覆盖情况
+        phase_keys = set()
+        for phases in phases_map.values():
+            phase_keys.update(phases.keys())
+        print(f"[PersonaPhases] 可用阶段: {sorted(phase_keys)}", flush=True)
+    else:
+        print(f"[PersonaPhases] 未找到分阶段记忆知识（旧版 profile 或无事件阶段）", flush=True)
+    
+    return phases_map
+
+
+def resolve_phase_unlock_rounds(
+    scheduled_round_events: Dict[int, List[Dict]]
+) -> Dict[int, set]:
+    """根据 scheduled_events 的触发轮次，构建 {round: {phase_keys_to_unlock}} 映射
+    
+    当 scheduled_event 在某轮触发时，对应的 persona phase 也同时解锁。
+    映射关系：P2 事件 -> P2_media, P3 事件 -> P3_official, etc.
+    """
+    phase_to_key = {
+        "P2": "P2_media",
+        "P3": "P3_official",
+        "P4": "P4_secondary",
+        "P5": "P5_resolution",
+    }
+    
+    unlock_map: Dict[int, set] = {}
+    for round_num, events in scheduled_round_events.items():
+        for evt in events:
+            phase = evt.get("phase", "")
+            phase_key = phase_to_key.get(phase)
+            if phase_key:
+                unlock_map.setdefault(round_num, set()).add(phase_key)
+    
+    if unlock_map:
+        print(f"[PersonaPhases] 知识解锁计划:", flush=True)
+        for r, keys in sorted(unlock_map.items()):
+            print(f"  R{r + 1}: 解锁 {sorted(keys)}", flush=True)
+    
+    return unlock_map
+
+
+def resolve_scheduled_events(config: Dict[str, Any], total_rounds: int) -> Dict[int, List[Dict]]:
+    """将 scheduled_events 的 trigger_round_pct 转换为具体轮次号
+    
+    分阶段信息释放（SocioVerse §2.1）：按百分比计算每个事件的触发轮次，
+    返回 {round_num: [events]} 的映射。
+    
+    Args:
+        config: 模拟配置
+        total_rounds: 总轮数
+    
+    Returns:
+        Dict[int, List[Dict]]: 轮次 -> 该轮要释放的事件列表
+    """
+    event_config = config.get("event_config", {})
+    scheduled_events = event_config.get("scheduled_events", [])
+    
+    if not scheduled_events:
+        return {}
+    
+    round_events: Dict[int, List[Dict]] = {}
+    for evt in scheduled_events:
+        pct = evt.get("trigger_round_pct", 50)
+        # 将百分比转换为实际轮次（0-indexed）
+        trigger_round = max(0, min(total_rounds - 1, int(total_rounds * pct / 100)))
+        round_events.setdefault(trigger_round, []).append(evt)
+    
+    # 日志输出分阶段计划
+    phases_summary = {}
+    for r, evts in sorted(round_events.items()):
+        for e in evts:
+            phase = e.get("phase", "?")
+            phases_summary.setdefault(phase, []).append(r)
+    
+    print(f"[ScheduledEvents] 分阶段信息释放计划 (总轮数={total_rounds}):")
+    for phase, rounds in sorted(phases_summary.items()):
+        print(f"  {phase}: 轮次 {rounds}")
+    
+    return round_events
+
+
+async def inject_scheduled_events(
+    env,
+    round_events: Dict[int, List[Dict]],
+    round_num: int,
+    agent_names: Dict[int, str],
+    action_logger=None,
+) -> int:
+    """在指定轮次注入定时事件帖子
+    
+    Args:
+        env: OASIS 环境
+        round_events: resolve_scheduled_events 返回的映射
+        round_num: 当前轮次号（0-indexed）
+        agent_names: agent_id -> name 映射
+        action_logger: 动作日志记录器
+    
+    Returns:
+        int: 本轮注入的动作数
+    """
+    events_this_round = round_events.get(round_num, [])
+    if not events_this_round:
+        return 0
+    
+    injected_actions = {}
+    injected_count = 0
+    
+    for evt in events_this_round:
+        agent_id = evt.get("poster_agent_id", 0)
+        content = evt.get("content", "")
+        phase = evt.get("phase", "?")
+        
+        try:
+            agent = env.agent_graph.get_agent(agent_id)
+            injected_actions[agent] = ManualAction(
+                action_type=ActionType.CREATE_POST,
+                action_args={"content": content}
+            )
+            
+            if action_logger:
+                action_logger.log_action(
+                    round_num=round_num + 1,
+                    agent_id=agent_id,
+                    agent_name=agent_names.get(agent_id, f"Agent_{agent_id}"),
+                    action_type="CREATE_POST",
+                    action_args={"content": content, "_phase": phase, "_scheduled": True}
+                )
+            
+            injected_count += 1
+            print(
+                f"[ScheduledEvents] R{round_num + 1} 注入 {phase} 阶段帖子: "
+                f"agent={agent_names.get(agent_id, agent_id)}, "
+                f"content={content[:60]}..."
+            )
+        except Exception as e:
+            print(f"[ScheduledEvents] 注入失败: agent_id={agent_id}, error={e}")
+    
+    if injected_actions:
+        await env.step(injected_actions)
+    
+    return injected_count
+
+
 class PlatformSimulation:
     """平台模拟结果容器"""
     def __init__(self):
@@ -1819,6 +2024,17 @@ async def run_twitter_simulation(
         if total_rounds < original_rounds:
             log_info(f"轮数已截断: {original_rounds} -> {total_rounds} (max_rounds={max_rounds})")
     
+    # 分阶段信息释放：将 scheduled_events 的百分比转换为具体轮次
+    twitter_scheduled = resolve_scheduled_events(config, total_rounds)
+    if twitter_scheduled:
+        log_info(f"分阶段信息释放已启用: {sum(len(v) for v in twitter_scheduled.values())} 个定时事件")
+    
+    # 分阶段 Persona 知识门控：加载阶段记忆 + 构建解锁时间表
+    global _persona_phase_knowledge, _unlocked_persona_phases
+    _persona_phase_knowledge = load_persona_phase_knowledge(simulation_dir)
+    _unlocked_persona_phases = set()  # 每次模拟重置
+    twitter_phase_unlock = resolve_phase_unlock_rounds(twitter_scheduled) if twitter_scheduled else {}
+    
     start_time = datetime.now()
     
     for round_num in range(start_round, total_rounds):
@@ -1827,6 +2043,21 @@ async def run_twitter_simulation(
             if main_logger:
                 main_logger.info(f"收到退出信号，在第 {round_num + 1} 轮停止模拟")
             break
+        
+        # 分阶段信息释放：在本轮注入定时事件（SocioVerse §2.1 时间线释放）
+        if twitter_scheduled:
+            injected = await inject_scheduled_events(
+                result.env, twitter_scheduled, round_num, agent_names, action_logger
+            )
+            if injected > 0:
+                total_actions += injected
+                log_info(f"R{round_num + 1} 注入了 {injected} 个分阶段事件")
+        
+        # 分阶段 Persona 知识门控：解锁本轮对应的记忆阶段
+        if round_num in twitter_phase_unlock:
+            new_phases = twitter_phase_unlock[round_num]
+            _unlocked_persona_phases.update(new_phases)
+            log_info(f"R{round_num + 1} 解锁 Persona 记忆阶段: {sorted(new_phases)} (累计: {sorted(_unlocked_persona_phases)})")
         
         # 读取世界状态并注入到全局环境 prompt（论文 §4.1.1 反馈闭环）
         if _world_model_enabled:
@@ -2053,6 +2284,17 @@ async def run_reddit_simulation(
         if total_rounds < original_rounds:
             log_info(f"轮数已截断: {original_rounds} -> {total_rounds} (max_rounds={max_rounds})")
     
+    # 分阶段信息释放：将 scheduled_events 的百分比转换为具体轮次
+    reddit_scheduled = resolve_scheduled_events(config, total_rounds)
+    if reddit_scheduled:
+        log_info(f"分阶段信息释放已启用: {sum(len(v) for v in reddit_scheduled.values())} 个定时事件")
+    
+    # 分阶段 Persona 知识门控：加载阶段记忆 + 构建解锁时间表
+    global _persona_phase_knowledge, _unlocked_persona_phases
+    _persona_phase_knowledge = load_persona_phase_knowledge(simulation_dir)
+    _unlocked_persona_phases = set()  # 每次模拟重置
+    reddit_phase_unlock = resolve_phase_unlock_rounds(reddit_scheduled) if reddit_scheduled else {}
+    
     start_time = datetime.now()
     
     for round_num in range(start_round, total_rounds):
@@ -2061,6 +2303,21 @@ async def run_reddit_simulation(
             if main_logger:
                 main_logger.info(f"收到退出信号，在第 {round_num + 1} 轮停止模拟")
             break
+        
+        # 分阶段信息释放：在本轮注入定时事件（SocioVerse §2.1 时间线释放）
+        if reddit_scheduled:
+            injected = await inject_scheduled_events(
+                result.env, reddit_scheduled, round_num, agent_names, action_logger
+            )
+            if injected > 0:
+                total_actions += injected
+                log_info(f"R{round_num + 1} 注入了 {injected} 个分阶段事件")
+        
+        # 分阶段 Persona 知识门控：解锁本轮对应的记忆阶段
+        if round_num in reddit_phase_unlock:
+            new_phases = reddit_phase_unlock[round_num]
+            _unlocked_persona_phases.update(new_phases)
+            log_info(f"R{round_num + 1} 解锁 Persona 记忆阶段: {sorted(new_phases)} (累计: {sorted(_unlocked_persona_phases)})")
         
         # 读取世界状态并注入到全局环境 prompt（论文 §4.1.1 反馈闭环）
         if _world_model_enabled:
