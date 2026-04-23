@@ -35,11 +35,11 @@ benchmark/
 │   ├── reference_data.json
 │   ├── evaluation_result.json    # 系统跑完后填入
 │   └── seed_materials/
-├── case_02_tesla_shanghai_autoshow/
+├── case_02_huazhong_agricultural_university_academic_misconduct/
 │   ├── case_overview.md
 │   ├── reference_data.json
 │   └── seed_materials/
-└── case_03_lijiaqi_huaxizi/
+└── case_03_jiangxi_industry_vocational_college_food_safety/
     ├── case_overview.md
     ├── reference_data.json
     └── seed_materials/
