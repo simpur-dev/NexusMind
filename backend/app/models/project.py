@@ -49,6 +49,17 @@ class Project:
     chunk_size: int = 500
     chunk_overlap: int = 50
     
+    # 模拟关联
+    simulation_id: Optional[str] = None
+    report_id: Optional[str] = None
+    
+    # 滚动工作台字段（可选，Phase 1 新增，向后兼容）
+    current_baseline_id: Optional[str] = None
+    active_run_id: Optional[str] = None
+    materials_count: int = 0
+    last_material_at: Optional[str] = None
+    incident_mode: str = "demo_workflow"  # demo_workflow | rolling_workspace
+
     # 错误信息
     error: Optional[str] = None
     
@@ -69,6 +80,13 @@ class Project:
             "simulation_requirement": self.simulation_requirement,
             "chunk_size": self.chunk_size,
             "chunk_overlap": self.chunk_overlap,
+            "simulation_id": self.simulation_id,
+            "report_id": self.report_id,
+            "current_baseline_id": self.current_baseline_id,
+            "active_run_id": self.active_run_id,
+            "materials_count": self.materials_count,
+            "last_material_at": self.last_material_at,
+            "incident_mode": self.incident_mode,
             "error": self.error
         }
     
@@ -94,6 +112,13 @@ class Project:
             simulation_requirement=data.get('simulation_requirement'),
             chunk_size=data.get('chunk_size', 500),
             chunk_overlap=data.get('chunk_overlap', 50),
+            simulation_id=data.get('simulation_id'),
+            report_id=data.get('report_id'),
+            current_baseline_id=data.get('current_baseline_id'),
+            active_run_id=data.get('active_run_id'),
+            materials_count=data.get('materials_count', 0),
+            last_material_at=data.get('last_material_at'),
+            incident_mode=data.get('incident_mode', 'demo_workflow'),
             error=data.get('error')
         )
 

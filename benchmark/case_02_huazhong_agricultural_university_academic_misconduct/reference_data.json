@@ -1,0 +1,173 @@
+﻿{
+  "case_id": "case_02_huazhong_agricultural_university_academic_misconduct",
+  "case_name": "华中农业大学研究生实名举报导师学术不端事件",
+  "case_type": "高校舆情 / 学术伦理治理 / 导师与研究生关系",
+  "source": "华中农业大学官方通报 2024-01-19, 2024-02-06",
+
+  "phases": [
+    {
+      "phase_id": "P1",
+      "phase_name": "曝光期",
+      "description": "11名研究生实名举报材料公开，科研造假与导师压迫问题引发广泛关注",
+      "sentiment_direction": "negative_rising",
+      "sentiment_label": "负面快速上升"
+    },
+    {
+      "phase_id": "P2",
+      "phase_name": "调查启动期",
+      "description": "学校成立调查组并暂停涉事导师相关工作，公众等待权威结论",
+      "sentiment_direction": "negative_peak",
+      "sentiment_label": "负面达到峰值"
+    },
+    {
+      "phase_id": "P3",
+      "phase_name": "深挖扩散期",
+      "description": "媒体与学界持续追问学术伦理、导师权力与研究生处境，舆情维持高位",
+      "sentiment_direction": "negative_sustained",
+      "sentiment_label": "负面高位持续"
+    },
+    {
+      "phase_id": "P4",
+      "phase_name": "处理通报期",
+      "description": "学校公布最终处理结果，解除聘用并申请撤销教师资格，舆论开始评估处置力度",
+      "sentiment_direction": "mixed",
+      "sentiment_label": "混合情绪，部分转正"
+    },
+    {
+      "phase_id": "P5",
+      "phase_name": "反思收敛期",
+      "description": "热度回落，讨论转向科研生态和研究生培养制度完善",
+      "sentiment_direction": "neutral_declining",
+      "sentiment_label": "回落趋于中性"
+    }
+  ],
+
+  "sentiment_direction_sequence": [
+    "negative_rising",
+    "negative_peak",
+    "negative_sustained",
+    "mixed",
+    "neutral_declining"
+  ],
+
+  "turning_points_top3": [
+    {
+      "tp_id": "T1",
+      "phase": "P1",
+      "description": "11名研究生发布长篇实名举报材料，事件迅速出圈",
+      "expected_simulation_signal": "negative sentiment spike, attention_level surge"
+    },
+    {
+      "tp_id": "T2",
+      "phase": "P2",
+      "description": "学校通报称举报涉及的实验图片、数据、结果等问题基本属实，并暂停涉事导师相关工作",
+      "expected_simulation_signal": "trust_level partial stabilization, negative sentiment remains high"
+    },
+    {
+      "tp_id": "T3",
+      "phase": "P4",
+      "description": "学校公布最终处理结果，解除聘用并申请撤销教师资格，同时为研究生重新安排培养方案",
+      "expected_simulation_signal": "sentiment partial recovery, stability_level increase"
+    }
+  ],
+
+  "event_order_reference": [
+    "研究生实名举报材料公开",
+    "舆情快速升温并引发社会关注",
+    "学校成立调查组并暂停涉事导师相关工作",
+    "媒体与学界持续追问科研伦理问题",
+    "学校公布最终处理结果",
+    "研究生培养安置方案落地",
+    "热度逐步收敛"
+  ],
+
+  "key_actors": [
+    {
+      "actor_id": "A1",
+      "name": "华中农业大学",
+      "aliases": ["华农", "校方", "华中农业大学官方", "学校"],
+      "type": "organization",
+      "role": "调查处置主体，负责发布通报与落实后续处理",
+      "importance": "high",
+      "expected_in_graph": true,
+      "expected_in_agent": true,
+      "expected_in_report": true
+    },
+    {
+      "actor_id": "A2",
+      "name": "举报研究生",
+      "aliases": ["11名研究生", "实名举报学生", "研究生群体"],
+      "type": "group",
+      "role": "事件触发者，以实名举报提升信息可信度并推动舆情爆发",
+      "importance": "high",
+      "expected_in_graph": true,
+      "expected_in_agent": true,
+      "expected_in_report": true
+    },
+    {
+      "actor_id": "A3",
+      "name": "涉事导师",
+      "aliases": ["黄某某", "导师", "被举报导师"],
+      "type": "individual",
+      "role": "被举报对象，直接决定冲突强度与舆论焦点",
+      "importance": "high",
+      "expected_in_graph": true,
+      "expected_in_agent": true,
+      "expected_in_report": true
+    },
+    {
+      "actor_id": "A4",
+      "name": "媒体",
+      "aliases": ["记者", "主流媒体", "自媒体", "教育媒体"],
+      "type": "media",
+      "role": "报道扩散事件，并推动讨论升维至学术伦理与高校治理",
+      "importance": "high",
+      "expected_in_graph": true,
+      "expected_in_agent": true,
+      "expected_in_report": true
+    },
+    {
+      "actor_id": "A5",
+      "name": "学界 / 科研共同体",
+      "aliases": ["学术圈", "科研共同体", "高校教师群体"],
+      "type": "group",
+      "role": "将个案延展为对科研生态和制度问题的反思",
+      "importance": "medium",
+      "expected_in_graph": true,
+      "expected_in_agent": true,
+      "expected_in_report": false
+    },
+    {
+      "actor_id": "A6",
+      "name": "教育主管部门",
+      "aliases": ["教育部门", "主管部门", "教育厅", "教育部"],
+      "type": "regulator",
+      "role": "作为更高层级治理与制度规范的参照对象",
+      "importance": "medium",
+      "expected_in_graph": true,
+      "expected_in_agent": true,
+      "expected_in_report": true
+    }
+  ],
+
+  "total_key_actors": 6,
+  "high_importance_actors": ["华中农业大学", "举报研究生", "涉事导师", "媒体"],
+
+  "ab_test_variables": {
+    "group_a": {
+      "label": "首日透明说明 + 学生保护承诺",
+      "description": "学校在爆发首日即公开调查流程、证据核查方向，并同步给出学生保护与培养安置方案"
+    },
+    "group_b": {
+      "label": "先简短回应后集中通报",
+      "description": "学校先发布简短回应，待调查基本完成后再集中公布完整处理结果"
+    }
+  },
+
+  "scoring_notes": {
+    "TCS": "将 simulation 情绪曲线按 5 阶段压缩，逐阶段比较方向：完全一致=1, 大体接近=0.5, 明显不符=0",
+    "TPH": "检查 T1/T2/T3 是否在 simulation 的对应或相邻阶段出现：同阶段命中=1, 相邻阶段=0.5, 未命中=0",
+    "KAC": "检查 high_importance_actors 是否出现在图谱节点/Agent/报告中，按覆盖比例打分",
+    "EOA": "比较 event_order_reference 与 simulation 关键事件序列的顺序一致程度"
+  }
+}

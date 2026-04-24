@@ -224,7 +224,7 @@ Do not start with an oversized package layout.
 Use this lean structure first:
 
 ```text
-com.mirofish
+com.nexusmind
 ├── NexusMindApplication
 ├── config
 ├── common

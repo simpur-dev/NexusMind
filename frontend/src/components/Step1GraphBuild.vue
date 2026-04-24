@@ -166,6 +166,13 @@
             <span v-if="creatingSimulation" class="spinner-sm"></span>
             {{ creatingSimulation ? '创建中...' : '进入环境搭建 ➝' }}
           </button>
+          <button 
+            class="action-btn action-btn-workspace" 
+            :disabled="currentPhase < 2"
+            @click="goToWorkspace"
+          >
+            ⌁ 进入事件工作台
+          </button>
         </div>
       </div>
     </div>
@@ -220,7 +227,10 @@
 
 <script setup>
 import { computed, ref, watch, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { createSimulation } from '../api/simulation'
+
+const router = useRouter()
 
 const props = defineProps({
   currentPhase: { type: Number, default: 0 },
@@ -305,6 +315,12 @@ const handleEnterEnvSetup = async () => {
 
 const selectOntologyItem = (item, type) => {
   selectedOntologyItem.value = { ...item, itemType: type }
+}
+
+const goToWorkspace = () => {
+  if (props.projectData?.project_id) {
+    router.push({ name: 'IncidentWorkspace', params: { projectId: props.projectData.project_id } })
+  }
 }
 
 const graphStats = computed(() => {
@@ -723,6 +739,18 @@ watch(() => props.systemLogs.length, () => {
   border-color: rgba(148, 163, 184, 0.2);
   cursor: not-allowed;
   box-shadow: none;
+}
+
+.action-btn-workspace {
+  margin-top: 8px;
+  background: linear-gradient(135deg, rgba(99, 179, 237, 0.15) 0%, rgba(59, 130, 246, 0.1) 100%);
+  color: #63b3ed;
+  border: 1px solid rgba(99, 179, 237, 0.3);
+  box-shadow: none;
+}
+.action-btn-workspace:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(99, 179, 237, 0.25) 0%, rgba(59, 130, 246, 0.18) 100%);
+  box-shadow: 0 8px 20px rgba(99, 179, 237, 0.15);
 }
 
 .progress-section {

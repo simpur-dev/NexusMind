@@ -36,6 +36,23 @@ from .simulation_ipc import (
     CommandType,
     CommandStatus
 )
+from .world_state import (
+    WorldStateEngine,
+    WorldStateSnapshot,
+    WorldEvent
+)
+from .causal_graph import (
+    CausalGraphEngine,
+    CausalEdge,
+    CausalChain
+)
+from .agent_brain import (
+    AgentBrain,
+    AgentBrainRuntime,
+    AgentPrior,
+    AgentCognitiveState,
+    create_agent_brain_profile,
+)
 
 __all__ = [
     'OntologyGenerator', 
@@ -69,5 +86,16 @@ __all__ = [
     'IPCResponse',
     'CommandType',
     'CommandStatus',
+    'WorldStateEngine',
+    'WorldStateSnapshot',
+    'WorldEvent',
+    'CausalGraphEngine',
+    'CausalEdge',
+    'CausalChain',
+    'AgentBrain',
+    'AgentBrainRuntime',
+    'AgentPrior',
+    'AgentCognitiveState',
+    'create_agent_brain_profile',
 ]
 

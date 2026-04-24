@@ -19,6 +19,21 @@ export function generateOntology(formData) {
 }
 
 /**
+ * 从网络搜索生成本体（输入关键词，自动抓取舆情）
+ * @param {Object} data - { query, simulation_requirement, max_results?, project_name? }
+ * @returns {Promise}
+ */
+export function generateOntologyFromWeb(data) {
+  return requestWithRetry(() =>
+    service({
+      url: '/api/graph/ontology/generate-from-web',
+      method: 'post',
+      data
+    })
+  )
+}
+
+/**
  * 构建图谱
  * @param {Object} data - 包含project_id, graph_name等
  * @returns {Promise}

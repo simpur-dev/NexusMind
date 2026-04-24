@@ -33,6 +33,14 @@ export const getSimulation = (simulationId) => {
 }
 
 /**
+ * 删除模拟（停止进程 + 删除数据目录）
+ * @param {string} simulationId
+ */
+export const deleteSimulation = (simulationId) => {
+  return service.delete(`/api/simulation/${simulationId}`)
+}
+
+/**
  * 获取模拟的 Agent Profiles
  * @param {string} simulationId
  * @param {string} platform - 'reddit' | 'twitter'
@@ -109,6 +117,33 @@ export const getRunStatusDetail = (simulationId) => {
 }
 
 /**
+ * 获取世界状态历史
+ * @param {string} simulationId
+ * @param {Object} params
+ */
+export const getWorldState = (simulationId, params = {}) => {
+  return service.get(`/api/simulation/${simulationId}/world-state`, { params })
+}
+
+/**
+ * 获取世界事件时间线
+ * @param {string} simulationId
+ * @param {Object} params
+ */
+export const getWorldEvents = (simulationId, params = {}) => {
+  return service.get(`/api/simulation/${simulationId}/events`, { params })
+}
+
+/**
+ * 获取因果图谱
+ * @param {string} simulationId
+ * @param {Object} params
+ */
+export const getCausalGraph = (simulationId, params = {}) => {
+  return service.get(`/api/simulation/${simulationId}/causal-graph`, { params })
+}
+
+/**
  * 获取模拟中的帖子
  * @param {string} simulationId
  * @param {string} platform - 'reddit' | 'twitter'
@@ -153,6 +188,14 @@ export const getSimulationActions = (simulationId, params = {}) => {
 }
 
 /**
+ * 动态注入外部事件（上帝视角）
+ * @param {Object} data - { simulation_id, event_type, description, severity?, affected_variables?, timeout? }
+ */
+export const injectEvent = (data) => {
+  return service.post('/api/simulation/inject-event', data)
+}
+
+/**
  * 关闭模拟环境（优雅退出）
  * @param {Object} data - { simulation_id, timeout? }
  */
@@ -173,7 +216,24 @@ export const getEnvStatus = (data) => {
  * @param {Object} data - { simulation_id, interviews: [{ agent_id, prompt }] }
  */
 export const interviewAgents = (data) => {
-  return requestWithRetry(() => service.post('/api/simulation/interview/batch', data), 3, 1000)
+  return requestWithRetry(() => service.post('/api/simulation/interview/batch', data, { timeout: 60000 }), 2, 1000)
+}
+
+/**
+ * 离线采访Agent（无需模拟环境运行）
+ * @param {Object} data - { simulation_id, agent_id, prompt, chat_history? }
+ */
+export const interviewAgentOffline = (data) => {
+  return requestWithRetry(() => service.post('/api/simulation/interview/offline', data, { timeout: 60000 }), 2, 1000)
+}
+
+/**
+ * 获取模拟知识图谱数据（SimAgent + SimAction 节点与关系）
+ * @param {string} simulationId
+ * @param {Object} params - { platform?, limit? }
+ */
+export const getSimGraph = (simulationId, params = {}) => {
+  return service.get(`/api/simulation/${simulationId}/sim-graph`, { params })
 }
 
 /**

@@ -155,7 +155,7 @@
               <div class="tools-card-avatar">R</div>
               <div class="tools-card-info">
                 <div class="tools-card-name">Report Agent - Chat</div>
-                <div class="tools-card-subtitle">报告生成智能体的快速对话版本，可调用 4 种专业工具，拥有MiroFish的完整记忆</div>
+                <div class="tools-card-subtitle">报告生成智能体的快速对话版本，可调用 4 种专业工具，拥有NexusMind的完整记忆</div>
               </div>
               <button class="tools-card-toggle" @click="showToolsDetail = !showToolsDetail">
                 <svg :class="{ 'is-expanded': showToolsDetail }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
@@ -313,25 +313,21 @@
 
         <!-- Survey Mode -->
         <div v-if="activeTab === 'survey'" class="survey-container">
-          <!-- Survey Setup -->
-          <div class="survey-setup">
-            <div class="setup-section">
+          <!-- Panel 1: 选择调查对象 -->
+          <div class="survey-panel" :style="{ height: surveyPanelHeights[0] + 'px' }">
+            <div class="panel-inner">
               <div class="section-header">
                 <span class="section-title">选择调查对象</span>
-                <span class="selection-count">已选 {{ selectedAgents.size }} / {{ profiles.length }}</span>
+                <span class="selection-count">已选 {{ selectedAgentsCount }} / {{ profiles.length }}</span>
               </div>
               <div class="agents-grid">
-                <label 
+                <div 
                   v-for="(agent, idx) in profiles" 
                   :key="idx"
                   class="agent-checkbox"
-                  :class="{ checked: selectedAgents.has(idx) }"
+                  :class="{ checked: !!selectedAgentsMap[idx] }"
+                  @click="toggleAgentSelection(idx)"
                 >
-                  <input 
-                    type="checkbox" 
-                    :checked="selectedAgents.has(idx)"
-                    @change="toggleAgentSelection(idx)"
-                  >
                   <div class="checkbox-avatar">{{ (agent.username || 'A')[0] }}</div>
                   <div class="checkbox-info">
                     <span class="checkbox-name">{{ agent.username }}</span>
@@ -342,7 +338,7 @@
                       <polyline points="20 6 9 17 4 12"></polyline>
                     </svg>
                   </div>
-                </label>
+                </div>
               </div>
               <div class="selection-actions">
                 <button class="action-link" @click="selectAllAgents">全选</button>
@@ -350,8 +346,16 @@
                 <button class="action-link" @click="clearAgentSelection">清空</button>
               </div>
             </div>
+          </div>
 
-            <div class="setup-section">
+          <!-- Divider 1 -->
+          <div class="resize-divider" @mousedown="startResize($event, 0)">
+            <div class="divider-line"></div>
+          </div>
+
+          <!-- Panel 2: 问卷问题 + 发送 -->
+          <div class="survey-panel" :style="{ height: surveyPanelHeights[1] + 'px' }">
+            <div class="panel-inner">
               <div class="section-header">
                 <span class="section-title">问卷问题</span>
               </div>
@@ -359,48 +363,53 @@
                 v-model="surveyQuestion"
                 class="survey-input"
                 placeholder="输入您想问所有被选中对象的问题..."
-                rows="3"
               ></textarea>
+              <button 
+                class="survey-submit-btn"
+                :disabled="selectedAgentsCount === 0 || !surveyQuestion.trim() || isSurveying"
+                @click="submitSurvey"
+              >
+                <span v-if="isSurveying" class="loading-spinner"></span>
+                <span v-else>发送问卷</span>
+              </button>
             </div>
-
-            <button 
-              class="survey-submit-btn"
-              :disabled="selectedAgents.size === 0 || !surveyQuestion.trim() || isSurveying"
-              @click="submitSurvey"
-            >
-              <span v-if="isSurveying" class="loading-spinner"></span>
-              <span v-else>发送问卷</span>
-            </button>
           </div>
 
-          <!-- Survey Results -->
-          <div v-if="surveyResults.length > 0" class="survey-results">
-            <div class="results-header">
-              <span class="results-title">调查结果</span>
-              <span class="results-count">{{ surveyResults.length }} 条回复</span>
-            </div>
-            <div class="results-list">
-              <div 
-                v-for="(result, idx) in surveyResults" 
-                :key="idx"
-                class="result-card"
-              >
-                <div class="result-header">
-                  <div class="result-avatar">{{ (result.agent_name || 'A')[0] }}</div>
-                  <div class="result-info">
-                    <span class="result-name">{{ result.agent_name }}</span>
-                    <span class="result-role">{{ result.profession || '未知职业' }}</span>
+          <!-- Divider 2 (only when results exist) -->
+          <div v-if="surveyResults.length > 0" class="resize-divider" @mousedown="startResize($event, 1)">
+            <div class="divider-line"></div>
+          </div>
+
+          <!-- Panel 3: 调查结果 -->
+          <div v-if="surveyResults.length > 0" class="survey-panel survey-panel-results" :style="{ flex: '1 1 auto', minHeight: surveyPanelHeights[2] + 'px' }">
+            <div class="panel-inner">
+              <div class="results-header">
+                <span class="results-title">调查结果</span>
+                <span class="results-count">{{ surveyResults.length }} 条回复</span>
+              </div>
+              <div class="results-list">
+                <div 
+                  v-for="(result, idx) in surveyResults" 
+                  :key="idx"
+                  class="result-card"
+                >
+                  <div class="result-header">
+                    <div class="result-avatar">{{ (result.agent_name || 'A')[0] }}</div>
+                    <div class="result-info">
+                      <span class="result-name">{{ result.agent_name }}</span>
+                      <span class="result-role">{{ result.profession || '未知职业' }}</span>
+                    </div>
                   </div>
+                  <div class="result-question">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                      <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                    <span>{{ result.question }}</span>
+                  </div>
+                  <div class="result-answer" v-html="renderMarkdown(result.answer)"></div>
                 </div>
-                <div class="result-question">
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                  </svg>
-                  <span>{{ result.question }}</span>
-                </div>
-                <div class="result-answer" v-html="renderMarkdown(result.answer)"></div>
               </div>
             </div>
           </div>
@@ -413,7 +422,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { chatWithReport, getReport, getAgentLog } from '../api/report'
-import { interviewAgents, getSimulationProfilesRealtime } from '../api/simulation'
+import { interviewAgents, interviewAgentOffline, getSimulationProfilesRealtime, getEnvStatus } from '../api/simulation'
 
 const props = defineProps({
   reportId: String,
@@ -439,11 +448,103 @@ const isSending = ref(false)
 const chatMessages = ref(null)
 const chatInputRef = ref(null)
 
+const scrollToBottom = () => {
+  nextTick(() => {
+    if (chatMessages.value) {
+      chatMessages.value.scrollTop = chatMessages.value.scrollHeight
+    }
+  })
+}
+
+// --- sessionStorage 持久化 ---
+const CHAT_CACHE_VERSION = 2 // 递增此值可强制清除旧缓存
+const storageKey = computed(() => `nexusmind_step5_chat_${props.simulationId || 'default'}`)
+
+const persistToStorage = () => {
+  try {
+    const payload = {
+      cacheVersion: CHAT_CACHE_VERSION,
+      chatHistoryCache: chatHistoryCache.value,
+      activeTarget: chatTarget.value,
+      selectedAgentIdx: selectedAgentIndex.value,
+      surveyResults: surveyResults.value
+    }
+    localStorage.setItem(storageKey.value, JSON.stringify(payload))
+  } catch { /* quota exceeded, ignore */ }
+}
+
+const restoreFromStorage = () => {
+  try {
+    const raw = localStorage.getItem(storageKey.value)
+    if (!raw) return
+    const payload = JSON.parse(raw)
+    // 版本不匹配时清除旧的对话缓存（保留问卷结果）
+    if (payload.cacheVersion !== CHAT_CACHE_VERSION) {
+      localStorage.removeItem(storageKey.value)
+      if (payload.surveyResults) {
+        surveyResults.value = payload.surveyResults
+      }
+      return
+    }
+    if (payload.chatHistoryCache) {
+      chatHistoryCache.value = payload.chatHistoryCache
+    }
+    if (payload.surveyResults) {
+      surveyResults.value = payload.surveyResults
+    }
+    // 恢复当前对话目标的历史
+    const targetKey = payload.activeTarget === 'agent' && payload.selectedAgentIdx !== null
+      ? `agent_${payload.selectedAgentIdx}`
+      : 'report_agent'
+    chatHistory.value = chatHistoryCache.value[targetKey] || []
+  } catch { /* parse error, ignore */ }
+}
+
 // Survey State
-const selectedAgents = ref(new Set())
+const selectedAgentsMap = ref({})  // { 0: true, 2: true, ... } 普通对象保证Vue反应性
+const selectedAgentsCount = computed(() => Object.keys(selectedAgentsMap.value).filter(k => selectedAgentsMap.value[k]).length)
 const surveyQuestion = ref('')
 const surveyResults = ref([])
 const isSurveying = ref(false)
+
+// Survey panel resizable heights (px): [agents, question, results]
+const surveyPanelHeights = ref([280, 220, 200])
+let resizingIdx = null
+let resizeStartY = 0
+let resizeStartHeights = [0, 0]
+
+const startResize = (e, dividerIdx) => {
+  e.preventDefault()
+  resizingIdx = dividerIdx
+  resizeStartY = e.clientY
+  resizeStartHeights = [surveyPanelHeights.value[dividerIdx], surveyPanelHeights.value[dividerIdx + 1]]
+  document.addEventListener('mousemove', onResizeMove)
+  document.addEventListener('mouseup', onResizeEnd)
+  document.body.style.cursor = 'row-resize'
+  document.body.style.userSelect = 'none'
+}
+
+const onResizeMove = (e) => {
+  if (resizingIdx === null) return
+  const delta = e.clientY - resizeStartY
+  const minH = 80
+  let newTop = resizeStartHeights[0] + delta
+  let newBottom = resizeStartHeights[1] - delta
+  if (newTop < minH) { newTop = minH; newBottom = resizeStartHeights[0] + resizeStartHeights[1] - minH }
+  if (newBottom < minH) { newBottom = minH; newTop = resizeStartHeights[0] + resizeStartHeights[1] - minH }
+  const copy = [...surveyPanelHeights.value]
+  copy[resizingIdx] = newTop
+  copy[resizingIdx + 1] = newBottom
+  surveyPanelHeights.value = copy
+}
+
+const onResizeEnd = () => {
+  resizingIdx = null
+  document.removeEventListener('mousemove', onResizeMove)
+  document.removeEventListener('mouseup', onResizeEnd)
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+}
 
 // Report Data
 const reportOutline = ref(null)
@@ -493,6 +594,7 @@ const saveChatHistory = () => {
   } else if (selectedAgentIndex.value !== null) {
     chatHistoryCache.value[`agent_${selectedAgentIndex.value}`] = [...chatHistory.value]
   }
+  persistToStorage()
 }
 
 const selectReportAgentChat = () => {
@@ -514,6 +616,26 @@ const selectSurveyTab = () => {
   selectedAgent.value = null
   selectedAgentIndex.value = null
   showAgentDropdown.value = false
+}
+
+const toggleAgentSelection = (idx) => {
+  const copy = { ...selectedAgentsMap.value }
+  if (copy[idx]) {
+    delete copy[idx]
+  } else {
+    copy[idx] = true
+  }
+  selectedAgentsMap.value = copy
+}
+
+const selectAllAgents = () => {
+  const map = {}
+  profiles.value.forEach((_, idx) => { map[idx] = true })
+  selectedAgentsMap.value = map
+}
+
+const clearAgentSelection = () => {
+  selectedAgentsMap.value = {}
 }
 
 const toggleAgentDropdown = () => {
@@ -640,7 +762,11 @@ const renderMarkdown = (content) => {
 
 // Chat Methods
 const sendMessage = async () => {
-  if (!chatInput.value.trim() || isSending.value) return
+  console.log('[Chat] sendMessage called, isSending:', isSending.value, 'chatTarget:', chatTarget.value, 'simId:', props.simulationId)
+  if (!chatInput.value.trim() || isSending.value) {
+    console.warn('[Chat] blocked: empty input or isSending=true')
+    return
+  }
   
   const message = chatInput.value.trim()
   chatInput.value = ''
@@ -657,15 +783,23 @@ const sendMessage = async () => {
   
   try {
     if (chatTarget.value === 'report_agent') {
+      console.log('[Chat] calling sendToReportAgent')
       await sendToReportAgent(message)
     } else {
+      console.log('[Chat] calling sendToAgent')
       await sendToAgent(message)
     }
   } catch (err) {
-    addLog(`发送失败: ${err.message}`)
+    const errMsg = err?.message || String(err) || '未知错误'
+    const isTimeout = errMsg.includes('timeout') || errMsg.includes('ECONNABORTED')
+    const isNetwork = errMsg === 'Network Error' || errMsg.includes('ECONNREFUSED')
+    let userMsg = `抱歉，发生了错误: ${errMsg}`
+    if (isTimeout) userMsg = '请求超时，后端可能正在处理其他任务。请稍后重试。'
+    else if (isNetwork) userMsg = '无法连接后端服务，请确认后端已启动。'
+    addLog(`发送失败: ${errMsg}`)
     chatHistory.value.push({
       role: 'assistant',
-      content: `抱歉，发生了错误: ${err.message}`,
+      content: userMsg,
       timestamp: new Date().toISOString()
     })
   } finally {
@@ -678,6 +812,7 @@ const sendMessage = async () => {
 
 const sendToReportAgent = async (message) => {
   addLog(`向 Report Agent 发送: ${message.substring(0, 50)}...`)
+  console.log('[Chat] sendToReportAgent, simulationId:', props.simulationId)
   
   // Build chat history for API
   const historyForApi = chatHistory.value
@@ -688,11 +823,13 @@ const sendToReportAgent = async (message) => {
       content: msg.content
     }))
   
+  console.log('[Chat] calling chatWithReport API...')
   const res = await chatWithReport({
     simulation_id: props.simulationId,
     message: message,
     chat_history: historyForApi
   })
+  console.log('[Chat] chatWithReport response:', res)
   
   if (res.success && res.data) {
     chatHistory.value.push({
@@ -706,54 +843,86 @@ const sendToReportAgent = async (message) => {
   }
 }
 
+const extractAgentResponseContent = (res, agentId) => {
+  if (!res?.success || !res?.data) return null
+
+  const resultData = res.data.result || res.data
+  const resultsDict = resultData.results || resultData
+
+  if (typeof resultsDict === 'object' && !Array.isArray(resultsDict)) {
+    const redditKey = `reddit_${agentId}`
+    const twitterKey = `twitter_${agentId}`
+    const agentResult = resultsDict[redditKey] || resultsDict[twitterKey] || Object.values(resultsDict)[0]
+    return agentResult?.response || agentResult?.answer || null
+  }
+
+  if (Array.isArray(resultsDict) && resultsDict.length > 0) {
+    const matchedResult = resultsDict.find(r => r.agent_id === agentId) || resultsDict[0]
+    return matchedResult?.response || matchedResult?.answer || null
+  }
+
+  return null
+}
+
 const sendToAgent = async (message) => {
   if (!selectedAgent.value || selectedAgentIndex.value === null) {
     throw new Error('请先选择一个模拟个体')
   }
-  
+
   addLog(`向 ${selectedAgent.value.username} 发送: ${message.substring(0, 50)}...`)
   
-  // Build prompt with chat history
+  // Build clean chat history: only keep paired user→assistant turns
+  const pairedHistory = []
+  const allMsgs = chatHistory.value.filter(m => m.content !== message)
+  for (let i = 0; i < allMsgs.length; i++) {
+    if (allMsgs[i].role === 'user' && allMsgs[i + 1]?.role === 'assistant') {
+      pairedHistory.push(allMsgs[i], allMsgs[i + 1])
+      i++ // skip assistant
+    }
+  }
+  const recentPairs = pairedHistory.slice(-6)
+
   let prompt = message
-  if (chatHistory.value.length > 1) {
-    const historyContext = chatHistory.value
-      .filter(msg => msg.content !== message)
-      .slice(-6)
+  if (recentPairs.length > 0) {
+    const historyContext = recentPairs
       .map(msg => `${msg.role === 'user' ? '提问者' : '你'}：${msg.content}`)
       .join('\n')
     prompt = `以下是我们之前的对话：\n${historyContext}\n\n现在我的新问题是：${message}`
   }
-  
-  const res = await interviewAgents({
-    simulation_id: props.simulationId,
-    interviews: [{
+
+  // 检查模拟环境是否存活，决定使用在线还是离线模式
+  let useOffline = false
+  try {
+    const envRes = await getEnvStatus({ simulation_id: props.simulationId })
+    useOffline = !envRes?.data?.env_alive
+  } catch {
+    useOffline = true
+  }
+
+  let res
+  if (useOffline) {
+    // 离线模式：用存储的人设+记忆，LLM模拟Agent回答
+    addLog(`[离线模式] 模拟环境未运行，使用本地数据模拟对话`)
+    const chatHistoryForApi = recentPairs.map(msg => ({ role: msg.role, content: msg.content }))
+    res = await interviewAgentOffline({
+      simulation_id: props.simulationId,
       agent_id: selectedAgentIndex.value,
-      prompt: prompt
-    }]
-  })
+      prompt: prompt,
+      chat_history: chatHistoryForApi
+    })
+  } else {
+    // 在线模式：通过OASIS模拟环境真实采访
+    res = await interviewAgents({
+      simulation_id: props.simulationId,
+      interviews: [{
+        agent_id: selectedAgentIndex.value,
+        prompt: prompt
+      }]
+    })
+  }
   
   if (res.success && res.data) {
-    // 正确的数据路径: res.data.result.results 是一个对象字典
-    // 格式: {"twitter_0": {...}, "reddit_0": {...}} 或单平台 {"reddit_0": {...}}
-    const resultData = res.data.result || res.data
-    const resultsDict = resultData.results || resultData
-    
-    // 将对象字典转换为数组，优先获取 reddit 平台的回复
-    let responseContent = null
-    const agentId = selectedAgentIndex.value
-    
-    if (typeof resultsDict === 'object' && !Array.isArray(resultsDict)) {
-      // 优先使用 reddit 平台回复，其次 twitter
-      const redditKey = `reddit_${agentId}`
-      const twitterKey = `twitter_${agentId}`
-      const agentResult = resultsDict[redditKey] || resultsDict[twitterKey] || Object.values(resultsDict)[0]
-      if (agentResult) {
-        responseContent = agentResult.response || agentResult.answer
-      }
-    } else if (Array.isArray(resultsDict) && resultsDict.length > 0) {
-      // 兼容数组格式
-      responseContent = resultsDict[0].response || resultsDict[0].answer
-    }
+    const responseContent = extractAgentResponseContent(res, selectedAgentIndex.value)
     
     if (responseContent) {
       chatHistory.value.push({
@@ -761,7 +930,7 @@ const sendToAgent = async (message) => {
         content: responseContent,
         timestamp: new Date().toISOString()
       })
-      addLog(`${selectedAgent.value.username} 已回复`)
+      addLog(`${selectedAgent.value.username} 已回复${useOffline ? '（离线模式）' : ''}`)
     } else {
       throw new Error('无响应数据')
     }
@@ -770,46 +939,63 @@ const sendToAgent = async (message) => {
   }
 }
 
-const scrollToBottom = () => {
-  nextTick(() => {
-    if (chatMessages.value) {
-      chatMessages.value.scrollTop = chatMessages.value.scrollHeight
-    }
-  })
-}
-
-// Survey Methods
-const toggleAgentSelection = (idx) => {
-  const newSet = new Set(selectedAgents.value)
-  if (newSet.has(idx)) {
-    newSet.delete(idx)
-  } else {
-    newSet.add(idx)
-  }
-  selectedAgents.value = newSet
-}
-
-const selectAllAgents = () => {
-  const newSet = new Set()
-  profiles.value.forEach((_, idx) => newSet.add(idx))
-  selectedAgents.value = newSet
-}
-
-const clearAgentSelection = () => {
-  selectedAgents.value = new Set()
-}
-
 const submitSurvey = async () => {
-  if (selectedAgents.value.size === 0 || !surveyQuestion.value.trim()) return
+  if (selectedAgentsCount.value === 0 || !surveyQuestion.value.trim()) return
   
   isSurveying.value = true
-  addLog(`发送问卷给 ${selectedAgents.value.size} 个对象...`)
+  addLog(`发送问卷给 ${selectedAgentsCount.value} 个对象...`)
   
   try {
-    const interviews = Array.from(selectedAgents.value).map(idx => ({
-      agent_id: idx,
-      prompt: surveyQuestion.value.trim()
-    }))
+    const interviews = Object.keys(selectedAgentsMap.value)
+      .filter(k => selectedAgentsMap.value[k])
+      .map(k => ({
+        agent_id: Number(k),
+        prompt: surveyQuestion.value.trim()
+      }))
+
+    let useOffline = false
+    try {
+      const envRes = await getEnvStatus({ simulation_id: props.simulationId })
+      useOffline = !envRes?.data?.env_alive
+    } catch {
+      useOffline = true
+    }
+
+    if (useOffline) {
+      addLog('[离线模式] 模拟环境未运行，使用本地数据批量模拟问卷回复')
+      const surveyResultsList = []
+
+      for (const interview of interviews) {
+        const agentIdx = interview.agent_id
+        const agent = profiles.value[agentIdx]
+        let responseContent = '无响应'
+
+        try {
+          const offlineRes = await interviewAgentOffline({
+            simulation_id: props.simulationId,
+            agent_id: agentIdx,
+            prompt: interview.prompt,
+            chat_history: []
+          })
+          responseContent = extractAgentResponseContent(offlineRes, agentIdx) || '无响应'
+        } catch (err) {
+          responseContent = `请求失败：${err.message}`
+        }
+
+        surveyResultsList.push({
+          agent_id: agentIdx,
+          agent_name: agent?.username || `Agent ${agentIdx}`,
+          profession: agent?.profession,
+          question: surveyQuestion.value.trim(),
+          answer: responseContent
+        })
+      }
+
+      surveyResults.value = surveyResultsList
+      persistToStorage()
+      addLog(`收到 ${surveyResults.value.length} 条回复（离线模式）`)
+      return
+    }
     
     const res = await interviewAgents({
       simulation_id: props.simulationId,
@@ -857,6 +1043,7 @@ const submitSurvey = async () => {
       }
       
       surveyResults.value = surveyResultsList
+      persistToStorage()
       addLog(`收到 ${surveyResults.value.length} 条回复`)
     } else {
       throw new Error(res.error || '请求失败')
@@ -936,12 +1123,14 @@ const handleClickOutside = (e) => {
 // Lifecycle
 onMounted(() => {
   addLog('Step5 深度互动初始化')
+  restoreFromStorage()
   loadReportData()
   loadProfiles()
   document.addEventListener('click', handleClickOutside)
 })
 
 onUnmounted(() => {
+  saveChatHistory()
   document.removeEventListener('click', handleClickOutside)
 })
 
@@ -961,6 +1150,8 @@ watch(() => props.simulationId, (newId) => {
 <style scoped>
 .interaction-panel {
   height: 100%;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: #F8F9FA;
@@ -2154,29 +2345,58 @@ watch(() => props.simulationId, (newId) => {
   overflow: hidden;
 }
 
-.survey-setup {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  padding: 24px;
-  border-bottom: 1px solid #E5E7EB;
-  overflow: hidden;
-}
-
-.setup-section {
-  margin-bottom: 24px;
-}
-
-.setup-section:first-child {
-  flex: 1;
+/* Resizable survey panels */
+.survey-panel {
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.survey-panel-results {
+  flex-shrink: 1;
+}
+
+.panel-inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 24px;
+  overflow-y: auto;
   min-height: 0;
 }
 
-.setup-section:last-child {
-  margin-bottom: 0;
+/* Resize divider */
+.resize-divider {
+  flex-shrink: 0;
+  height: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: row-resize;
+  background: #F3F4F6;
+  transition: background 0.15s;
+  position: relative;
+  z-index: 2;
+}
+
+.resize-divider:hover,
+.resize-divider:active {
+  background: #E0E7EF;
+}
+
+.divider-line {
+  width: 40px;
+  height: 3px;
+  border-radius: 2px;
+  background: #C4CDD5;
+  transition: background 0.15s, width 0.15s;
+}
+
+.resize-divider:hover .divider-line,
+.resize-divider:active .divider-line {
+  background: #6B7280;
+  width: 56px;
 }
 
 .section-header {
@@ -2206,6 +2426,7 @@ watch(() => props.simulationId, (newId) => {
   overflow-y: auto;
   padding: 4px;
   align-content: start;
+  min-height: 0;
 }
 
 .agent-checkbox {
@@ -2231,6 +2452,11 @@ watch(() => props.simulationId, (newId) => {
 
 .agent-checkbox input {
   display: none;
+}
+
+.agent-checkbox {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .checkbox-avatar {
@@ -2334,6 +2560,8 @@ watch(() => props.simulationId, (newId) => {
 /* Survey Input */
 .survey-input {
   width: 100%;
+  flex: 1;
+  min-height: 48px;
   padding: 14px 16px;
   font-size: 14px;
   border: 1px solid #E5E7EB;
@@ -2394,7 +2622,6 @@ watch(() => props.simulationId, (newId) => {
 .survey-results {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
 }
 
 .results-header {

@@ -13,7 +13,21 @@
     
     <!-- 顶部导航栏 -->
     <nav class="navbar">
-      <div class="nav-brand" @click="goHome">NexusMind</div>
+      <div class="nav-brand-group">
+        <div class="nav-brand" @click="goHome">NexusMind</div>
+        <button class="home-btn" @click="goHome" title="返回首页">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </button>
+        <button v-if="fromIncidentWorkspace" class="home-btn incident-back-btn" @click="goBackToWorkspace" title="返回事件工作台">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+          <span style="font-size:11px;margin-left:2px">事件工作台</span>
+        </button>
+      </div>
       
       <!-- 中间步骤指示器 -->
       <div class="nav-center">
@@ -331,18 +345,18 @@
               :key="idx"
               class="step-dot-wrap"
               :title="name"
-              @click="currentStep > idx + 1 && (currentStep = idx + 1)"
-              :style="{ cursor: currentStep > idx + 1 ? 'pointer' : 'default' }"
+              @click="maxReachedStep >= idx + 1 && currentStep !== idx + 1 && (currentStep = idx + 1)"
+              :style="{ cursor: maxReachedStep >= idx + 1 && currentStep !== idx + 1 ? 'pointer' : 'default' }"
             >
               <div
                 class="step-dot"
                 :class="{
                   active: currentStep === idx + 1,
-                  completed: currentStep > idx + 1,
-                  pending: currentStep < idx + 1
+                  completed: maxReachedStep > idx + 1 && currentStep !== idx + 1,
+                  pending: maxReachedStep < idx + 1
                 }"
               >
-                <span v-if="currentStep > idx + 1" class="dot-check">✓</span>
+                <span v-if="maxReachedStep > idx + 1 && currentStep !== idx + 1" class="dot-check">✓</span>
                 <span v-else class="dot-num">{{ idx + 1 }}</span>
               </div>
               <span class="step-dot-label">{{ name }}</span>
@@ -405,6 +419,8 @@
                 v-else-if="currentStep === 3"
                 :simulationId="currentSimulationId"
                 :maxRounds="maxRounds"
+                :minutesPerRound="minutesPerRound"
+                :freshStart="pendingFreshStart"
                 :projectData="projectData"
                 :graphData="graphData"
                 :systemLogs="systemLogs"
@@ -412,11 +428,13 @@
                 @next-step="handleNextStep"
                 @add-log="addLog"
                 @update-status="updateStatus"
+                @fresh-start-consumed="pendingFreshStart = false"
               />
               <Step4Report
                 v-else-if="currentStep === 4"
                 :reportId="currentReportId"
                 :simulationId="currentSimulationId"
+                :baselineId="route.query.baseline_id || ''"
                 :systemLogs="systemLogs"
                 @next-step="handleNextStep"
                 @add-log="addLog"
@@ -441,7 +459,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { generateOntology, getProject, buildGraph, getTaskStatus, getGraphData } from '../api/graph'
+import { generateOntology, generateOntologyFromWeb, getProject, buildGraph, getTaskStatus, getGraphData } from '../api/graph'
 import { getPendingUpload, clearPendingUpload } from '../store/pendingUpload'
 import Step1GraphBuild from '../components/Step1GraphBuild.vue'
 import Step2EnvSetup from '../components/Step2EnvSetup.vue'
@@ -474,159 +492,21 @@ const isFullScreen = ref(false)
 
 // Step 导航状态
 const currentStep = ref(1) // 1: 图谱构建, 2: 环境搭建, 3: 开始模拟, 4: 报告生成, 5: 深度互动
-const stepNames = ['图谱构建', '环境搭建', '开始模拟', '报告生成', '深度互动']
+const maxReachedStep = ref(1) // 已到达过的最高步骤，允许在已访问步骤间自由跳转
+const stepNames = ['图谱构建', '环境搭建', '世界模型推演', '报告生成', '深度互动']
 const currentSimulationId = ref(null)
 const currentReportId = ref(null)
 const maxRounds = ref(null) // 从 Step2 传入的模拟轮数配置
+const minutesPerRound = ref(60) // 每轮分钟数，默认60（与后端 simulation_config_generator 一致）
+const pendingFreshStart = ref(false) // Step2 点击"开始推演"时置 true，让 Step3 跳过 resume 直接启动
+const stepStatus = ref('') // 子组件通过 emit('update-status') 上报的状态: processing / completed / error
 const systemLogs = ref([])
 
 // DOM引用
 const graphContainer = ref(null)
 const graphSvg = ref(null)
 
-/** 图谱画布背后 HTML 装饰：+/× 各自闪烁与漂移周期（勿放进 SVG：CSS transform 会覆盖 g 的 translate） */
-const GRAPH_DECOR_SYMBOLS = [
-  { kind: 'plus', left: '6%', top: '6%', f: 9.2, d: 14.5, fd: 0, dd: -2.1, drift: 'a', size: 28 },
-  { kind: 'cross', left: '14%', top: '3%', f: 15.8, d: 11.2, fd: -4, dd: -1.3, drift: 'b', size: 26 },
-  { kind: 'plus', left: '35%', top: '8%', f: 12.4, d: 17.6, fd: -7, dd: -5.2, drift: 'c', size: 30 },
-  { kind: 'cross', left: '52%', top: '11%', f: 17.1, d: 13.4, fd: -2, dd: -8.4, drift: 'a', size: 25 },
-  { kind: 'plus', left: '72%', top: '5%', f: 10.6, d: 19.2, fd: -5, dd: -3.7, drift: 'b', size: 28 },
-  { kind: 'cross', left: '88%', top: '9%', f: 14.3, d: 15.1, fd: -9, dd: -6.8, drift: 'c', size: 26 },
-  { kind: 'plus', left: '8%', top: '22%', f: 16.5, d: 10.8, fd: -3, dd: -0.9, drift: 'a', size: 26 },
-  { kind: 'cross', left: '28%', top: '19%', f: 11.7, d: 16.3, fd: -8, dd: -4.4, drift: 'b', size: 28 },
-  { kind: 'plus', left: '48%', top: '16%', f: 13.9, d: 12.6, fd: -1, dd: -7.1, drift: 'c', size: 25 },
-  { kind: 'cross', left: '66%', top: '21%', f: 18.2, d: 14.8, fd: -6, dd: -2.6, drift: 'a', size: 30 },
-  { kind: 'plus', left: '82%', top: '17%', f: 10.1, d: 18.4, fd: -11, dd: -9.2, drift: 'b', size: 26 },
-  { kind: 'cross', left: '20%', top: '34%', f: 15.4, d: 11.9, fd: -4, dd: -1.8, drift: 'c', size: 28 },
-  { kind: 'plus', left: '40%', top: '38%', f: 12.8, d: 16.7, fd: -8, dd: -5.5, drift: 'a', size: 26 },
-  { kind: 'cross', left: '60%', top: '36%', f: 9.8, d: 13.2, fd: -2, dd: -3.1, drift: 'b', size: 26 },
-  { kind: 'plus', left: '78%', top: '42%', f: 17.6, d: 10.4, fd: -5, dd: -6.9, drift: 'c', size: 28 },
-  { kind: 'cross', left: '92%', top: '45%', f: 14, d: 17.9, fd: -10, dd: -4.7, drift: 'a', size: 25 },
-  { kind: 'plus', left: '12%', top: '55%', f: 11.3, d: 15.6, fd: -1, dd: -8.1, drift: 'b', size: 26 },
-  { kind: 'cross', left: '34%', top: '52%', f: 16.1, d: 12.1, fd: -7, dd: -2.4, drift: 'c', size: 30 },
-  { kind: 'plus', left: '56%', top: '60%', f: 13.5, d: 18.8, fd: -9, dd: -5.9, drift: 'a', size: 25 },
-  { kind: 'cross', left: '76%', top: '58%', f: 10.4, d: 14.2, fd: -3, dd: -0.6, drift: 'b', size: 28 },
-  { kind: 'plus', left: '4%', top: '72%', f: 18.9, d: 11.5, fd: -6, dd: -7.3, drift: 'c', size: 26 },
-  { kind: 'cross', left: '24%', top: '78%', f: 12.2, d: 16, fd: -2, dd: -4.2, drift: 'a', size: 26 },
-  { kind: 'plus', left: '46%', top: '80%', f: 15.7, d: 13.7, fd: -12, dd: -1.5, drift: 'b', size: 28 },
-  { kind: 'cross', left: '68%', top: '84%', f: 9.6, d: 19.4, fd: -5, dd: -8.8, drift: 'c', size: 26 },
-  { kind: 'plus', left: '86%', top: '76%', f: 14.6, d: 10.2, fd: -4, dd: -3.4, drift: 'a', size: 25 },
-  { kind: 'cross', left: '14%', top: '92%', f: 11.1, d: 15.3, fd: -9, dd: -6.1, drift: 'b', size: 28 },
-  { kind: 'plus', left: '60%', top: '94%', f: 17.3, d: 12.8, fd: -1, dd: -2.9, drift: 'c', size: 26 },
-  { kind: 'cross', left: '38%', top: '88%', f: 13.1, d: 17.1, fd: -8, dd: -5, drift: 'a', size: 25 },
-  { kind: 'plus', left: '90%', top: '66%', f: 10.9, d: 14.6, fd: -7, dd: -4.5, drift: 'b', size: 30 },
-  { kind: 'cross', left: '50%', top: '26%', f: 16.8, d: 11.3, fd: -3, dd: -9.4, drift: 'c', size: 26 },
-  { kind: 'plus', left: '30%', top: '68%', f: 12.6, d: 18.2, fd: -5, dd: -1.1, drift: 'a', size: 26 },
-  { kind: 'cross', left: '70%', top: '30%', f: 15.2, d: 13.5, fd: -10, dd: -7.6, drift: 'b', size: 28 },
-  { kind: 'plus', left: '2%', top: '44%', f: 11.5, d: 16.4, fd: -2, dd: -3.8, drift: 'c', size: 24 },
-  { kind: 'cross', left: '96%', top: '62%', f: 13.8, d: 12.2, fd: -6, dd: -1.2, drift: 'a', size: 25 },
-]
-
-// 轮询定时器
-let pollTimer = null
-
-// 初始化十字星点阵动画
-const initStarCanvas = () => {
-  const canvas = starCanvas.value
-  if (!canvas) return
-  
-  const ctx = canvas.getContext('2d')
-  
-  // 设置画布尺寸
-  const resizeCanvas = () => {
-    const rect = canvas.getBoundingClientRect()
-    canvas.width = rect.width
-    canvas.height = rect.height
-  }
-  
-  resizeCanvas()
-  window.addEventListener('resize', resizeCanvas)
-  
-  // 十字星配置
-  const stars = []
-  const starCount = 80 // 十字星数量
-  
-  for (let i = 0; i < starCount; i++) {
-    stars.push({
-      x: Math.random() * canvas.width,
-      y: Math.random() * canvas.height,
-      size: Math.random() * 2 + 1,
-      opacity: Math.random() * 0.5 + 0.1,
-      speed: Math.random() * 0.02 + 0.01,
-      angle: Math.random() * Math.PI / 2, // 45度基准
-      twinkleSpeed: Math.random() * 0.02 + 0.01,
-      twinkleOffset: Math.random() * Math.PI * 2
-    })
-  }
-  
-  // 绘制十字星
-  const drawStar = (star, time) => {
-    const twinkle = Math.sin(time * star.twinkleSpeed + star.twinkleOffset) * 0.3 + 0.7
-    const alpha = star.opacity * twinkle
-    
-    ctx.save()
-    ctx.translate(star.x, star.y)
-    ctx.rotate(star.angle)
-    
-    // 发光效果
-    ctx.shadowBlur = 10
-    ctx.shadowColor = `rgba(59, 130, 246, ${alpha})`
-    
-    ctx.strokeStyle = `rgba(147, 197, 253, ${alpha})`
-    ctx.lineWidth = star.size * 0.5
-    
-    // 横线
-    ctx.beginPath()
-    ctx.moveTo(-star.size * 3, 0)
-    ctx.lineTo(star.size * 3, 0)
-    ctx.stroke()
-    
-    // 竖线
-    ctx.beginPath()
-    ctx.moveTo(0, -star.size * 3)
-    ctx.lineTo(0, star.size * 3)
-    ctx.stroke()
-    
-    // 中心点
-    ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.8})`
-    ctx.beginPath()
-    ctx.arc(0, 0, star.size * 0.5, 0, Math.PI * 2)
-    ctx.fill()
-    
-    ctx.restore()
-  }
-  
-  // 动画循环
-  let animationTime = 0
-  const animate = () => {
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    animationTime += 16 // 约60fps
-    
-    // 更新星星位置（缓慢漂移）
-    stars.forEach(star => {
-      star.x += Math.sin(animationTime * 0.0001 + star.twinkleOffset) * 0.3
-      star.y += Math.cos(animationTime * 0.0001 + star.twinkleOffset) * 0.3
-      
-      // 边界检查
-      if (star.x < -20) star.x = canvas.width + 20
-      if (star.x > canvas.width + 20) star.x = -20
-      if (star.y < -20) star.y = canvas.height + 20
-      if (star.y > canvas.height + 20) star.y = -20
-      
-      // 旋转
-      star.angle += star.speed * 0.01
-    })
-    
-    // 绘制所有星星
-    stars.forEach(star => drawStar(star, animationTime))
-    
-    starAnimationId = requestAnimationFrame(animate)
-  }
-  
-  animate()
-}
-
-// 停止十字星动画
+// 停止十字星画布动画
 const stopStarAnimation = () => {
   if (starAnimationId) {
     cancelAnimationFrame(starAnimationId)
@@ -634,19 +514,43 @@ const stopStarAnimation = () => {
   }
 }
 
-// 计算属性
-const statusClass = computed(() => {
-  if (error.value) return 'error'
-  if (currentPhase.value >= 2) return 'completed'
-  return 'processing'
-})
+// 轮询定时器
+let pollTimer = null
 
 const statusText = computed(() => {
   if (error.value) return '构建失败'
-  if (currentPhase.value >= 2) return '构建完成'
-  if (currentPhase.value === 1) return '图谱构建中'
-  if (currentPhase.value === 0) return '本体生成中'
-  return '初始化中'
+  if (stepStatus.value === 'error') return '出错'
+  switch (currentStep.value) {
+    case 1:
+      if (currentPhase.value >= 2) return '构建完成'
+      if (currentPhase.value === 1) return '图谱构建中'
+      if (currentPhase.value === 0) return '本体生成中'
+      return '初始化中'
+    case 2:
+      return stepStatus.value === 'completed' ? '环境搭建完成' : '环境搭建中'
+    case 3:
+      return stepStatus.value === 'completed' ? '模拟完成' : '模拟运行中'
+    case 4:
+      return stepStatus.value === 'completed' ? '报告完成' : '报告生成中'
+    case 5:
+      return '深度互动就绪'
+    default:
+      return ''
+  }
+})
+
+const statusClass = computed(() => {
+  if (error.value || stepStatus.value === 'error') return 'error'
+  // Step 1: 图谱构建
+  if (currentStep.value === 1) {
+    if (currentPhase.value >= 2) return 'completed'
+    return 'processing'
+  }
+  // Step 2-5: 使用子组件上报的 stepStatus
+  if (stepStatus.value === 'completed') return 'completed'
+  if (stepStatus.value === 'processing') return 'processing'
+  // 默认：刚切到这个步骤，还没有状态上报
+  return 'processing'
 })
 
 const entityTypes = computed(() => {
@@ -666,6 +570,13 @@ const entityTypes = computed(() => {
   return Object.values(typeMap)
 })
 
+// 是否从事件工作台跳转过来
+const fromIncidentWorkspace = computed(() => !!route.query.sim)
+
+const goBackToWorkspace = () => {
+  router.push(`/incident/${currentProjectId.value}`)
+}
+
 // 方法
 const goHome = () => {
   router.push('/')
@@ -684,20 +595,46 @@ const addLog = (msg, status) => {
 }
 
 const updateStatus = (s) => {
-  // status reflected in statusClass/statusText
+  stepStatus.value = s || ''
+}
+
+let isSyncingFromRoute = false
+let isInitialStepSync = true
+const pushStepToRoute = (step) => {
+  if (isSyncingFromRoute) return
+  if (Number(route.query.step) === step) return
+  const navigate = isInitialStepSync ? router.replace : router.push
+  navigate.call(router, {
+    name: 'Process',
+    params: { projectId: route.params.projectId },
+    query: { ...route.query, step: String(step) }
+  })
+  isInitialStepSync = false
 }
 
 const handleNextStep = (params = {}) => {
-  // Step2 passes maxRounds
+  // Step2 passes maxRounds —— 始终更新，防止上一次的旧值残留
   if (params.maxRounds) {
     maxRounds.value = params.maxRounds
-    addLog(`配置模拟轮数: ${params.maxRounds} 轮`)
+    // 从 Step2 点"开始推演"进入 Step3 时，标记需要全新启动
+    if (currentStep.value === 2) {
+      pendingFreshStart.value = true
+    }
+    if (params.minutesPerRound) {
+      minutesPerRound.value = params.minutesPerRound
+    }
+    addLog(`配置模拟轮数: ${params.maxRounds} 轮, 每轮 ${minutesPerRound.value} 分钟`)
+  } else {
+    maxRounds.value = null
   }
   if (params.reportId) {
     currentReportId.value = params.reportId
   }
   if (currentStep.value < 5) {
     currentStep.value++
+    if (currentStep.value > maxReachedStep.value) {
+      maxReachedStep.value = currentStep.value
+    }
     addLog(`进入 ${stepNames[currentStep.value - 1]} (Step ${currentStep.value}/5)`)
   }
 }
@@ -719,9 +656,32 @@ const handleGoBackTo = (step) => {
 const handleSimulationCreated = ({ simulationId }) => {
   currentSimulationId.value = simulationId
   currentStep.value = 2
+  if (2 > maxReachedStep.value) maxReachedStep.value = 2
   addLog(`模拟实例已创建: ${simulationId}`)
   addLog(`进入 ${stepNames[1]} (Step 2/5)`)
 }
+
+// 兜底：任何 currentStep 变更（包括初始化/加载项目）都同步到 URL
+// 首次会通过 router.replace 写入 ?step=N（不产生历史），后续是 push（产生历史）
+watch(currentStep, (newStep) => {
+  if (!newStep) return
+  stepStatus.value = '' // 切换步骤时重置子组件状态
+  pushStepToRoute(newStep)
+})
+
+// 监听 URL ?step=N 变化（浏览器后退/前进），同步 currentStep
+watch(() => route.query.step, (newStep) => {
+  if (!newStep) return
+  const target = Number(newStep)
+  if (!Number.isInteger(target) || target < 1 || target > 5) return
+  // 只允许跳到已到达过的 step，防止通过 URL 非法越级
+  if (target > maxReachedStep.value) return
+  if (target === currentStep.value) return
+  isSyncingFromRoute = true
+  currentStep.value = target
+  addLog(`浏览器导航：切换到 ${stepNames[target - 1]} (Step ${target}/5)`)
+  nextTick(() => { isSyncingFromRoute = false })
+})
 
 const toggleFullScreen = () => {
   isFullScreen.value = !isFullScreen.value
@@ -803,12 +763,29 @@ const initProject = async () => {
   }
 }
 
-// 处理新建项目 - 调用 ontology/generate API
+// 处理新建项目 - 调用 ontology/generate 或 generate-from-web API
 const handleNewProject = async () => {
   const pending = getPendingUpload()
   
-  if (!pending.isPending || pending.files.length === 0) {
+  if (!pending.isPending) {
+    error.value = '没有待处理的数据，请返回首页重新操作'
+    loading.value = false
+    return
+  }
+  
+  // 根据模式验证输入
+  if (pending.mode === 'file' && pending.files.length === 0) {
     error.value = '没有待上传的文件，请返回首页重新操作'
+    loading.value = false
+    return
+  }
+  if (pending.mode === 'web' && !pending.webQuery) {
+    error.value = '没有搜索关键词，请返回首页重新操作'
+    loading.value = false
+    return
+  }
+  if (pending.mode === 'file+web' && (pending.files.length === 0 || !pending.webQuery)) {
+    error.value = '混合模式需要同时提供文件和搜索关键词，请返回首页重新操作'
     loading.value = false
     return
   }
@@ -816,17 +793,34 @@ const handleNewProject = async () => {
   try {
     loading.value = true
     currentPhase.value = 0 // 本体生成阶段
-    ontologyProgress.value = { message: '正在上传文件并分析文档...' }
     
-    // 构建 FormData
-    const formDataObj = new FormData()
-    pending.files.forEach(file => {
-      formDataObj.append('files', file)
-    })
-    formDataObj.append('simulation_requirement', pending.simulationRequirement)
+    let response
     
-    // 调用本体生成 API
-    const response = await generateOntology(formDataObj)
+    if (pending.mode === 'web') {
+      // 网络搜索模式
+      ontologyProgress.value = { message: '正在搜索网络舆情信息...' }
+      response = await generateOntologyFromWeb({
+        query: pending.webQuery,
+        simulation_requirement: pending.simulationRequirement,
+      })
+    } else {
+      // 文件上传模式（含可选的网络抓取）
+      const isHybrid = pending.mode === 'file+web' && pending.webQuery
+      ontologyProgress.value = {
+        message: isHybrid
+          ? '正在上传文件并搜索网络舆情信息...'
+          : '正在上传文件并分析文档...'
+      }
+      const formDataObj = new FormData()
+      pending.files.forEach(file => {
+        formDataObj.append('files', file)
+      })
+      formDataObj.append('simulation_requirement', pending.simulationRequirement)
+      if (isHybrid) {
+        formDataObj.append('web_query', pending.webQuery)
+      }
+      response = await generateOntology(formDataObj)
+    }
     
     if (response.success) {
       // 清除待上传数据
@@ -862,23 +856,42 @@ const loadProject = async () => {
   try {
     loading.value = true
     const response = await getProject(currentProjectId.value)
-
+    
     if (response.success) {
       projectData.value = response.data
       updatePhaseByStatus(response.data.status)
 
+      // URL 中指定的目标步骤（从历史回放按钮传入）
+      const requestedStep = Number(route.query.step) || 0
+      // 事件工作台跳转时可通过 ?sim= 指定 simulation_id
+      const querySim = route.query.sim
+
       // 从项目数据恢复 Step 导航状态
       if (response.data.report_id) {
-        // 报告已生成，恢复到 Step 4
-        currentStep.value = 4
-        currentSimulationId.value = response.data.simulation_id
+        // 报告已生成，恢复关联数据
+        currentSimulationId.value = querySim || response.data.simulation_id
         currentReportId.value = response.data.report_id
-        addLog(`从历史记录恢复项目，已在 Step 4 (报告生成)`)
-      } else if (response.data.simulation_id) {
-        // 模拟已创建，恢复到 Step 2
-        currentStep.value = 2
-        currentSimulationId.value = response.data.simulation_id
-        addLog(`从历史记录恢复项目，已在 Step 2 (环境搭建)`)
+        maxReachedStep.value = 5
+        if (response.data.graph_id) {
+          currentPhase.value = 2
+          await loadGraph(response.data.graph_id)
+        }
+        // 优先使用 URL 指定的步骤，否则默认 Step 4
+        const targetStep = (requestedStep >= 1 && requestedStep <= maxReachedStep.value) ? requestedStep : 4
+        currentStep.value = targetStep
+        addLog(`从历史记录恢复项目，进入 Step ${targetStep} (${stepNames[targetStep - 1]})`)
+      } else if (querySim || response.data.simulation_id) {
+        // 模拟已创建，恢复关联数据（querySim 来自事件工作台跳转）
+        currentSimulationId.value = querySim || response.data.simulation_id
+        maxReachedStep.value = 5
+        if (response.data.graph_id) {
+          currentPhase.value = 2
+          await loadGraph(response.data.graph_id)
+        }
+        // 优先使用 URL 指定的步骤，否则默认 Step 2
+        const targetStep = (requestedStep >= 1 && requestedStep <= maxReachedStep.value) ? requestedStep : 2
+        currentStep.value = targetStep
+        addLog(`从历史记录恢复项目，进入 Step ${targetStep} (${stepNames[targetStep - 1]})，模拟ID: ${currentSimulationId.value}`)
       } else if (response.data.status === 'graph_completed' && response.data.graph_id) {
         // 图谱构建完成，默认在 Step 1
         currentPhase.value = 2
@@ -1115,7 +1128,7 @@ const loadGraph = async (graphId) => {
   }
 }
 
-// 渲染图谱 (D3.js)
+// 渲染图谱 (D3.js) — 高级可视化版
 const renderGraph = () => {
   if (!graphSvg.value || !graphData.value) {
     console.log('Cannot render: svg or data missing')
@@ -1128,15 +1141,11 @@ const renderGraph = () => {
     return
   }
   
-  // 获取容器尺寸
   const rect = container.getBoundingClientRect()
   const width = rect.width || 800
   const height = (rect.height || 600) - 60
   
-  if (width <= 0 || height <= 0) {
-    console.log('Cannot render: invalid dimensions', width, height)
-    return
-  }
+  if (width <= 0 || height <= 0) return
   
   console.log('Rendering graph:', width, 'x', height)
   
@@ -1147,36 +1156,28 @@ const renderGraph = () => {
   
   svg.selectAll('*').remove()
 
-  // 处理节点数据
   const nodesData = graphData.value.nodes || []
   const edgesData = graphData.value.edges || []
   
   if (nodesData.length === 0) {
-    console.log('No nodes to render')
-    // 显示空状态
     svg.append('text')
-      .attr('x', width / 2)
-      .attr('y', height / 2)
-      .attr('text-anchor', 'middle')
-      .attr('fill', '#999')
+      .attr('x', width / 2).attr('y', height / 2)
+      .attr('text-anchor', 'middle').attr('fill', '#64748b')
+      .attr('font-size', '14px')
       .text('等待图谱数据...')
     return
   }
   
-  // 创建节点映射用于查找名称
   const nodeMap = {}
-  nodesData.forEach(n => {
-    nodeMap[n.uuid] = n
-  })
+  nodesData.forEach(n => { nodeMap[n.uuid] = n })
   
   const nodes = nodesData.map(n => ({
     id: n.uuid,
     name: n.name || '未命名',
     type: n.labels?.find(l => l !== 'Entity' && l !== 'Node') || 'Entity',
-    rawData: n // 保存原始数据
+    rawData: n
   }))
   
-  // 创建节点ID集合用于过滤有效边
   const nodeIds = new Set(nodes.map(n => n.id))
   
   const edges = edgesData
@@ -1192,120 +1193,318 @@ const renderGraph = () => {
       }
     }))
   
-  console.log('Nodes:', nodes.length, 'Edges:', edges.length)
+  // ── 计算每个节点的度数（连接数），用于决定大小 ──
+  const degreeMap = {}
+  nodes.forEach(n => { degreeMap[n.id] = 0 })
+  edges.forEach(e => {
+    const sid = typeof e.source === 'object' ? e.source.id : e.source
+    const tid = typeof e.target === 'object' ? e.target.id : e.target
+    if (degreeMap[sid] !== undefined) degreeMap[sid]++
+    if (degreeMap[tid] !== undefined) degreeMap[tid]++
+  })
+  nodes.forEach(n => { n.degree = degreeMap[n.id] || 0 })
   
-  // 颜色映射
+  // ── 视觉主题 ──
+  const PALETTE = {
+    // 鲜明、高饱和度、深色背景友好的配色
+    'Person':          { fill: '#6366f1', glow: '#818cf8' },
+    'Organization':    { fill: '#f59e0b', glow: '#fbbf24' },
+    'Government':      { fill: '#ef4444', glow: '#f87171' },
+    'Location':        { fill: '#10b981', glow: '#34d399' },
+    'Event':           { fill: '#f43f5e', glow: '#fb7185' },
+    'Policy':          { fill: '#8b5cf6', glow: '#a78bfa' },
+    'MediaOutlet':     { fill: '#ec4899', glow: '#f472b6' },
+    'AcademicLead':    { fill: '#14b8a6', glow: '#2dd4bf' },
+    'University':      { fill: '#0ea5e9', glow: '#38bdf8' },
+    'Entity':          { fill: '#38bdf8', glow: '#7dd3fc' },
+  }
+  const FALLBACK_COLORS = [
+    { fill: '#6366f1', glow: '#818cf8' },
+    { fill: '#f59e0b', glow: '#fbbf24' },
+    { fill: '#8b5cf6', glow: '#a78bfa' },
+    { fill: '#10b981', glow: '#34d399' },
+    { fill: '#ef4444', glow: '#f87171' },
+    { fill: '#ec4899', glow: '#f472b6' },
+    { fill: '#0ea5e9', glow: '#38bdf8' },
+    { fill: '#14b8a6', glow: '#2dd4bf' },
+  ]
+  // 度数分级配色：当所有节点同一类型时，按连接度分层着色
+  const DEGREE_TIER_COLORS = [
+    { fill: '#38bdf8', glow: '#7dd3fc' },  // 低度数：天蓝
+    { fill: '#6366f1', glow: '#818cf8' },  // 中度数：靛蓝
+    { fill: '#a855f7', glow: '#c084fc' },  // 中高度数：紫
+    { fill: '#f43f5e', glow: '#fb7185' },  // 高度数：玫红
+    { fill: '#f59e0b', glow: '#fbbf24' },  // 最高度数：琥珀
+  ]
   const types = [...new Set(nodes.map(n => n.type))]
-  const colorScale = d3.scaleOrdinal()
-    .domain(types)
-    .range(['#FF6B35', '#004E89', '#7B2D8E', '#1A936F', '#C5283D', '#E9724C', '#2D3436', '#6C5CE7'])
+  const typeColorMap = {}
+  let fallbackIdx = 0
+  types.forEach(t => {
+    if (PALETTE[t]) {
+      typeColorMap[t] = PALETTE[t]
+    } else {
+      typeColorMap[t] = FALLBACK_COLORS[fallbackIdx % FALLBACK_COLORS.length]
+      fallbackIdx++
+    }
+  })
+  // 是否所有节点同一类型（需要度数分级着色）
+  const isSingleType = types.length <= 1
+  // 为每个节点分配度数分级颜色
+  if (isSingleType) {
+    const sortedDeg = [...new Set(nodes.map(n => n.degree))].sort((a, b) => a - b)
+    nodes.forEach(n => {
+      const rank = sortedDeg.indexOf(n.degree)
+      const tier = Math.min(Math.floor(rank / Math.max(sortedDeg.length / DEGREE_TIER_COLORS.length, 1)), DEGREE_TIER_COLORS.length - 1)
+      n._color = DEGREE_TIER_COLORS[tier]
+      n._colorId = `deg-${tier}`
+    })
+  }
+  const getColor = (typeOrNode) => {
+    // 如果传入的是节点对象且为单类型模式，使用度数分级颜色
+    if (isSingleType && typeOrNode && typeof typeOrNode === 'object' && typeOrNode._color) {
+      return typeOrNode._color
+    }
+    const type = typeof typeOrNode === 'string' ? typeOrNode : (typeOrNode?.type || 'Entity')
+    return typeColorMap[type] || { fill: '#38bdf8', glow: '#7dd3fc' }
+  }
+  const getColorId = (d) => isSingleType && d._colorId ? d._colorId : d.type.replace(/\s+/g, '_')
   
-  // 力导向布局
+  // ── 节点半径：基于度数，高连接度的节点更大更醒目 ──
+  const maxDeg = Math.max(...nodes.map(n => n.degree), 1)
+  const nodeRadius = (d) => {
+    const base = 7
+    const scale = 18
+    return base + scale * Math.sqrt(d.degree / maxDeg)
+  }
+  
+  // ── SVG Defs: 径向渐变 + 辉光 + 箭头 ──
+  const defs = svg.append('defs')
+  
+  // 创建渐变和辉光的辅助函数
+  const createGradientAndGlow = (id, c) => {
+    const grad = defs.append('radialGradient')
+      .attr('id', `grad-${id}`)
+      .attr('cx', '35%').attr('cy', '35%').attr('r', '65%')
+    grad.append('stop').attr('offset', '0%').attr('stop-color', '#fff').attr('stop-opacity', 0.45)
+    grad.append('stop').attr('offset', '50%').attr('stop-color', c.fill).attr('stop-opacity', 1)
+    grad.append('stop').attr('offset', '100%').attr('stop-color', d3.color(c.fill).darker(0.6)).attr('stop-opacity', 1)
+    
+    const filter = defs.append('filter')
+      .attr('id', `glow-${id}`)
+      .attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%')
+    filter.append('feGaussianBlur').attr('in', 'SourceGraphic').attr('stdDeviation', '4').attr('result', 'blur')
+    filter.append('feColorMatrix').attr('in', 'blur').attr('type', 'matrix')
+      .attr('values', `0 0 0 0 ${parseInt(c.glow.slice(1, 3), 16) / 255}  0 0 0 0 ${parseInt(c.glow.slice(3, 5), 16) / 255}  0 0 0 0 ${parseInt(c.glow.slice(5, 7), 16) / 255}  0 0 0 0.65 0`)
+      .attr('result', 'colorBlur')
+    const merge = filter.append('feMerge')
+    merge.append('feMergeNode').attr('in', 'colorBlur')
+    merge.append('feMergeNode').attr('in', 'SourceGraphic')
+  }
+  // 每种类型创建渐变和辉光
+  types.forEach(t => {
+    createGradientAndGlow(t.replace(/\s+/g, '_'), getColor(t))
+  })
+  // 度数分级颜色也需要创建渐变和辉光
+  if (isSingleType) {
+    DEGREE_TIER_COLORS.forEach((c, i) => {
+      createGradientAndGlow(`deg-${i}`, c)
+    })
+  }
+  
+  // 箭头标记
+  defs.append('marker')
+    .attr('id', 'arrow')
+    .attr('viewBox', '0 -4 8 8')
+    .attr('refX', 20).attr('refY', 0)
+    .attr('markerWidth', 6).attr('markerHeight', 6)
+    .attr('orient', 'auto')
+    .append('path')
+    .attr('d', 'M0,-3.5L7,0L0,3.5')
+    .attr('fill', 'rgba(100,116,139,0.35)')
+  
+  // ── 力导向布局（优化参数） ──
   const simulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(edges).id(d => d.id).distance(100).strength(0.5))
-    .force('charge', d3.forceManyBody().strength(-300))
-    .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('collision', d3.forceCollide().radius(40))
-    .force('x', d3.forceX(width / 2).strength(0.05))
-    .force('y', d3.forceY(height / 2).strength(0.05))
+    .force('link', d3.forceLink(edges).id(d => d.id)
+      .distance(d => {
+        const sr = nodeRadius({ degree: degreeMap[typeof d.source === 'object' ? d.source.id : d.source] || 0 })
+        const tr = nodeRadius({ degree: degreeMap[typeof d.target === 'object' ? d.target.id : d.target] || 0 })
+        return sr + tr + 60
+      })
+      .strength(0.4))
+    .force('charge', d3.forceManyBody().strength(d => -120 - d.degree * 30))
+    .force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
+    .force('collision', d3.forceCollide().radius(d => nodeRadius(d) + 16).strength(0.7))
+    .force('x', d3.forceX(width / 2).strength(0.03))
+    .force('y', d3.forceY(height / 2).strength(0.03))
+    .alphaDecay(0.028)
+    .velocityDecay(0.35)
   
-  // 添加缩放功能
   const g = svg.append('g')
   
   svg.call(d3.zoom()
     .extent([[0, 0], [width, height]])
-    .scaleExtent([0.2, 4])
+    .scaleExtent([0.15, 6])
     .on('zoom', (event) => {
       g.attr('transform', event.transform)
     }))
   
-  // 绘制边（包含可点击的透明宽线）
-  const linkGroup = g.append('g')
-    .attr('class', 'links')
-    .selectAll('g')
-    .data(edges)
-    .enter()
-    .append('g')
+  // ── 绘制边：曲线 + 可选箭头 ──
+  const linkGroup = g.append('g').attr('class', 'links')
+    .selectAll('g').data(edges).enter().append('g')
     .style('cursor', 'pointer')
-    .on('click', (event, d) => {
-      event.stopPropagation()
-      selectEdge(d.rawData)
+    .on('click', (event, d) => { event.stopPropagation(); selectEdge(d.rawData) })
+  
+  // 曲线路径
+  const linkPath = linkGroup.append('path')
+    .attr('fill', 'none')
+    .attr('stroke', d => {
+      const srcNode = typeof d.source === 'object' ? nodes.find(n => n.id === d.source.id) : null
+      const c = getColor(srcNode || 'Entity')
+      return c.glow || '#7dd3fc'
+    })
+    .attr('stroke-width', 1.4)
+    .attr('stroke-opacity', 0.3)
+    .attr('marker-end', 'url(#arrow)')
+  
+  // 透明宽路径用于点击
+  const linkHit = linkGroup.append('path')
+    .attr('fill', 'none')
+    .attr('stroke', 'transparent')
+    .attr('stroke-width', 12)
+  
+  // 边标签（默认隐藏，hover 显示）
+  const linkLabel = g.append('g').attr('class', 'link-labels')
+    .selectAll('text').data(edges).enter().append('text')
+    .attr('font-size', '8px')
+    .attr('fill', 'rgba(148,163,184,0.6)')
+    .attr('text-anchor', 'middle')
+    .attr('font-family', "'Noto Sans SC', 'JetBrains Mono', sans-serif")
+    .attr('opacity', 0)
+    .text(d => {
+      const t = d.type.replace(/_/g, ' ')
+      return t.length > 18 ? t.substring(0, 15) + '...' : t
     })
   
-  // 可见的细线
-  const link = linkGroup.append('line')
-    .attr('stroke', '#ccc')
-    .attr('stroke-width', 1.5)
-    .attr('stroke-opacity', 0.6)
-  
-  // 透明的宽线用于点击
-  linkGroup.append('line')
-    .attr('stroke', 'transparent')
-    .attr('stroke-width', 10)
-  
-  // 边标签
-  const linkLabel = g.append('g')
-    .attr('class', 'link-labels')
-    .selectAll('text')
-    .data(edges)
-    .enter()
-    .append('text')
-    .attr('font-size', '9px')
-    .attr('fill', '#999')
-    .attr('text-anchor', 'middle')
-    .text(d => d.type.length > 15 ? d.type.substring(0, 12) + '...' : d.type)
-  
-  // 绘制节点
-  const node = g.append('g')
-    .attr('class', 'nodes')
-    .selectAll('g')
-    .data(nodes)
-    .enter()
-    .append('g')
+  // ── 绘制节点 ──
+  const node = g.append('g').attr('class', 'nodes')
+    .selectAll('g').data(nodes).enter().append('g')
     .style('cursor', 'pointer')
     .on('click', (event, d) => {
       event.stopPropagation()
-      selectNode(d.rawData, colorScale(d.type))
+      selectNode(d.rawData, getColor(d).fill)
     })
     .call(d3.drag()
       .on('start', dragstarted)
       .on('drag', dragged)
       .on('end', dragended))
   
+  // 外层辉光圈（仅高度数节点）
+  node.filter(d => d.degree >= 3).append('circle')
+    .attr('r', d => nodeRadius(d) + 6)
+    .attr('fill', 'none')
+    .attr('stroke', d => getColor(d).glow)
+    .attr('stroke-width', 1.5)
+    .attr('stroke-opacity', 0.4)
+    .attr('stroke-dasharray', '3 3')
+  
+  // 主圆：径向渐变 + 辉光滤镜
   node.append('circle')
-    .attr('r', 10)
-    .attr('fill', d => colorScale(d.type))
-    .attr('stroke', 'rgba(15, 23, 42, 0.14)')
-    .attr('stroke-width', 2)
+    .attr('r', nodeRadius)
+    .attr('fill', d => `url(#grad-${getColorId(d)})`)
+    .attr('filter', d => d.degree >= 1 ? `url(#glow-${getColorId(d)})` : null)
+    .attr('stroke', d => d3.color(getColor(d).fill).brighter(0.3))
+    .attr('stroke-width', d => d.degree >= 5 ? 2 : 1.2)
+    .attr('stroke-opacity', 0.7)
     .attr('class', 'node-circle')
   
-  node.append('text')
-    .attr('dx', 14)
-    .attr('dy', 4)
-    .text(d => d.name?.substring(0, 12) || '')
-    .attr('font-size', '11px')
-    .attr('fill', '#333')
-    .attr('font-family', 'JetBrains Mono, monospace')
+  // 节点标签：居中在节点下方，重要节点有背景药丸
+  const labelG = g.append('g').attr('class', 'node-labels')
   
-  // 点击空白处关闭详情面板
-  svg.on('click', () => {
-    closeDetailPanel()
+  // 只显示度数 >= 1 的节点标签（避免孤立点标签干扰）
+  const labelData = nodes.filter(d => d.degree >= 1)
+  const labelItem = labelG.selectAll('g').data(labelData).enter().append('g')
+    .attr('pointer-events', 'none')
+  
+  // 标签文字
+  labelItem.append('text')
+    .attr('text-anchor', 'middle')
+    .attr('dy', d => nodeRadius(d) + 14)
+    .attr('font-size', d => d.degree >= 5 ? '11px' : d.degree >= 2 ? '10px' : '9px')
+    .attr('font-family', "'Noto Sans SC', 'JetBrains Mono', sans-serif")
+    .attr('font-weight', d => d.degree >= 5 ? 600 : 400)
+    .attr('fill', d => {
+      const c = getColor(d)
+      return d.degree >= 2 ? c.glow : 'rgba(200,210,225,0.9)'
+    })
+    .attr('paint-order', 'stroke')
+    .attr('stroke', 'rgba(10,10,26,0.7)')
+    .attr('stroke-width', d => d.degree >= 3 ? 3 : 2)
+    .attr('stroke-linejoin', 'round')
+    .text(d => {
+      const maxLen = d.degree >= 5 ? 16 : d.degree >= 2 ? 12 : 8
+      return d.name.length > maxLen ? d.name.substring(0, maxLen) + '...' : d.name
+    })
+  
+  // ── Hover 交互：高亮连通子图，边标签显示 ──
+  node.on('mouseover', (event, d) => {
+    const connected = new Set([d.id])
+    const connectedEdges = new Set()
+    edges.forEach((e, i) => {
+      const sid = typeof e.source === 'object' ? e.source.id : e.source
+      const tid = typeof e.target === 'object' ? e.target.id : e.target
+      if (sid === d.id) { connected.add(tid); connectedEdges.add(i) }
+      if (tid === d.id) { connected.add(sid); connectedEdges.add(i) }
+    })
+    
+    // 节点淡入淡出
+    node.select('.node-circle')
+      .transition().duration(200)
+      .attr('opacity', n => connected.has(n.id) ? 1 : 0.12)
+    
+    // 边高亮
+    linkPath.transition().duration(200)
+      .attr('stroke-opacity', (e, i) => connectedEdges.has(i) ? 0.7 : 0.04)
+      .attr('stroke-width', (e, i) => connectedEdges.has(i) ? 2.5 : 1.2)
+    
+    // 标签显隐
+    labelItem.select('text')
+      .transition().duration(200)
+      .attr('opacity', n => connected.has(n.id) ? 1 : 0.08)
+    
+    // 边标签：只显示关联的
+    linkLabel.transition().duration(200)
+      .attr('opacity', (e, i) => connectedEdges.has(i) ? 0.85 : 0)
+  })
+  .on('mouseout', () => {
+    node.select('.node-circle').transition().duration(300).attr('opacity', 1)
+    linkPath.transition().duration(300).attr('stroke-opacity', 0.3).attr('stroke-width', 1.4)
+    labelItem.select('text').transition().duration(300).attr('opacity', 1)
+    linkLabel.transition().duration(300).attr('opacity', 0)
   })
   
+  // 点击空白关闭
+  svg.on('click', () => { closeDetailPanel() })
+  
+  // ── 曲线路径计算 ──
+  function linkArc(d) {
+    const sx = d.source.x, sy = d.source.y
+    const tx = d.target.x, ty = d.target.y
+    const dx = tx - sx, dy = ty - sy
+    const dr = Math.sqrt(dx * dx + dy * dy) * 1.5
+    return `M${sx},${sy}A${dr},${dr} 0 0,1 ${tx},${ty}`
+  }
+  
+  // ── tick ──
   simulation.on('tick', () => {
-    // 更新所有边的位置（包括可见线和透明点击区域）
-    linkGroup.selectAll('line')
-      .attr('x1', d => d.source.x)
-      .attr('y1', d => d.source.y)
-      .attr('x2', d => d.target.x)
-      .attr('y2', d => d.target.y)
+    linkPath.attr('d', linkArc)
+    linkHit.attr('d', linkArc)
     
-    // 更新边标签位置
     linkLabel
       .attr('x', d => (d.source.x + d.target.x) / 2)
-      .attr('y', d => (d.source.y + d.target.y) / 2 - 5)
+      .attr('y', d => (d.source.y + d.target.y) / 2 - 6)
     
     node.attr('transform', d => `translate(${d.x},${d.y})`)
+    labelItem.attr('transform', d => `translate(${d.x},${d.y})`)
   })
   
   function dragstarted(event) {
@@ -1313,23 +1512,66 @@ const renderGraph = () => {
     event.subject.fx = event.subject.x
     event.subject.fy = event.subject.y
   }
-  
   function dragged(event) {
     event.subject.fx = event.x
     event.subject.fy = event.y
   }
-  
   function dragended(event) {
     if (!event.active) simulation.alphaTarget(0)
     event.subject.fx = null
     event.subject.fy = null
   }
+  
+  // ── 内嵌图例（左下角） ──
+  const legendItems = isSingleType
+    ? DEGREE_TIER_COLORS.map((c, i) => ({
+        color: c.fill,
+        label: ['低连接度', '中连接度', '中高连接度', '高连接度', '核心节点'][i]
+      }))
+    : types.map(t => ({ color: getColor(t).fill, label: t }))
+
+  const legendG = svg.append('g')
+    .attr('transform', `translate(16, ${height - legendItems.length * 22 - 16})`)
+  
+  legendG.append('rect')
+    .attr('x', -8).attr('y', -8)
+    .attr('width', 140)
+    .attr('height', legendItems.length * 22 + 12)
+    .attr('rx', 6)
+    .attr('fill', 'rgba(10,10,26,0.6)')
+    .attr('stroke', 'rgba(100,116,139,0.2)')
+    .attr('stroke-width', 1)
+  
+  legendItems.forEach((item, i) => {
+    const row = legendG.append('g').attr('transform', `translate(0, ${i * 22})`)
+    row.append('circle')
+      .attr('r', 5)
+      .attr('cx', 6).attr('cy', 0)
+      .attr('fill', item.color)
+    row.append('text')
+      .attr('x', 18).attr('dy', 4)
+      .attr('font-size', '10px')
+      .attr('fill', 'rgba(203,213,225,0.85)')
+      .attr('font-family', "'Noto Sans SC', sans-serif")
+      .text(item.label)
+  })
 }
 
 // 监听图谱数据变化
 watch(graphData, () => {
   if (graphData.value) {
     nextTick(() => renderGraph())
+  }
+})
+
+// 当从 Step 3+ 切回 Step 1/2 时，左侧图谱面板由 v-if 重新创建，
+// 但 graphData 引用未变不会触发上面的 watcher，需要手动重新渲染
+// 需等待 panel-slide 过渡动画（300ms）结束后再渲染，否则容器宽度为 0。
+watch(currentStep, (newStep, oldStep) => {
+  if (newStep <= 2 && oldStep > 2 && graphData.value) {
+    setTimeout(() => {
+      nextTick(() => renderGraph())
+    }, 360)
   }
 })
 
@@ -1379,6 +1621,12 @@ onUnmounted(() => {
   border-bottom: 1px solid rgba(115, 168, 185, 0.2);
 }
 
+.nav-brand-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .nav-brand {
   font-size: 1rem;
   font-weight: 700;
@@ -1394,6 +1642,35 @@ onUnmounted(() => {
 .nav-brand:hover {
   opacity: 0.8;
   transform: translateX(2px);
+}
+
+.home-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(115, 168, 185, 0.3);
+  border-radius: 6px;
+  background: rgba(115, 168, 185, 0.1);
+  color: #3A5A6A;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.home-btn:hover {
+  background: rgba(115, 168, 185, 0.25);
+  border-color: rgba(115, 168, 185, 0.5);
+  transform: translateY(-1px);
+}
+
+.incident-back-btn {
+  width: auto; padding: 0 10px; gap: 2px; font-size: 11px;
+  background: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.3); color: #22c55e;
+}
+
+.incident-back-btn:hover {
+  background: rgba(34, 197, 94, 0.25); border-color: rgba(34, 197, 94, 0.5);
 }
 
 .nav-center {
@@ -1530,7 +1807,7 @@ onUnmounted(() => {
   z-index: 2;
 }
 
-/* 图谱区：中心略亮的径向高光 + 浅青灰底；+/× 在 .graph-symbol-decor（HTML）避免与 SVG transform 冲突 */
+/* 图谱区：深色背景，让辉光节点更醒目 */
 .graph-view {
   position: relative;
   width: 100%;
@@ -1538,8 +1815,8 @@ onUnmounted(() => {
   min-height: 280px;
   min-width: 240px;
   background:
-    radial-gradient(ellipse 72% 58% at 50% 44%, rgba(255, 255, 255, 0.88) 0%, rgba(244, 249, 251, 0.35) 42%, transparent 68%),
-    linear-gradient(180deg, #f0f7f9 0%, #e8f2f5 55%, #e2edf1 100%);
+    radial-gradient(ellipse 60% 50% at 50% 46%, rgba(25, 35, 55, 0.6) 0%, transparent 70%),
+    linear-gradient(160deg, #0c1220 0%, #0e1629 45%, #101a2e 100%);
   border-radius: 0 0 12px 0;
 }
 
@@ -1900,8 +2177,8 @@ onUnmounted(() => {
   height: 64px;
   background: linear-gradient(
     to top,
-    rgba(255, 255, 255, 0.55) 0%,
-    rgba(244, 249, 251, 0.2) 50%,
+    rgba(10, 16, 30, 0.6) 0%,
+    rgba(12, 18, 32, 0.2) 50%,
     transparent 100%
   );
   pointer-events: none;
@@ -2003,8 +2280,8 @@ onUnmounted(() => {
 
 .graph-container .loading-text,
 .graph-container .waiting-text {
-  color: #1e3a5f;
-  text-shadow: none;
+  color: #94a3b8;
+  text-shadow: 0 0 12px rgba(99, 102, 241, 0.3);
 }
 
 .waiting-hint {
@@ -2015,6 +2292,7 @@ onUnmounted(() => {
 
 .graph-container .waiting-hint {
   color: #64748b;
+  text-shadow: none;
 }
 
 .waiting-icon {
@@ -2066,13 +2344,15 @@ onUnmounted(() => {
   right: 16px;
   width: 320px;
   max-height: calc(100% - 32px);
-  background: #fff;
-  border: 1px solid #E0E0E0;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  background: rgba(12, 18, 32, 0.92);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 16px rgba(99, 102, 241, 0.1);
+  backdrop-filter: blur(16px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   z-index: 100;
+  border-radius: 8px;
 }
 
 .detail-panel-header {
@@ -2080,14 +2360,14 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   padding: 12px 16px;
-  background: #FAFAFA;
-  border-bottom: 1px solid #E0E0E0;
+  background: rgba(15, 23, 42, 0.8);
+  border-bottom: 1px solid rgba(99, 102, 241, 0.15);
 }
 
 .detail-title {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #333;
+  color: #e2e8f0;
 }
 
 .detail-badge {
@@ -2113,7 +2393,7 @@ onUnmounted(() => {
 }
 
 .detail-close:hover {
-  color: #333;
+  color: #e2e8f0;
 }
 
 .detail-content {
@@ -2130,21 +2410,21 @@ onUnmounted(() => {
 
 .detail-label {
   font-size: 0.8rem;
-  color: #999;
+  color: #64748b;
   min-width: 70px;
   flex-shrink: 0;
 }
 
 .detail-value {
   font-size: 0.85rem;
-  color: #333;
+  color: #cbd5e1;
   word-break: break-word;
 }
 
 .detail-value.uuid {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.75rem;
-  color: #666;
+  color: #94a3b8;
 }
 
 .detail-section {
@@ -2154,11 +2434,11 @@ onUnmounted(() => {
 .detail-summary {
   margin: 8px 0 0 0;
   font-size: 0.85rem;
-  color: #333;
+  color: #cbd5e1;
   line-height: 1.6;
   padding: 10px;
-  background: #F9F9F9;
-  border-left: 3px solid #FF6B35;
+  background: rgba(15, 23, 42, 0.6);
+  border-left: 3px solid #6366f1;
 }
 
 .detail-labels {
@@ -2170,9 +2450,10 @@ onUnmounted(() => {
 .label-tag {
   padding: 2px 8px;
   font-size: 0.75rem;
-  background: #F0F0F0;
-  border: 1px solid #E0E0E0;
-  color: #666;
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  color: #a5b4fc;
+  border-radius: 3px;
 }
 
 /* 边详情关系展示 */
@@ -2183,48 +2464,51 @@ onUnmounted(() => {
   gap: 8px;
   margin-bottom: 16px;
   padding: 12px;
-  background: #F9F9F9;
-  border: 1px solid #E0E0E0;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 6px;
 }
 
 .edge-source,
 .edge-target {
   font-size: 0.85rem;
   font-weight: 500;
-  color: #333;
+  color: #e2e8f0;
 }
 
 .edge-arrow {
-  color: #999;
+  color: #64748b;
 }
 
 .edge-type {
   padding: 2px 8px;
   font-size: 0.75rem;
-  background: #FF6B35;
+  background: #6366f1;
   color: #fff;
+  border-radius: 3px;
 }
 
 .detail-value.highlight {
   font-weight: 600;
-  color: #000;
+  color: #f1f5f9;
 }
 
 .detail-subtitle {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #333;
+  color: #e2e8f0;
   margin: 16px 0 12px 0;
   padding-bottom: 8px;
-  border-bottom: 1px solid #E0E0E0;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.15);
 }
 
 /* Properties 属性列表 */
 .properties-list {
   margin-top: 8px;
   padding: 10px;
-  background: #F9F9F9;
-  border: 1px solid #E0E0E0;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 6px;
 }
 
 .property-item {
@@ -2238,13 +2522,13 @@ onUnmounted(() => {
 }
 
 .property-key {
-  color: #666;
+  color: #64748b;
   margin-right: 8px;
   font-family: 'JetBrains Mono', monospace;
 }
 
 .property-value {
-  color: #333;
+  color: #cbd5e1;
   word-break: break-word;
 }
 
@@ -2261,10 +2545,11 @@ onUnmounted(() => {
   padding: 6px 10px;
   font-size: 0.75rem;
   font-family: 'JetBrains Mono', monospace;
-  background: #F0F0F0;
-  border: 1px solid #E0E0E0;
-  color: #666;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  color: #94a3b8;
   word-break: break-all;
+  border-radius: 4px;
 }
 
 .error-icon {
@@ -2401,6 +2686,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0;
+  flex: 1;
 }
 
 .step-dot-wrap {
@@ -2409,6 +2695,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
   position: relative;
+  flex: 1;
+  min-width: 64px;
 }
 
 .step-dot-wrap:not(:last-child)::after {
@@ -2612,6 +2900,8 @@ onUnmounted(() => {
 }
 
 .step-area-inner {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   overflow-y: auto;
   min-height: 0;

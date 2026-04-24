@@ -1,0 +1,146 @@
+﻿{
+    "data":  {
+                 "avg_volatility":  0.0659,
+                 "final_state":  {
+                                     "attention_level":  0.0,
+                                     "panic_level":  0.0,
+                                     "polarization_level":  0.0494,
+                                     "risk_level":  0.21,
+                                     "stability_level":  1.0,
+                                     "trust_level":  0.3
+                                 },
+                 "initial_state":  {
+                                       "attention_level":  0.2621,
+                                       "panic_level":  0.0944,
+                                       "polarization_level":  0.2773,
+                                       "risk_level":  0.278,
+                                       "stability_level":  0.7133,
+                                       "trust_level":  0.4736
+                                   },
+                 "mins":  {
+                              "attention_level":  {
+                                                      "round":  23,
+                                                      "value":  0.0
+                                                  },
+                              "panic_level":  {
+                                                  "round":  21,
+                                                  "value":  0.0
+                                              },
+                              "polarization_level":  {
+                                                         "round":  30,
+                                                         "value":  0.0494
+                                                     },
+                              "risk_level":  {
+                                                 "round":  21,
+                                                 "value":  0.21
+                                             },
+                              "stability_level":  {
+                                                      "round":  4,
+                                                      "value":  0.606
+                                                  },
+                              "trust_level":  {
+                                                  "round":  20,
+                                                  "value":  0.2762
+                                              }
+                          },
+                 "peaks":  {
+                               "attention_level":  {
+                                                       "round":  1,
+                                                       "value":  0.2621
+                                                   },
+                               "panic_level":  {
+                                                   "round":  13,
+                                                   "value":  0.1063
+                                               },
+                               "polarization_level":  {
+                                                          "round":  1,
+                                                          "value":  0.2773
+                                                      },
+                               "risk_level":  {
+                                                  "round":  4,
+                                                  "value":  0.3065
+                                              },
+                               "stability_level":  {
+                                                       "round":  24,
+                                                       "value":  1.0
+                                                   },
+                               "trust_level":  {
+                                                   "round":  1,
+                                                   "value":  0.4736
+                                               }
+                           },
+                 "total_events":  42,
+                 "total_rounds":  30,
+                 "turning_points":  [
+                                        {
+                                            "description":  "èè®ºç­åº¦æ¥å§ä¸å (0.02 â 0.40)",
+                                            "event_type":  "heat_spike",
+                                            "round":  10,
+                                            "severity":  1.0
+                                        },
+                                        {
+                                            "description":  "èè®ºç­åº¦æ¥å§ä¸å (0.00 â 0.30)",
+                                            "event_type":  "heat_spike",
+                                            "round":  1,
+                                            "severity":  0.8998
+                                        },
+                                        {
+                                            "description":  "èè®ºç­åº¦æ¥å§ä¸å (0.00 â 0.30)",
+                                            "event_type":  "heat_spike",
+                                            "round":  1,
+                                            "severity":  0.8992
+                                        },
+                                        {
+                                            "description":  "èè®ºç­åº¦æ¥å§ä¸å (0.03 â 0.31)",
+                                            "event_type":  "heat_spike",
+                                            "round":  9,
+                                            "severity":  0.8407
+                                        },
+                                        {
+                                            "description":  "è´é¢æ\u0085ç»ªæ©æ£å å§ (0.05 â 0.28)",
+                                            "event_type":  "sentiment_shift",
+                                            "round":  11,
+                                            "severity":  0.672
+                                        },
+                                        {
+                                            "description":  "è´é¢æ\u0085ç»ªæ©æ£å å§ (0.09 â 0.30)",
+                                            "event_type":  "sentiment_shift",
+                                            "round":  3,
+                                            "severity":  0.6375
+                                        },
+                                        {
+                                            "description":  "èè®ºç­åº¦æ¥å§ä¸å (0.18 â 0.38)",
+                                            "event_type":  "heat_spike",
+                                            "round":  7,
+                                            "severity":  0.6004
+                                        },
+                                        {
+                                            "description":  "ç«åºæåå å§ (0.14 â 0.31)",
+                                            "event_type":  "polarization_surge",
+                                            "round":  1,
+                                            "severity":  0.5307
+                                        },
+                                        {
+                                            "description":  "ç«åºæåå å§ (0.04 â 0.21)",
+                                            "event_type":  "polarization_surge",
+                                            "round":  1,
+                                            "severity":  0.5175
+                                        },
+                                        {
+                                            "description":  "æ£æµå°æå¨/å®æ¹ååºï¼ä¿¡ä»»åº¦åå (0.32 â 0.53)",
+                                            "event_type":  "official_response",
+                                            "round":  10,
+                                            "severity":  0.5
+                                        }
+                                    ],
+                 "volatilities":  {
+                                      "attention_level":  0.087,
+                                      "panic_level":  0.0341,
+                                      "polarization_level":  0.0742,
+                                      "risk_level":  0.032,
+                                      "stability_level":  0.1282,
+                                      "trust_level":  0.04
+                                  }
+             },
+    "success":  true
+}

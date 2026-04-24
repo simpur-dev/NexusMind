@@ -1,6 +1,6 @@
 """
 实体读取与过滤服务
-从 Graphiti + FalkorDB 图谱中读取节点，筛选出符合预定义实体类型的节点
+从 Graphiti + Neo4j 图谱中读取节点，筛选出符合预定义实体类型的节点
 """
 
 import time
@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.graphiti_client import run_async, get_neo4j_async_driver
+from .entity_cleaner import clean_entities
 
 logger = get_logger('nexusmind.entity_reader')
 
@@ -68,7 +69,7 @@ class FilteredEntities:
 
 class EntityReader:
     """
-    实体读取与过滤服务（使用 Graphiti + FalkorDB）
+    实体读取与过滤服务（使用 Graphiti + Neo4j）
     
     主要功能：
     1. 从图谱读取所有节点
@@ -77,7 +78,7 @@ class EntityReader:
     """
     
     def __init__(self, api_key: Optional[str] = None):
-        # api_key 参数保留用于接口兼容，Graphiti 使用 FalkorDB 本地连接
+        # api_key 参数保留用于接口兼容，Graphiti 使用 Neo4j 本地连接
         pass
     
     def _call_with_retry(
@@ -116,7 +117,7 @@ class EntityReader:
             node_result = await driver.execute_query(
                 f"MATCH (n:Entity) {gid_filter} "
                 "RETURN n.uuid AS uuid, n.name AS name, n.summary AS summary, "
-                "n.created_at AS created_at",
+                "labels(n) AS neo4j_labels, n.entity_type AS entity_type, n.created_at AS created_at",
                 gid=graph_id,
                 database_=Config.NEO4J_DATABASE,
             )
@@ -135,25 +136,40 @@ class EntityReader:
 
         return run_async(_query())
 
-    def _infer_entity_types(self, node_records, edge_records) -> dict:
+    def _infer_entity_types(self, node_records, edge_records, ontology_types: Optional[List[str]] = None) -> dict:
         """
         推断每个节点的 entity type。
         
         策略：
         1. 识别 ontology 类型定义节点（summary 含 '属性:' 模式）
         2. 通过边连接关系传播类型到实例节点
-        3. 通过 summary 关键词匹配兜底
+        3. 从 summary 中提取 "属XXX类型" 标注
+        4. 用本体类型名匹配 summary 关键词兜底
+        
+        Args:
+            ontology_types: 项目本体定义的实体类型名称列表（可选）
         """
+        import re
+        
         node_summaries = {}
+        stored_types = {}  # name -> stored entity_type from Neo4j
         for rec in node_records:
             name = rec["name"] or ""
             node_summaries[name] = rec["summary"] or ""
+            # 读取 Neo4j 上已持久化的 entity_type 属性
+            stored = rec.get("entity_type") if hasattr(rec, 'get') else (rec["entity_type"] if "entity_type" in rec.keys() else None)
+            if stored:
+                stored_types[name] = stored
 
         # 识别类型定义节点
         type_names = set()
         for name, summary in node_summaries.items():
             if summary and "属性:" in summary and len(summary) > 30:
                 type_names.add(name)
+        
+        # 如果提供了本体类型，也加入候选类型集
+        if ontology_types:
+            type_names.update(ontology_types)
 
         # 通过边传播类型
         node_type_map = {}  # node_name -> entity_type
@@ -167,14 +183,37 @@ class EntityReader:
                 if src not in node_type_map:
                     node_type_map[src] = tgt
 
-        # summary 关键词兜底
+        # 从 summary 中提取 "属XXX类型" 标注（如 "属FacultyMember类型"）
+        type_pattern = re.compile(r'属(\w+)类型')
         for name, summary in node_summaries.items():
             if name in type_names or name in node_type_map:
                 continue
+            m = type_pattern.search(summary)
+            if m:
+                inferred = m.group(1)
+                # 验证是否是合法的本体类型
+                if ontology_types and inferred in ontology_types:
+                    node_type_map[name] = inferred
+                elif inferred in type_names:
+                    node_type_map[name] = inferred
+                else:
+                    # 即使不在已知类型里，也先记录
+                    node_type_map[name] = inferred
+
+        # summary 关键词兜底：用已知类型名匹配 summary
+        for name, summary in node_summaries.items():
+            if name in type_names or name in node_type_map:
+                continue
+            summary_lower = summary.lower()
             for tn in type_names:
-                if tn.lower() in summary.lower():
+                if tn.lower() in summary_lower:
                     node_type_map[name] = tn
                     break
+
+        # 最高优先级：Neo4j 持久化的 entity_type 覆盖推断结果
+        for name, stored in stored_types.items():
+            if name not in type_names:  # 不覆盖类型定义节点
+                node_type_map[name] = stored
 
         return {"type_names": type_names, "node_type_map": node_type_map}
 
@@ -187,9 +226,13 @@ class EntityReader:
             return ["Entity", entity_type]
         return ["Entity"]
 
-    def get_all_nodes(self, graph_id: str) -> List[Dict[str, Any]]:
+    def get_all_nodes(self, graph_id: str, ontology_types: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
         获取图谱的所有节点（直接 Neo4j Cypher 查询 + entity type 推断）
+        
+        Args:
+            graph_id: 图谱ID
+            ontology_types: 项目本体定义的实体类型名称列表（可选，用于增强类型推断）
         """
         logger.info(f"获取图谱 {graph_id} 的所有节点...")
         try:
@@ -198,20 +241,30 @@ class EntityReader:
             logger.warning(f"获取节点失败: {e}")
             return []
 
-        type_info = self._infer_entity_types(node_records, edge_records)
+        type_info = self._infer_entity_types(node_records, edge_records, ontology_types=ontology_types)
 
         nodes_data = []
+        neo4j_typed_count = 0
         for rec in node_records:
             name = rec["name"] or ""
+            # 优先使用 Neo4j 真实 labels
+            neo4j_labels = rec.get("neo4j_labels") or []
+            custom_neo4j = [l for l in neo4j_labels if l not in ("Entity", "Node", "__Entity__")]
+            if custom_neo4j:
+                labels = list(set(["Entity"] + custom_neo4j))
+                neo4j_typed_count += 1
+            else:
+                labels = self._get_labels(name, type_info)
             nodes_data.append({
                 "uuid": str(rec["uuid"] or ""),
                 "name": name,
-                "labels": self._get_labels(name, type_info),
+                "labels": labels,
                 "summary": rec["summary"] or "",
                 "attributes": {},
             })
 
-        logger.info(f"共获取 {len(nodes_data)} 个节点")
+        logger.info(f"共获取 {len(nodes_data)} 个节点 "
+                   f"(Neo4j typed: {neo4j_typed_count}, inference typed: {len(nodes_data) - neo4j_typed_count})")
         return nodes_data
 
     def get_all_edges(self, graph_id: str) -> List[Dict[str, Any]]:
@@ -287,8 +340,8 @@ class EntityReader:
         """
         logger.info(f"开始筛选图谱 {graph_id} 的实体...")
         
-        # 获取所有节点
-        all_nodes = self.get_all_nodes(graph_id)
+        # 获取所有节点（传入本体类型增强推断）
+        all_nodes = self.get_all_nodes(graph_id, ontology_types=defined_entity_types)
         total_count = len(all_nodes)
         
         # 获取所有边（用于后续关联查找）
@@ -316,8 +369,8 @@ class EntityReader:
             elif custom_labels:
                 entity_type = custom_labels[0]
             else:
-                # 无自定义标签时，使用通用类型（不跳过）
-                entity_type = "Entity"
+                # 无自定义标签 → 跳过（伪实体清洗：纯 Entity 节点不进入模拟）
+                continue
             
             entity_types_found.add(entity_type)
             
@@ -371,8 +424,11 @@ class EntityReader:
             
             filtered_entities.append(entity)
         
-        logger.info(f"筛选完成: 总节点 {total_count}, 符合条件 {len(filtered_entities)}, "
+        logger.info(f"筛选完成: 总节点 {total_count}, 类型过滤后 {len(filtered_entities)}, "
                    f"实体类型: {entity_types_found}")
+        
+        # 二次过滤：伪实体清洗（黑名单 + 本体定义节点 + 低质量节点）
+        filtered_entities = clean_entities(filtered_entities)
         
         return FilteredEntities(
             entities=filtered_entities,

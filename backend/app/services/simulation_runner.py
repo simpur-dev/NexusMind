@@ -20,8 +20,9 @@ from queue import Queue
 
 from ..config import Config
 from ..utils.logger import get_logger
-from .graph_memory_updater import GraphMemoryManager
+from .graph_memory_updater import GraphMemoryManager, GraphMemoryUpdater
 from .simulation_ipc import SimulationIPCClient, CommandType, IPCResponse
+from .world_state import WorldStateEngine
 
 logger = get_logger('nexusmind.simulation_runner')
 
@@ -182,6 +183,7 @@ class SimulationRunState:
             "completed_at": self.completed_at,
             "error": self.error,
             "process_pid": self.process_pid,
+            "world_state": None,  # 由 SimulationRunner 填充
         }
     
     def to_detail_dict(self) -> Dict[str, Any]:
@@ -220,22 +222,189 @@ class SimulationRunner:
     _processes: Dict[str, subprocess.Popen] = {}
     _action_queues: Dict[str, Queue] = {}
     _monitor_threads: Dict[str, threading.Thread] = {}
+    _state_epochs: Dict[str, int] = {}  # 启动纪元，防止旧监控线程覆盖新 state
     _stdout_files: Dict[str, Any] = {}  # 存储 stdout 文件句柄
     _stderr_files: Dict[str, Any] = {}  # 存储 stderr 文件句柄
     
     # 图谱记忆更新配置
     _graph_memory_enabled: Dict[str, bool] = {}  # simulation_id -> enabled
     
+    # 模拟后批量导入图谱配置  simulation_id -> graph_id
+    _post_sim_graph_import: Dict[str, str] = {}
+    
+    # 世界状态引擎（World State Engine）
+    _world_state_engines: Dict[str, WorldStateEngine] = {}
+    _round_action_buffers: Dict[str, List[Dict[str, Any]]] = {}  # simulation_id -> current round actions
+
+    @classmethod
+    def reattach_running_simulations(cls) -> Dict[str, int]:
+        """Flask 启动时扫盘并接管孤儿子进程。
+
+        对每个 runner_status=running 的 sim：
+        - PID 活着 → 拉起 pid_only 监控线程，继续读动作日志 / 更新世界状态
+        - PID 死了 → 持久化为 failed，避免前端一直显示"running 假象"
+
+        返回：{"reattached": N, "marked_failed": M, "scanned": S}
+        """
+        stats = {"reattached": 0, "marked_failed": 0, "scanned": 0}
+        if not os.path.isdir(cls.RUN_STATE_DIR):
+            return stats
+
+        for name in sorted(os.listdir(cls.RUN_STATE_DIR)):
+            sim_dir = os.path.join(cls.RUN_STATE_DIR, name)
+            state_file = os.path.join(sim_dir, "run_state.json")
+            if not os.path.isfile(state_file):
+                continue
+            if name in cls._monitor_threads and cls._monitor_threads[name].is_alive():
+                continue  # 已有监控线程
+            stats["scanned"] += 1
+
+            try:
+                state = cls.get_run_state(name)
+                if not state or state.runner_status != RunnerStatus.RUNNING:
+                    continue
+
+                pid = state.process_pid
+                if cls._pid_alive(pid):
+                    # 1) 恢复世界状态引擎（内存缓存）
+                    cls.get_or_restore_world_state_engine(name)
+                    cls._round_action_buffers.setdefault(name, [])
+
+                    # 2) 从当前 jsonl 文件末尾开始读，避免重复累积 counts
+                    tw_log = os.path.join(sim_dir, "twitter", "actions.jsonl")
+                    rd_log = os.path.join(sim_dir, "reddit", "actions.jsonl")
+                    tw_pos = os.path.getsize(tw_log) if os.path.exists(tw_log) else 0
+                    rd_pos = os.path.getsize(rd_log) if os.path.exists(rd_log) else 0
+
+                    # 3) 启动 pid_only 监控线程
+                    t = threading.Thread(
+                        target=cls._monitor_simulation,
+                        args=(name,),
+                        kwargs={
+                            "pid_only": True,
+                            "pid": pid,
+                            "start_twitter_position": tw_pos,
+                            "start_reddit_position": rd_pos,
+                        },
+                        daemon=True,
+                    )
+                    t.start()
+                    cls._monitor_threads[name] = t
+                    stats["reattached"] += 1
+                    logger.info(
+                        f"reattach: sim={name} pid={pid} 重新接管 "
+                        f"(tw_pos={tw_pos}, rd_pos={rd_pos})"
+                    )
+                else:
+                    state.runner_status = RunnerStatus.FAILED
+                    state.error = state.error or "Flask 重启时子进程已退出"
+                    state.twitter_running = False
+                    state.reddit_running = False
+                    state.completed_at = state.completed_at or datetime.now().isoformat()
+                    cls._save_run_state(state)
+                    stats["marked_failed"] += 1
+                    logger.warning(
+                        f"reattach: sim={name} pid={pid} 已失活 → failed"
+                    )
+            except Exception as e:
+                logger.warning(f"reattach 扫描失败 sim={name}: {e}")
+
+        if stats["reattached"] or stats["marked_failed"]:
+            logger.info(
+                f"reattach 完成：接管 {stats['reattached']} 个，"
+                f"标记失败 {stats['marked_failed']} 个，共扫描 {stats['scanned']} 个"
+            )
+        return stats
+
+    @classmethod
+    def get_or_restore_world_state_engine(cls, simulation_id: str) -> Optional[WorldStateEngine]:
+        """获取内存中的世界状态引擎；未命中时尝试从磁盘重建只读副本。
+
+        解决 Flask 进程重启后 _world_state_engines 丢失导致 world_state API 返回
+        空数据的问题。WorldStateEngine.__init__ 已实现 _load_history()，可直接从
+        world_state_history.jsonl / events.jsonl 恢复历史快照与事件。
+        """
+        engine = cls._world_state_engines.get(simulation_id)
+        if engine is not None:
+            return engine
+
+        sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
+        history_path = os.path.join(sim_dir, "world_state_history.jsonl")
+        if not os.path.exists(history_path):
+            return None
+
+        try:
+            # use_llm=False：只读重建，不触发任何 LLM 调用
+            engine = WorldStateEngine(sim_dir=sim_dir, use_llm=False)
+            if not engine.state_history:
+                return None
+            cls._world_state_engines[simulation_id] = engine
+            logger.info(
+                f"从磁盘恢复世界状态引擎: simulation_id={simulation_id}, "
+                f"history={len(engine.state_history)}, events={len(engine.events)}"
+            )
+            return engine
+        except Exception as e:
+            logger.warning(f"恢复世界状态引擎失败 simulation_id={simulation_id}: {e}")
+            return None
+
     @classmethod
     def get_run_state(cls, simulation_id: str) -> Optional[SimulationRunState]:
-        """获取运行状态"""
+        """获取运行状态（含活性检查）
+
+        当持久化状态为 running/starting 但实际进程已死亡且无活跃监控线程时，
+        自动修正为 stopped，避免前端永远显示"运行中"的假象。
+        """
         if simulation_id in cls._run_states:
-            return cls._run_states[simulation_id]
-        
-        # 尝试从文件加载
-        state = cls._load_run_state(simulation_id)
+            state = cls._run_states[simulation_id]
+        else:
+            # 尝试从文件加载
+            state = cls._load_run_state(simulation_id)
+            if state:
+                cls._run_states[simulation_id] = state
+
         if state:
-            cls._run_states[simulation_id] = state
+            state = cls._rectify_stale_running(state)
+        return state
+
+    @classmethod
+    def _rectify_stale_running(cls, state: SimulationRunState) -> SimulationRunState:
+        """检测并修正"状态为 running 但进程已死"的情况。
+
+        检查条件（全部满足才修正）：
+        1. runner_status 是 RUNNING 或 STARTING
+        2. 没有活跃的 Popen 句柄（Flask 未重启时正常启动的进程）
+        3. 没有存活的监控线程
+        4. PID 不再存活
+        """
+        if state.runner_status not in (RunnerStatus.RUNNING, RunnerStatus.STARTING):
+            return state
+
+        # 如果 Flask 进程内仍持有 Popen 且进程还活着，一切正常
+        proc = cls._processes.get(state.simulation_id)
+        if proc is not None and proc.poll() is None:
+            return state
+
+        # 如果监控线程还活着，它会负责善后
+        mon = cls._monitor_threads.get(state.simulation_id)
+        if mon is not None and mon.is_alive():
+            return state
+
+        # 最后通过 PID 探活兜底
+        if cls._pid_alive(state.process_pid):
+            return state
+
+        # ---- 进程确实死了，修正状态 ----
+        logger.warning(
+            f"检测到模拟 {state.simulation_id} (pid={state.process_pid}) "
+            f"状态为 {state.runner_status.value} 但进程已不存在，修正为 stopped"
+        )
+        state.runner_status = RunnerStatus.STOPPED
+        state.error = state.error or "后端进程已退出（可能因崩溃、内存不足或服务重启）"
+        state.twitter_running = False
+        state.reddit_running = False
+        state.completed_at = state.completed_at or datetime.now().isoformat()
+        cls._save_run_state(state)
         return state
     
     @classmethod
@@ -315,7 +484,9 @@ class SimulationRunner:
         platform: str = "parallel",  # twitter / reddit / parallel
         max_rounds: int = None,  # 最大模拟轮数（可选，用于截断过长的模拟）
         enable_graph_memory_update: bool = False,  # 是否将活动更新到图谱
-        graph_id: str = None  # 图谱ID（启用图谱更新时必需）
+        graph_id: str = None,  # 图谱ID（启用图谱更新时必需）
+        start_round: int = 0,  # 续跑起始轮次（0=从头开始）
+        post_sim_graph_import: bool = False  # 模拟结束后批量导入图谱
     ) -> SimulationRunState:
         """
         启动模拟
@@ -334,6 +505,15 @@ class SimulationRunner:
         existing = cls.get_run_state(simulation_id)
         if existing and existing.runner_status in [RunnerStatus.RUNNING, RunnerStatus.STARTING]:
             raise ValueError(f"模拟已在运行中: {simulation_id}")
+        
+        # 等待旧监控线程退出，防止其最终保存覆盖新 run_state
+        old_thread = cls._monitor_threads.get(simulation_id)
+        if old_thread and old_thread.is_alive():
+            logger.info(f"等待旧监控线程退出: {simulation_id}")
+            old_thread.join(timeout=10)
+            if old_thread.is_alive():
+                logger.warning(f"旧监控线程未能在 10s 内退出: {simulation_id}")
+        cls._monitor_threads.pop(simulation_id, None)
         
         # 加载模拟配置
         sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
@@ -358,13 +538,28 @@ class SimulationRunner:
             if total_rounds < original_rounds:
                 logger.info(f"轮数已截断: {original_rounds} -> {total_rounds} (max_rounds={max_rounds})")
         
+        # 续跑模式：保留已有的 action counts 和进度
+        old_twitter_actions = 0
+        old_reddit_actions = 0
+        if start_round > 0:
+            old_state = cls._load_run_state(simulation_id)
+            if old_state:
+                old_twitter_actions = old_state.twitter_actions_count
+                old_reddit_actions = old_state.reddit_actions_count
+        
         state = SimulationRunState(
             simulation_id=simulation_id,
             runner_status=RunnerStatus.STARTING,
+            current_round=start_round,
             total_rounds=total_rounds,
             total_simulation_hours=total_hours,
+            twitter_actions_count=old_twitter_actions,
+            reddit_actions_count=old_reddit_actions,
             started_at=datetime.now().isoformat(),
         )
+        
+        # 递增纪元，旧监控线程保存时会检测到纪元不匹配而跳过
+        cls._state_epochs[simulation_id] = cls._state_epochs.get(simulation_id, 0) + 1
         
         cls._save_run_state(state)
         
@@ -382,6 +577,11 @@ class SimulationRunner:
                 cls._graph_memory_enabled[simulation_id] = False
         else:
             cls._graph_memory_enabled[simulation_id] = False
+        
+        # 记录模拟后批量导入标志
+        if post_sim_graph_import and graph_id:
+            cls._post_sim_graph_import[simulation_id] = graph_id
+            logger.info(f"已注册模拟后批量图谱导入: simulation_id={simulation_id}, graph_id={graph_id}")
         
         # 确定运行哪个脚本（脚本位于 backend/scripts/ 目录）
         if platform == "twitter":
@@ -422,15 +622,53 @@ class SimulationRunner:
             if max_rounds is not None and max_rounds > 0:
                 cmd.extend(["--max-rounds", str(max_rounds)])
             
+            # 续跑模式：从指定轮次开始
+            if start_round > 0:
+                cmd.extend(["--start-round", str(start_round)])
+            
+            # 非续跑模式：清理上次模拟残留的 action 日志和数据库，避免监控线程读到旧数据
+            if start_round == 0:
+                stale_files = [
+                    os.path.join(sim_dir, "twitter", "actions.jsonl"),
+                    os.path.join(sim_dir, "reddit", "actions.jsonl"),
+                    os.path.join(sim_dir, "events.jsonl"),
+                    os.path.join(sim_dir, "world_state_history.jsonl"),
+                    os.path.join(sim_dir, "world_state_current.json"),
+                    os.path.join(sim_dir, "causal_edges.jsonl"),
+                    os.path.join(sim_dir, "actions.jsonl"),
+                    os.path.join(sim_dir, "twitter_simulation.db"),
+                    os.path.join(sim_dir, "reddit_simulation.db"),
+                    os.path.join(sim_dir, "agent_cognition_history.jsonl"),
+                    os.path.join(sim_dir, "agent_cognition_summary.json"),
+                    os.path.join(sim_dir, "agent_brain_state.json"),
+                ]
+                for f in stale_files:
+                    if os.path.exists(f):
+                        try:
+                            os.remove(f)
+                        except Exception as e:
+                            logger.warning(f"清理旧文件失败: {f}: {e}")
+            
+            # 初始化世界状态引擎（必须在清理旧文件之后，避免加载上一轮的历史数据）
+            try:
+                ws_engine = WorldStateEngine(sim_dir=sim_dir, use_llm=bool(Config.LLM_API_KEY))
+                cls._world_state_engines[simulation_id] = ws_engine
+                cls._round_action_buffers[simulation_id] = []
+                logger.info(f"已初始化世界状态引擎: simulation_id={simulation_id}")
+            except Exception as e:
+                logger.error(f"初始化世界状态引擎失败: {e}")
+            
             # 创建主日志文件，避免 stdout/stderr 管道缓冲区满导致进程阻塞
             main_log_path = os.path.join(sim_dir, "simulation.log")
-            main_log_file = open(main_log_path, 'w', encoding='utf-8')
+            log_mode = 'a' if start_round > 0 else 'w'
+            main_log_file = open(main_log_path, log_mode, encoding='utf-8')
             
             # 设置子进程环境变量，确保 Windows 上使用 UTF-8 编码
             # 这可以修复第三方库（如 OASIS）读取文件时未指定编码的问题
             env = os.environ.copy()
             env['PYTHONUTF8'] = '1'  # Python 3.7+ 支持，让所有 open() 默认使用 UTF-8
             env['PYTHONIOENCODING'] = 'utf-8'  # 确保 stdout/stderr 使用 UTF-8
+            env['HF_HUB_OFFLINE'] = '1'  # HuggingFace 离线模式，使用本地缓存避免网络超时
             
             # 设置工作目录为模拟目录（数据库等文件会生成在此）
             # 使用 start_new_session=True 创建新的进程组，确保可以通过 os.killpg 终止所有子进程
@@ -455,10 +693,18 @@ class SimulationRunner:
             cls._processes[simulation_id] = process
             cls._save_run_state(state)
             
-            # 启动监控线程
+            # 启动监控线程（续跑时跳过已有日志，避免重复计数）
+            monitor_kwargs = {}
+            if start_round > 0:
+                twitter_log = os.path.join(sim_dir, "twitter", "actions.jsonl")
+                reddit_log = os.path.join(sim_dir, "reddit", "actions.jsonl")
+                monitor_kwargs['start_twitter_position'] = os.path.getsize(twitter_log) if os.path.exists(twitter_log) else 0
+                monitor_kwargs['start_reddit_position'] = os.path.getsize(reddit_log) if os.path.exists(reddit_log) else 0
+            
             monitor_thread = threading.Thread(
                 target=cls._monitor_simulation,
                 args=(simulation_id,),
+                kwargs=monitor_kwargs,
                 daemon=True
             )
             monitor_thread.start()
@@ -475,25 +721,86 @@ class SimulationRunner:
         return state
     
     @classmethod
-    def _monitor_simulation(cls, simulation_id: str):
-        """监控模拟进程，解析动作日志"""
+    def _pid_alive(cls, pid: Optional[int]) -> bool:
+        """跨平台轻量 PID 探活（Windows / Unix）。用于 Flask 重启后判断
+        之前的子进程是否还活着。
+        """
+        if not pid:
+            return False
+        try:
+            if sys.platform == "win32":
+                import ctypes
+                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+                STILL_ACTIVE = 259
+                h = ctypes.windll.kernel32.OpenProcess(
+                    PROCESS_QUERY_LIMITED_INFORMATION, False, pid
+                )
+                if not h:
+                    return False
+                try:
+                    code = ctypes.c_ulong(0)
+                    if not ctypes.windll.kernel32.GetExitCodeProcess(
+                        h, ctypes.byref(code)
+                    ):
+                        return False
+                    return code.value == STILL_ACTIVE
+                finally:
+                    ctypes.windll.kernel32.CloseHandle(h)
+            else:
+                os.kill(pid, 0)
+                return True
+        except Exception:
+            return False
+
+    @classmethod
+    def _monitor_simulation(
+        cls,
+        simulation_id: str,
+        *,
+        pid_only: bool = False,
+        pid: Optional[int] = None,
+        start_twitter_position: int = 0,
+        start_reddit_position: int = 0,
+    ):
+        """监控模拟进程，解析动作日志。
+
+        - 默认（pid_only=False）使用 Popen.poll()：适用于新启动的子进程
+        - pid_only=True：用 PID 探活循环，适用于 Flask 重启后接管孤儿子进程
+        """
         sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
-        
+
         # 新的日志结构：分平台的动作日志
         twitter_actions_log = os.path.join(sim_dir, "twitter", "actions.jsonl")
         reddit_actions_log = os.path.join(sim_dir, "reddit", "actions.jsonl")
-        
-        process = cls._processes.get(simulation_id)
+
         state = cls.get_run_state(simulation_id)
-        
-        if not process or not state:
+        if not state:
             return
-        
-        twitter_position = 0
-        reddit_position = 0
-        
+
+        # 记录启动时的纪元，用于保存前检测是否已被新启动替代
+        my_epoch = cls._state_epochs.get(simulation_id, 0)
+
+        process = None if pid_only else cls._processes.get(simulation_id)
+        if not pid_only and not process:
+            return
+
+        def _alive() -> bool:
+            if pid_only:
+                return cls._pid_alive(pid)
+            return process.poll() is None
+
+        twitter_position = start_twitter_position
+        reddit_position = start_reddit_position
+
+        def _epoch_stale() -> bool:
+            """检查纪元是否已过期（新启动已替代本线程）"""
+            return cls._state_epochs.get(simulation_id, 0) != my_epoch
+
         try:
-            while process.poll() is None:  # 进程仍在运行
+            while _alive():  # 进程仍在运行
+                if _epoch_stale():
+                    logger.info(f"监控线程检测到纪元过期，退出: {simulation_id}")
+                    return
                 # 读取 Twitter 动作日志
                 if os.path.exists(twitter_actions_log):
                     twitter_position = cls._read_action_log(
@@ -507,45 +814,82 @@ class SimulationRunner:
                     )
                 
                 # 更新状态
-                cls._save_run_state(state)
+                if not _epoch_stale():
+                    cls._save_run_state(state)
+                
+                # 如果所有平台都已完成，给子进程 10 秒自行退出，否则主动终止
+                if state.runner_status == RunnerStatus.COMPLETED:
+                    logger.info(f"所有平台已完成，等待子进程退出...")
+                    for _ in range(5):  # 最多等 10 秒
+                        time.sleep(2)
+                        if not _alive():
+                            break
+                    if _alive():
+                        logger.info(f"子进程未自行退出，主动终止: {simulation_id}")
+                        try:
+                            if process:
+                                process.terminate()
+                                process.wait(timeout=5)
+                        except Exception:
+                            pass
+                    break  # 跳出 while 循环
+                
                 time.sleep(2)
             
+            # 纪元过期则不做最终保存
+            if _epoch_stale():
+                logger.info(f"监控线程纪元过期，跳过最终保存: {simulation_id}")
+                return
+
             # 进程结束后，最后读取一次日志
             if os.path.exists(twitter_actions_log):
                 cls._read_action_log(twitter_actions_log, twitter_position, state, "twitter")
             if os.path.exists(reddit_actions_log):
                 cls._read_action_log(reddit_actions_log, reddit_position, state, "reddit")
             
-            # 进程结束
-            exit_code = process.returncode
-            
-            if exit_code == 0:
-                state.runner_status = RunnerStatus.COMPLETED
-                state.completed_at = datetime.now().isoformat()
+            # 进程结束 —— 如果已经通过 simulation_end 事件确认 COMPLETED，保留该状态
+            if state.runner_status == RunnerStatus.COMPLETED:
                 logger.info(f"模拟完成: {simulation_id}")
+            elif pid_only:
+                if cls._check_all_platforms_completed(state):
+                    state.runner_status = RunnerStatus.COMPLETED
+                    state.completed_at = datetime.now().isoformat()
+                    logger.info(f"模拟完成（reattach 监测）: {simulation_id}")
+                else:
+                    state.runner_status = RunnerStatus.FAILED
+                    state.error = state.error or "子进程在 Flask 管理之外退出"
+                    logger.warning(f"模拟未完成即退出（reattach 监测）: {simulation_id}")
             else:
-                state.runner_status = RunnerStatus.FAILED
-                # 从主日志文件读取错误信息
-                main_log_path = os.path.join(sim_dir, "simulation.log")
-                error_info = ""
-                try:
-                    if os.path.exists(main_log_path):
-                        with open(main_log_path, 'r', encoding='utf-8') as f:
-                            error_info = f.read()[-2000:]  # 取最后2000字符
-                except Exception:
-                    pass
-                state.error = f"进程退出码: {exit_code}, 错误: {error_info}"
-                logger.error(f"模拟失败: {simulation_id}, error={state.error}")
+                exit_code = process.returncode
+                if exit_code == 0 or cls._check_all_platforms_completed(state):
+                    state.runner_status = RunnerStatus.COMPLETED
+                    state.completed_at = state.completed_at or datetime.now().isoformat()
+                    logger.info(f"模拟完成: {simulation_id}")
+                else:
+                    state.runner_status = RunnerStatus.FAILED
+                    # 从主日志文件读取错误信息
+                    main_log_path = os.path.join(sim_dir, "simulation.log")
+                    error_info = ""
+                    try:
+                        if os.path.exists(main_log_path):
+                            with open(main_log_path, 'r', encoding='utf-8') as f:
+                                error_info = f.read()[-2000:]  # 取最后2000字符
+                    except Exception:
+                        pass
+                    state.error = f"进程退出码: {exit_code}, 错误: {error_info}"
+                    logger.error(f"模拟失败: {simulation_id}, error={state.error}")
             
             state.twitter_running = False
             state.reddit_running = False
-            cls._save_run_state(state)
+            if not _epoch_stale():
+                cls._save_run_state(state)
             
         except Exception as e:
             logger.error(f"监控线程异常: {simulation_id}, error={str(e)}")
-            state.runner_status = RunnerStatus.FAILED
-            state.error = str(e)
-            cls._save_run_state(state)
+            if not _epoch_stale():
+                state.runner_status = RunnerStatus.FAILED
+                state.error = str(e)
+                cls._save_run_state(state)
         
         finally:
             # 停止图谱记忆更新器
@@ -556,6 +900,16 @@ class SimulationRunner:
                 except Exception as e:
                     logger.error(f"停止图谱记忆更新器失败: {e}")
                 cls._graph_memory_enabled.pop(simulation_id, None)
+            
+            # 模拟后批量导入图谱（在新线程中异步执行，不阻塞清理）
+            post_graph_id = cls._post_sim_graph_import.pop(simulation_id, None)
+            if post_graph_id and state.runner_status == RunnerStatus.COMPLETED:
+                threading.Thread(
+                    target=cls._do_post_sim_graph_import,
+                    args=(simulation_id, post_graph_id, sim_dir),
+                    daemon=True,
+                    name=f"PostSimGraphImport-{simulation_id[:12]}"
+                ).start()
             
             # 清理进程资源
             cls._processes.pop(simulation_id, None)
@@ -575,6 +929,120 @@ class SimulationRunner:
                     pass
                 cls._stderr_files.pop(simulation_id, None)
     
+    # 不写入图谱的 action 类型
+    _SKIP_ACTIONS = {'DO_NOTHING', 'INTERVIEW'}
+    _IMPORT_BATCH_SIZE = 50
+
+    @classmethod
+    def _do_post_sim_graph_import(cls, simulation_id: str, graph_id: str, sim_dir: str):
+        """
+        模拟结束后用轻量 Cypher 将 actions.jsonl 批量写入 Neo4j。
+        不走 Graphiti（太慢 / 超时 / 吃内存），直接 MERGE 节点和关系。
+        在独立线程中运行，避免阻塞监控线程。
+        """
+        logger.info(f"开始模拟后图谱批量导入（Cypher）: simulation_id={simulation_id}, graph_id={graph_id}")
+        
+        # 1. 读取所有有意义的 action
+        actions = []
+        for platform in ("twitter", "reddit"):
+            log_path = os.path.join(sim_dir, platform, "actions.jsonl")
+            if not os.path.exists(log_path):
+                continue
+            with open(log_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                        if "event_type" in data:
+                            continue
+                        if data.get("action_type", "") in cls._SKIP_ACTIONS:
+                            continue
+                        data["platform"] = platform
+                        actions.append(data)
+                    except json.JSONDecodeError:
+                        continue
+        
+        if not actions:
+            logger.info(f"没有可导入的 action 数据: {simulation_id}")
+            return
+        
+        logger.info(f"读取到 {len(actions)} 条有意义的 Agent 行为，开始写入 Neo4j...")
+        
+        # 2. 连接 Neo4j
+        try:
+            from neo4j import GraphDatabase
+            driver = GraphDatabase.driver(
+                Config.NEO4J_URI or 'bolt://localhost:7687',
+                auth=(Config.NEO4J_USERNAME or 'neo4j', Config.NEO4J_PASSWORD or 'neo4jneo4j')
+            )
+        except Exception as e:
+            logger.error(f"连接 Neo4j 失败，跳过图谱导入: {e}")
+            return
+        
+        try:
+            # 3. 创建约束和索引（幂等）
+            with driver.session() as session:
+                session.run("CREATE CONSTRAINT sim_action_id IF NOT EXISTS FOR (a:SimAction) REQUIRE a.uid IS UNIQUE")
+                session.run("CREATE INDEX sim_action_round IF NOT EXISTS FOR (a:SimAction) ON (a.round)")
+                session.run("CREATE INDEX sim_agent_name IF NOT EXISTS FOR (a:SimAgent) ON (a.name)")
+            
+            # 4. 批量写入 Agent + Action 节点
+            total = 0
+            with driver.session() as session:
+                for i in range(0, len(actions), cls._IMPORT_BATCH_SIZE):
+                    batch = actions[i:i + cls._IMPORT_BATCH_SIZE]
+                    params = []
+                    for act in batch:
+                        content = ''
+                        args = act.get('action_args', {})
+                        if isinstance(args, dict):
+                            content = args.get('content', '') or args.get('post_content', '') or ''
+                        params.append({
+                            'uid': f"{graph_id}_{act.get('platform','?')}_{act.get('round',0)}_{act.get('agent_id',0)}_{act.get('action_type','')}",
+                            'agent_name': act.get('agent_name', ''),
+                            'action_type': act.get('action_type', ''),
+                            'content': content[:500],
+                            'round': act.get('round', 0),
+                            'platform': act.get('platform', ''),
+                            'timestamp': act.get('timestamp', ''),
+                            'graph_id': graph_id,
+                        })
+                    session.run("""
+                        UNWIND $batch AS row
+                        MERGE (agent:SimAgent {name: row.agent_name, graph_id: row.graph_id})
+                        MERGE (action:SimAction {uid: row.uid})
+                        SET action.action_type = row.action_type,
+                            action.content = row.content,
+                            action.round = row.round,
+                            action.platform = row.platform,
+                            action.timestamp = row.timestamp,
+                            action.graph_id = row.graph_id
+                        MERGE (agent)-[:PERFORMED]->(action)
+                    """, batch=params)
+                    total += len(batch)
+            
+            # 5. 关联 SimAgent → 已有知识图谱实体（按名称）
+            with driver.session() as session:
+                result = session.run("""
+                    MATCH (sa:SimAgent {graph_id: $gid})
+                    MATCH (entity) WHERE entity.name = sa.name
+                      AND NOT entity:SimAgent AND NOT entity:SimAction
+                    MERGE (sa)-[:CORRESPONDS_TO]->(entity)
+                    RETURN count(*) as linked
+                """, gid=graph_id)
+                linked = result.single()['linked']
+            
+            logger.info(
+                f"模拟后图谱导入完成: simulation_id={simulation_id}, "
+                f"写入 {total} 条 SimAction, 关联已有实体 {linked} 条"
+            )
+        except Exception as e:
+            logger.error(f"图谱批量导入失败: {e}")
+        finally:
+            driver.close()
+
     @classmethod
     def _read_action_log(
         cls, 
@@ -654,6 +1122,20 @@ class SimulationRunner:
                                         state.current_round = round_num
                                     # 总体时间取两个平台的最大值
                                     state.simulated_hours = max(state.twitter_simulated_hours, state.reddit_simulated_hours)
+                                    
+                                    # 触发世界状态引擎更新
+                                    ws_engine = cls._world_state_engines.get(state.simulation_id)
+                                    if ws_engine:
+                                        try:
+                                            buf = cls._round_action_buffers.get(state.simulation_id, [])
+                                            ws_engine.update_state(round_num, buf)
+                                            cls._round_action_buffers[state.simulation_id] = []
+                                            
+                                            # 将最新世界状态写入共享文件，供子进程读取注入 Agent prompt
+                                            # 对应论文 §4.1.1: "environment states directly influence agents' decision-making"
+                                            cls._write_world_state_for_subprocess(state.simulation_id, ws_engine)
+                                        except Exception as ws_err:
+                                            logger.warning(f"世界状态更新失败 (round {round_num}): {ws_err}")
                                 
                                 continue
                             
@@ -670,6 +1152,10 @@ class SimulationRunner:
                             )
                             state.add_action(action)
                             
+                            # 缓存动作用于世界状态引擎
+                            if state.simulation_id in cls._round_action_buffers:
+                                cls._round_action_buffers[state.simulation_id].append(action_data)
+                            
                             # 更新轮次
                             if action.round_num and action.round_num > state.current_round:
                                 state.current_round = action.round_num
@@ -684,6 +1170,52 @@ class SimulationRunner:
         except Exception as e:
             logger.warning(f"读取动作日志失败: {log_path}, error={e}")
             return position
+    
+    @classmethod
+    def _write_world_state_for_subprocess(cls, simulation_id: str, ws_engine) -> None:
+        """
+        将当前世界状态写入共享文件，供 OASIS 子进程读取注入 Agent prompt。
+        
+        对应论文 §4.1.1 Environment State:
+        "environment states record instant information from the environment 
+         during the scenario. They directly influence the agents' decision-making."
+        
+        文件路径: <sim_dir>/world_state_current.json
+        子进程在每轮开始前读取此文件，将状态摘要文本注入 Agent 的 user message。
+        """
+        try:
+            sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
+            ws_file = os.path.join(sim_dir, "world_state_current.json")
+            
+            current = ws_engine.current_state
+            if not current:
+                return
+            
+            # 写入状态快照 + 可注入 prompt 的摘要文本
+            payload = current.to_dict()
+            payload["state_summary_text"] = current.get_state_summary_text()
+            
+            # 最近事件（供 Agent 感知重大环境变化）
+            recent_events = ws_engine.events[-3:] if ws_engine.events else []
+            payload["recent_events"] = [
+                {"event_type": e.event_type, "description": e.description, "severity": e.severity}
+                for e in recent_events
+            ]
+            
+            # 原子写入：先写临时文件再重命名，避免子进程读到半截数据
+            # Windows 下 os.replace 可能因文件锁定失败，加重试
+            tmp_file = ws_file + ".tmp"
+            with open(tmp_file, 'w', encoding='utf-8') as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+            for _attempt in range(5):
+                try:
+                    os.replace(tmp_file, ws_file)
+                    break
+                except OSError:
+                    time.sleep(0.1 * (_attempt + 1))
+            
+        except Exception as e:
+            logger.warning(f"写入世界状态共享文件失败: {e}")
     
     @classmethod
     def _check_all_platforms_completed(cls, state: SimulationRunState) -> bool:
@@ -1381,7 +1913,26 @@ class SimulationRunner:
             return False
 
         ipc_client = SimulationIPCClient(sim_dir)
-        return ipc_client.check_env_alive()
+        file_says_alive = ipc_client.check_env_alive()
+        
+        if not file_says_alive:
+            return False
+        
+        # env_status.json 说 alive，但需要验证进程是否真的在跑
+        # 检查是否有对应的活跃进程
+        process = cls._processes.get(simulation_id)
+        if process is not None and process.poll() is None:
+            return True  # 进程确实在跑
+        
+        # 文件说alive但进程不存在 → 状态文件过期，修正它
+        logger.warning(f"env_status.json says alive but no running process found for {simulation_id}, correcting to stopped")
+        try:
+            status_file = os.path.join(sim_dir, "env_status.json")
+            with open(status_file, 'w', encoding='utf-8') as f:
+                json.dump({"status": "stopped", "timestamp": __import__('datetime').datetime.now().isoformat()}, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+        return False
 
     @classmethod
     def get_env_status_detail(cls, simulation_id: str) -> Dict[str, Any]:
@@ -1483,6 +2034,73 @@ class SimulationRunner:
                 "timestamp": response.timestamp
             }
     
+    @classmethod
+    def inject_event(
+        cls,
+        simulation_id: str,
+        event_type: str,
+        description: str,
+        severity: float = 0.7,
+        affected_variables: Dict[str, float] = None,
+        timeout: float = 10.0
+    ) -> Dict[str, Any]:
+        """
+        动态注入外部事件（上帝视角）
+        
+        在模拟运行过程中注入一个外部事件，影响世界状态和Agent行为。
+        事件将在下一轮被 WorldStateEngine 消费并合并到世界状态中。
+
+        Args:
+            simulation_id: 模拟ID
+            event_type: 事件类型
+            description: 事件描述
+            severity: 严重度 (0.0-1.0)
+            affected_variables: 受影响的状态变量及变化增量
+            timeout: 超时时间（秒）
+
+        Returns:
+            注入结果字典
+
+        Raises:
+            ValueError: 模拟不存在或环境未运行
+            TimeoutError: 等待响应超时
+        """
+        sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
+        if not os.path.exists(sim_dir):
+            raise ValueError(f"模拟不存在: {simulation_id}")
+
+        ipc_client = SimulationIPCClient(sim_dir)
+
+        if not ipc_client.check_env_alive():
+            raise ValueError(f"模拟环境未运行或已关闭，无法注入事件: {simulation_id}")
+
+        logger.info(f"注入事件: simulation_id={simulation_id}, type={event_type}, severity={severity}")
+
+        response = ipc_client.send_inject_event(
+            event_type=event_type,
+            description=description,
+            severity=severity,
+            affected_variables=affected_variables,
+            timeout=timeout
+        )
+
+        if response.status.value == "completed":
+            return {
+                "success": True,
+                "event_type": event_type,
+                "description": description,
+                "severity": severity,
+                "result": response.result,
+                "timestamp": response.timestamp
+            }
+        else:
+            return {
+                "success": False,
+                "event_type": event_type,
+                "error": response.error,
+                "timestamp": response.timestamp
+            }
+
     @classmethod
     def interview_agents_batch(
         cls,

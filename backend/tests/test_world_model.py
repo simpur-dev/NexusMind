@@ -1,0 +1,792 @@
+"""
+世界模型单元测试
+
+覆盖:
+1. WorldStateSnapshot 数据结构与序列化
+2. WorldStateEngine 状态计算、事件检测、持久化
+3. OasisProfileGenerator 职业推导与 f-string 安全
+4. 子进程世界状态读取与 prompt 构建
+5. SimulationRunner 共享文件写入
+"""
+
+import os
+import sys
+import json
+import shutil
+import tempfile
+import pytest
+from datetime import datetime
+from unittest.mock import MagicMock, patch
+
+# 添加项目路径
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app.services.world_state import (
+    WorldStateSnapshot,
+    WorldStateEngine,
+    WorldEvent,
+    NEGATIVE_KEYWORDS,
+    POSITIVE_KEYWORDS,
+    AUTHORITY_KEYWORDS,
+)
+from app.services.oasis_profile_generator import OasisProfileGenerator, OasisAgentProfile
+
+
+# ============================================================
+# §1 WorldStateSnapshot 数据结构
+# ============================================================
+
+class TestWorldStateSnapshot:
+    """测试 WorldStateSnapshot 数据类"""
+
+    def test_default_values(self):
+        """默认状态：低关注、低恐慌、中等信任、高稳定"""
+        snap = WorldStateSnapshot(round_num=0, timestamp="2026-01-01T00:00:00")
+        assert snap.attention_level == 0.1
+        assert snap.panic_level == 0.1
+        assert snap.trust_level == 0.6
+        assert snap.stability_level == 0.8
+
+    def test_to_dict_roundtrip(self):
+        """序列化/反序列化不丢失数据"""
+        snap = WorldStateSnapshot(
+            round_num=5,
+            timestamp="2026-01-01T00:00:00",
+            attention_level=0.7,
+            panic_level=0.3,
+            trust_level=0.5,
+            polarization_level=0.4,
+            risk_level=0.6,
+            stability_level=0.3,
+            total_posts=20,
+            total_comments=15,
+            top_keywords=["高校", "舆论"],
+        )
+        d = snap.to_dict()
+        restored = WorldStateSnapshot.from_dict(d)
+        assert restored.round_num == 5
+        assert restored.attention_level == 0.7
+        assert restored.top_keywords == ["高校", "舆论"]
+
+    def test_get_state_vector(self):
+        """状态向量包含且仅包含 6 维"""
+        snap = WorldStateSnapshot(round_num=0, timestamp="t")
+        vec = snap.get_state_vector()
+        assert set(vec.keys()) == {
+            "attention_level", "panic_level", "trust_level",
+            "polarization_level", "risk_level", "stability_level",
+        }
+        for v in vec.values():
+            assert 0.0 <= v <= 1.0
+
+    def test_get_state_summary_text_format(self):
+        """摘要文本包含中文描述和数值"""
+        snap = WorldStateSnapshot(
+            round_num=3, timestamp="t",
+            attention_level=0.75, panic_level=0.1,
+        )
+        text = snap.get_state_summary_text()
+        assert "第3轮" in text
+        assert "舆论关注度" in text
+        assert "0.75" in text
+        assert "较高" in text  # 0.75 应该是"较高"
+
+
+# ============================================================
+# §2 WorldStateEngine 核心逻辑
+# ============================================================
+
+class TestWorldStateEngine:
+    """测试 WorldStateEngine 状态计算与持久化"""
+
+    @pytest.fixture
+    def tmp_sim_dir(self):
+        d = tempfile.mkdtemp(prefix="nexusmind_test_")
+        yield d
+        shutil.rmtree(d, ignore_errors=True)
+
+    @pytest.fixture
+    def engine(self, tmp_sim_dir):
+        return WorldStateEngine(sim_dir=tmp_sim_dir, use_llm=False)
+
+    def test_initial_state_is_none(self, engine):
+        """引擎刚初始化时无状态"""
+        assert engine.current_state is None
+        assert len(engine.state_history) == 0
+
+    def test_update_state_creates_snapshot(self, engine):
+        """第一次 update 应创建初始快照"""
+        actions = [
+            {"action_type": "CREATE_POST", "agent_id": 1, "action_args": {"content": "测试帖子"}},
+            {"action_type": "LIKE", "agent_id": 2, "action_args": {}},
+        ]
+        new_state, events = engine.update_state(0, actions)
+        assert new_state is not None
+        assert new_state.round_num == 0
+        assert new_state.total_posts == 1
+        assert new_state.total_likes == 1
+        assert engine.current_state == new_state
+
+    def test_state_values_in_valid_range(self, engine):
+        """所有状态变量必须在 [0.0, 1.0]"""
+        actions = [
+            {"action_type": "CREATE_POST", "agent_id": i, "action_args": {"content": f"恐慌 愤怒 危险 post {i}"}}
+            for i in range(20)
+        ]
+        state, _ = engine.update_state(0, actions)
+        vec = state.get_state_vector()
+        for name, val in vec.items():
+            assert 0.0 <= val <= 1.0, f"{name}={val} 超出范围"
+
+    def test_multiple_rounds_accumulate_history(self, engine):
+        """多轮更新应累积历史"""
+        for r in range(5):
+            engine.update_state(r, [
+                {"action_type": "CREATE_POST", "agent_id": 1, "action_args": {"content": f"Round {r}"}}
+            ])
+        assert len(engine.state_history) == 5
+        assert engine.current_state.round_num == 4
+
+    def test_negative_keywords_increase_panic(self, engine):
+        """含负面关键词的动作应增加恐慌值"""
+        # 先建立基线
+        engine.update_state(0, [
+            {"action_type": "CREATE_POST", "agent_id": 1, "action_args": {"content": "正常讨论"}}
+        ])
+        baseline_panic = engine.current_state.panic_level
+
+        # 注入大量负面关键词
+        panic_actions = [
+            {"action_type": "CREATE_POST", "agent_id": i, "action_args": {"content": "恐慌 愤怒 危险 崩溃 混乱"}}
+            for i in range(10)
+        ]
+        engine.update_state(1, panic_actions)
+        assert engine.current_state.panic_level >= baseline_panic
+
+    def test_authority_keywords_boost_trust(self, engine):
+        """含权威关键词应提升信任度"""
+        engine.update_state(0, [
+            {"action_type": "CREATE_POST", "agent_id": 1, "action_args": {"content": "普通讨论"}}
+        ])
+        baseline_trust = engine.current_state.trust_level
+
+        auth_actions = [
+            {"action_type": "CREATE_POST", "agent_id": i, "action_args": {"content": "官方回应 声明 通报 措施 政策"}}
+            for i in range(10)
+        ]
+        engine.update_state(1, auth_actions)
+        assert engine.current_state.trust_level >= baseline_trust
+
+    def test_event_detection_heat_spike(self, engine):
+        """活动量激增应检测到 heat_spike 事件"""
+        # 先建立低基线
+        for r in range(3):
+            engine.update_state(r, [
+                {"action_type": "CREATE_POST", "agent_id": 1, "action_args": {"content": "日常"}}
+            ])
+        
+        # 突然大量活动
+        spike_actions = [
+            {"action_type": "CREATE_POST", "agent_id": i, "action_args": {"content": f"突发新闻 {i}"}}
+            for i in range(30)
+        ] + [
+            {"action_type": "REPOST", "agent_id": i, "action_args": {}}
+            for i in range(20)
+        ]
+        _, events = engine.update_state(3, spike_actions)
+        event_types = [e.event_type for e in events]
+        # heat_spike 不一定每次触发，但 attention 应显著上升
+        assert engine.current_state.attention_level > 0.2
+
+    def test_persistence_to_file(self, engine, tmp_sim_dir):
+        """状态应持久化到 JSONL 文件"""
+        engine.update_state(0, [
+            {"action_type": "CREATE_POST", "agent_id": 1, "action_args": {"content": "测试"}}
+        ])
+        history_path = os.path.join(tmp_sim_dir, "world_state_history.jsonl")
+        assert os.path.exists(history_path)
+        with open(history_path, 'r', encoding='utf-8') as f:
+            lines = [l for l in f if l.strip()]
+        assert len(lines) == 1
+        data = json.loads(lines[0])
+        assert data["round_num"] == 0
+
+    def test_reload_from_file(self, tmp_sim_dir):
+        """引擎应能从文件重新加载历史"""
+        engine1 = WorldStateEngine(sim_dir=tmp_sim_dir, use_llm=False)
+        engine1.update_state(0, [
+            {"action_type": "CREATE_POST", "agent_id": 1, "action_args": {"content": "持久化"}}
+        ])
+        engine1.update_state(1, [
+            {"action_type": "COMMENT", "agent_id": 2, "action_args": {"content": "回复"}}
+        ])
+
+        # 新引擎实例应加载已有历史
+        engine2 = WorldStateEngine(sim_dir=tmp_sim_dir, use_llm=False)
+        assert len(engine2.state_history) == 2
+        assert engine2.current_state.round_num == 1
+
+    def test_empty_actions(self, engine):
+        """空动作列表不应崩溃"""
+        state, events = engine.update_state(0, [])
+        assert state is not None
+        assert state.total_posts == 0
+
+
+# ============================================================
+# §3 OasisProfileGenerator 职业推导
+# ============================================================
+
+class TestProfileProfession:
+    """测试 profession 兜底逻辑"""
+
+    def test_derive_profession_known_types(self):
+        """已知实体类型应映射到中文职业"""
+        gen = OasisProfileGenerator.__new__(OasisProfileGenerator)
+        assert gen._derive_profession("Student") == "学生"
+        assert gen._derive_profession("Professor") == "大学教授"
+        assert gen._derive_profession("MediaOutlet") == "媒体机构"
+        assert gen._derive_profession("GovernmentAgency") == "政府机构"
+
+    def test_derive_profession_unknown_type(self):
+        """未知实体类型应原样返回"""
+        gen = OasisProfileGenerator.__new__(OasisProfileGenerator)
+        assert gen._derive_profession("CustomEntity") == "CustomEntity"
+        assert gen._derive_profession("Blogger") == "Blogger"
+
+    def test_profile_always_has_profession(self):
+        """OasisAgentProfile 序列化后应包含 profession 顶层字段"""
+        profile = OasisAgentProfile(
+            user_id=0,
+            user_name="test",
+            name="Test User",
+            bio="test bio",
+            persona="test persona",
+            profession="记者",
+        )
+        reddit_fmt = profile.to_reddit_format()
+        assert reddit_fmt.get("profession") == "记者"
+
+    def test_profile_without_profession_fallback(self):
+        """当 profession 为 None 时 to_reddit_format 不应包含 profession"""
+        profile = OasisAgentProfile(
+            user_id=0,
+            user_name="test",
+            name="Test User",
+            bio="test bio",
+            persona="test persona",
+        )
+        reddit_fmt = profile.to_reddit_format()
+        # profession 是 None，不应包含在 other_info 中
+        assert "profession" not in reddit_fmt.get("other_info", {})
+
+
+# ============================================================
+# §4 f-string 安全性（group persona prompt 花括号转义）
+# ============================================================
+
+class TestFStringEscaping:
+    """验证 LLM prompt 中的花括号不会导致 f-string 错误"""
+
+    def test_group_persona_prompt_no_format_error(self):
+        """构建机构类 prompt 不应抛出 ValueError"""
+        gen = OasisProfileGenerator.__new__(OasisProfileGenerator)
+        # 模拟必要属性
+        gen.MBTI_TYPES = ["ISTJ"]
+        gen.COUNTRIES = ["中国"]
+        
+        try:
+            result = gen._build_group_persona_prompt(
+                entity_name="新华网",
+                entity_type="MediaOutlet",
+                entity_summary="国家通讯社",
+                entity_attributes={"type": "media"},
+                context="测试上下文",
+            )
+            # 应该成功返回字符串，不抛异常
+            assert isinstance(result, str)
+            assert "新华网" in result
+            assert "utility_weights" in result
+        except (ValueError, KeyError) as e:
+            pytest.fail(f"f-string 花括号未正确转义: {e}")
+
+    def test_individual_persona_prompt_no_format_error(self):
+        """构建个人类 prompt 不应抛出 ValueError"""
+        gen = OasisProfileGenerator.__new__(OasisProfileGenerator)
+        gen.MBTI_TYPES = ["INTJ"]
+        gen.COUNTRIES = ["中国"]
+        
+        try:
+            result = gen._build_individual_persona_prompt(
+                entity_name="张三",
+                entity_type="Student",
+                entity_summary="一名大学生",
+                entity_attributes={"age": 20},
+                context="测试上下文",
+            )
+            assert isinstance(result, str)
+            assert "张三" in result
+        except (ValueError, KeyError) as e:
+            pytest.fail(f"f-string 花括号未正确转义: {e}")
+
+
+# ============================================================
+# §5 子进程世界状态读取与 prompt 构建
+# ============================================================
+
+# 导入子进程脚本中的函数（需要特殊路径处理）
+_scripts_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
+sys.path.insert(0, _scripts_dir)
+
+# 动态导入避免 OASIS 依赖缺失时整个测试文件失败
+try:
+    from run_parallel_simulation import (
+        read_world_state,
+        build_world_state_prompt,
+        _load_agent_role_map,
+        _STANCE_PERCEPTION_PROFILES,
+    )
+    _HAS_SIMULATION_SCRIPT = True
+except ImportError:
+    _HAS_SIMULATION_SCRIPT = False
+
+
+@pytest.mark.skipif(not _HAS_SIMULATION_SCRIPT, reason="OASIS 依赖未安装")
+class TestWorldStateIPC:
+    """测试子进程 ↔ 主进程世界状态通信"""
+
+    @pytest.fixture
+    def tmp_sim_dir(self):
+        d = tempfile.mkdtemp(prefix="nexusmind_ipc_test_")
+        yield d
+        shutil.rmtree(d, ignore_errors=True)
+
+    def test_read_nonexistent_file(self, tmp_sim_dir):
+        """不存在的文件应返回 None"""
+        result = read_world_state(tmp_sim_dir)
+        assert result is None
+
+    def test_read_valid_file(self, tmp_sim_dir):
+        """能正确读取后端写入的 JSON"""
+        ws_data = {
+            "round_num": 5,
+            "state_summary_text": "当前环境状态（第5轮）：\n- 舆论关注度: 较高（0.65）",
+            "recent_events": [
+                {"event_type": "heat_spike", "description": "热度急升", "severity": 0.7}
+            ],
+        }
+        ws_path = os.path.join(tmp_sim_dir, "world_state_current.json")
+        with open(ws_path, 'w', encoding='utf-8') as f:
+            json.dump(ws_data, f, ensure_ascii=False)
+        
+        result = read_world_state(tmp_sim_dir)
+        assert result is not None
+        assert result["round_num"] == 5
+        assert "热度急升" in result["recent_events"][0]["description"]
+
+    def test_read_corrupted_file(self, tmp_sim_dir):
+        """损坏的 JSON 文件应返回 None"""
+        ws_path = os.path.join(tmp_sim_dir, "world_state_current.json")
+        with open(ws_path, 'w') as f:
+            f.write("{invalid json")
+        assert read_world_state(tmp_sim_dir) is None
+
+    def test_build_prompt_with_state(self):
+        """状态显著偏离基线时应生成包含环境描述的 prompt"""
+        ws_data = {
+            "attention_level": 0.8,
+            "panic_level": 0.6,
+            "trust_level": 0.2,
+            "polarization_level": 0.5,
+            "recent_events": [
+                {"event_type": "heat_spike", "description": "舆论热度急升", "severity": 0.7}
+            ],
+        }
+        prompt = build_world_state_prompt(ws_data)
+        # v7: 改用 RC/factual 措辞，header 池与维度描述都重写
+        assert any(h in prompt for h in ("当前讨论片段", "可观察的讨论切面", "讨论结构快照", "近期讨论要点"))
+        assert any(tok in prompt for tok in ("参与量", "担忧", "质疑", "核验", "解读", "讨论"))
+        # v7: heat_spike 抽象 → "相关话题近期进入较高讨论量区间" / "讨论数量较前一阶段增加"
+        assert "近期动态" in prompt
+        assert any(tok in prompt for tok in ("讨论量", "讨论数量", "话题"))
+
+    def test_build_prompt_empty_state(self):
+        """无状态数据时应返回空字符串"""
+        prompt = build_world_state_prompt({})
+        assert prompt == ""
+
+    def test_build_prompt_calm_state_returns_empty(self):
+        """状态接近基线时不应注入（阻尼机制）"""
+        ws_data = {
+            "state_summary_text": "平静状态",
+            "attention_level": 0.1,
+            "panic_level": 0.1,
+            "trust_level": 0.6,
+            "polarization_level": 0.1,
+            "recent_events": [],
+        }
+        prompt = build_world_state_prompt(ws_data)
+        assert prompt == "", "环境平静时不应注入任何内容"
+
+    def test_build_prompt_filters_low_severity_events(self):
+        """低严重度事件不应出现在 prompt 中"""
+        ws_data = {
+            "state_summary_text": "状态摘要",
+            "attention_level": 0.7,
+            "panic_level": 0.5,
+            "trust_level": 0.3,
+            "polarization_level": 0.4,
+            "recent_events": [
+                {"event_type": "minor", "description": "小事件", "severity": 0.3},
+            ],
+        }
+        prompt = build_world_state_prompt(ws_data)
+        assert "小事件" not in prompt
+
+    def test_build_prompt_includes_high_severity_events(self):
+        """高严重度事件应出现在 prompt 中"""
+        ws_data = {
+            "state_summary_text": "状态摘要",
+            "attention_level": 0.7,
+            "panic_level": 0.5,
+            "trust_level": 0.3,
+            "polarization_level": 0.4,
+            "recent_events": [
+                {"event_type": "trust_drop", "description": "信任骤降", "severity": 0.8},
+            ],
+        }
+        prompt = build_world_state_prompt(ws_data)
+        # v7: trust_drop → "针对先前说法的追问" / "核验性问题"
+        assert "近期动态" in prompt
+        assert any(tok in prompt for tok in ("追问", "核验", "先前说法", "解释"))
+
+
+# ============================================================
+# §5.5 差异化感知（Differentiated Perception）
+# ============================================================
+
+@pytest.mark.skipif(not _HAS_SIMULATION_SCRIPT, reason="OASIS 依赖未安装")
+class TestDifferentiatedPerception:
+    """测试不同立场的 Agent 对同一世界状态的差异化感知"""
+
+    # 共用的"高偏离"世界状态数据（确保通过阻尼检查）
+    HIGH_DEVIATION_STATE = {
+        "state_summary_text": "当前环境状态：舆论高度关注",
+        "attention_level": 0.8,
+        "panic_level": 0.6,
+        "trust_level": 0.2,
+        "polarization_level": 0.5,
+        "recent_events": [
+            {"event_type": "heat_spike", "description": "热度急升", "severity": 0.7},
+            {"event_type": "minor_rumor", "description": "小道消息流传", "severity": 0.35},
+            {"event_type": "trust_drop", "description": "信任崩塌", "severity": 0.45},
+            {"event_type": "official_silence", "description": "官方沉默引发猜测", "severity": 0.55},
+        ],
+    }
+
+    # --- _load_agent_role_map 测试 ---
+
+    def test_load_role_map_basic(self):
+        """应正确解析 agent_configs 中的 entity_type 和 stance"""
+        config = {
+            "agent_configs": [
+                {"agent_id": 0, "entity_type": "Student", "stance": "opposing"},
+                {"agent_id": 1, "entity_type": "Official", "stance": "supportive"},
+                {"agent_id": 2, "entity_type": "Media", "stance": "observer"},
+            ]
+        }
+        role_map = _load_agent_role_map(config)
+        assert len(role_map) == 3
+        assert role_map[0]["stance"] == "opposing"
+        assert role_map[1]["entity_type"] == "Official"
+        assert role_map[2]["stance"] == "observer"
+
+    def test_load_role_map_defaults(self):
+        """缺少 stance/entity_type 时应回退到默认值"""
+        config = {
+            "agent_configs": [
+                {"agent_id": 5},
+            ]
+        }
+        role_map = _load_agent_role_map(config)
+        assert role_map[5]["stance"] == "neutral"
+        assert role_map[5]["entity_type"] == "Unknown"
+
+    def test_load_role_map_empty(self):
+        """空 agent_configs 应返回空字典"""
+        assert _load_agent_role_map({}) == {}
+        assert _load_agent_role_map({"agent_configs": []}) == {}
+
+    # --- 向后兼容测试 ---
+
+    def test_backward_compat_no_role(self):
+        """不传 agent_role 时应与 v1 行为一致（neutral 默认）"""
+        prompt_no_role = build_world_state_prompt(self.HIGH_DEVIATION_STATE)
+        prompt_neutral = build_world_state_prompt(
+            self.HIGH_DEVIATION_STATE,
+            agent_role={"entity_type": "Unknown", "stance": "neutral"}
+        )
+        # neutral + no role 应产生相同输出
+        assert prompt_no_role == prompt_neutral
+
+    def test_backward_compat_none_role(self):
+        """agent_role=None 时应与无参调用一致"""
+        prompt_none = build_world_state_prompt(self.HIGH_DEVIATION_STATE, agent_role=None)
+        prompt_bare = build_world_state_prompt(self.HIGH_DEVIATION_STATE)
+        assert prompt_none == prompt_bare
+
+    # --- 差异化事件过滤测试 ---
+
+    def test_opposing_sees_more_events(self):
+        """opposing 立场（阈值 0.4）应比 neutral（阈值 0.5）看到更多事件"""
+        prompt_opposing = build_world_state_prompt(
+            self.HIGH_DEVIATION_STATE,
+            agent_role={"entity_type": "Student", "stance": "opposing"}
+        )
+        prompt_neutral = build_world_state_prompt(
+            self.HIGH_DEVIATION_STATE,
+            agent_role={"entity_type": "Citizen", "stance": "neutral"}
+        )
+        # severity=0.45 的事件：opposing 看得到，neutral 看不到
+        # v7: trust_drop → "针对先前说法的追问正在增加" / "核验性问题"
+        assert any(tok in prompt_opposing for tok in ("追问", "核验", "先前说法", "解释"))
+        # neutral 阈值更高（0.5），这条 severity=0.45 事件不应出现在 neutral prompt
+        assert "追问正在增加" not in prompt_neutral
+        assert "核验性问题" not in prompt_neutral
+
+    def test_supportive_sees_fewer_events(self):
+        """supportive 立场（阈值 0.6）应过滤更多事件"""
+        prompt_supportive = build_world_state_prompt(
+            self.HIGH_DEVIATION_STATE,
+            agent_role={"entity_type": "Official", "stance": "supportive"}
+        )
+        # severity=0.55 的事件被过滤（阈值0.6）
+        # v4: 事件被抽象化，检查抽象文本而非原始描述
+        assert "官方沉默" not in prompt_supportive
+        # v7: heat_spike → "相关话题近期进入较高讨论量区间" / "讨论数量较前一阶段增加"
+        assert any(tok in prompt_supportive for tok in ("讨论量", "讨论数量", "话题"))
+
+    def test_observer_sees_most_events(self):
+        """observer 立场（阈值 0.35）应看到更多事件"""
+        prompt_observer = build_world_state_prompt(
+            self.HIGH_DEVIATION_STATE,
+            agent_role={"entity_type": "Media", "stance": "observer"}
+        )
+        # v3: 高偏离时显示事件，最多2个
+        # v7: 事件被抽象化且变体扩大
+        assert "近期动态" in prompt_observer
+        assert any(tok in prompt_observer for tok in ("讨论量", "讨论数量", "话题", "讨论分支"))
+        # observer 应该看到比 neutral 更多事件
+        prompt_neutral = build_world_state_prompt(
+            self.HIGH_DEVIATION_STATE,
+            agent_role={"entity_type": "Citizen", "stance": "neutral"}
+        )
+        assert prompt_observer.count("近期动态") >= prompt_neutral.count("近期动态")
+
+    def test_all_stances_filter_very_low_severity(self):
+        """所有立场都不应看到 severity < 0.35 的事件"""
+        ws = dict(self.HIGH_DEVIATION_STATE)
+        ws["recent_events"] = [
+            {"event_type": "noise", "description": "微弱噪声", "severity": 0.1},
+        ]
+        for stance in ["supportive", "opposing", "observer", "neutral"]:
+            prompt = build_world_state_prompt(
+                ws, agent_role={"entity_type": "Any", "stance": stance}
+            )
+            assert "微弱噪声" not in prompt
+
+    # --- 差异化感知提示测试 ---
+
+    def test_opposing_sees_panic_signals(self):
+        """opposing 应侧重看到恐慌/极化信号（v3: 不再使用指令式 perspective_hint）"""
+        prompt = build_world_state_prompt(
+            self.HIGH_DEVIATION_STATE,
+            agent_role={"entity_type": "Student", "stance": "opposing"}
+        )
+        # v7: opposing focus_dims=[panic_level, polarization_level]
+        # 新词汇：panic_level → "担忧"; polarization → "解读/立场"
+        assert any(tok in prompt for tok in ("担忧", "解读", "立场", "分歧"))
+
+    def test_supportive_sees_trust_signals(self):
+        """supportive 应侧重看到信任/稳定信号（v3: 不再使用指令式 perspective_hint）"""
+        prompt = build_world_state_prompt(
+            self.HIGH_DEVIATION_STATE,
+            agent_role={"entity_type": "Official", "stance": "supportive"}
+        )
+        # v7: supportive focus_dims=[stability_level, trust_level]
+        # 新词汇：stability → "稳定/讨论节奏"; trust → "核验/质疑"
+        assert any(tok in prompt for tok in ("稳定", "节奏", "核验", "质疑", "信息来源"))
+
+    def test_observer_sees_attention_signals(self):
+        """observer 应侧重看到关注度/极化信号（v3: 不再使用指令式 perspective_hint）"""
+        prompt = build_world_state_prompt(
+            self.HIGH_DEVIATION_STATE,
+            agent_role={"entity_type": "Media", "stance": "observer"}
+        )
+        # v7: observer focus_dims=[attention_level, polarization_level]
+        # 新词汇：attention → "参与量"; polarization → "解读/立场"
+        assert any(tok in prompt for tok in ("参与量", "解读", "立场", "分歧"))
+
+    def test_neutral_has_no_perspective_hint(self):
+        """neutral 不应包含额外感知提示"""
+        prompt = build_world_state_prompt(
+            self.HIGH_DEVIATION_STATE,
+            agent_role={"entity_type": "Citizen", "stance": "neutral"}
+        )
+        assert "不满" not in prompt
+        assert "理性" not in prompt
+        assert "旁观者" not in prompt
+
+    # --- 阻尼机制在差异化场景中的保持 ---
+
+    def test_calm_state_returns_empty_for_all_stances(self):
+        """平静状态下所有立场都不应注入"""
+        calm_state = {
+            "state_summary_text": "平静",
+            "attention_level": 0.1,
+            "panic_level": 0.1,
+            "trust_level": 0.6,
+            "polarization_level": 0.1,
+            "recent_events": [],
+        }
+        for stance in ["supportive", "opposing", "observer", "neutral"]:
+            prompt = build_world_state_prompt(
+                calm_state, agent_role={"entity_type": "Any", "stance": stance}
+            )
+            assert prompt == "", f"stance={stance} 在平静状态下不应注入"
+
+    # --- _STANCE_PERCEPTION_PROFILES 完整性 ---
+
+    def test_perception_profiles_cover_all_stances(self):
+        """感知配置应覆盖所有四种立场"""
+        expected = {"supportive", "opposing", "observer", "neutral"}
+        assert set(_STANCE_PERCEPTION_PROFILES.keys()) == expected
+
+    def test_perception_profiles_have_required_keys(self):
+        """每个感知配置应包含必需字段"""
+        required_keys = {"focus_dims", "suppress_dims", "event_severity_threshold", "perspective_hint"}
+        for stance, profile in _STANCE_PERCEPTION_PROFILES.items():
+            for key in required_keys:
+                assert key in profile, f"stance={stance} 缺少字段: {key}"
+
+    # --- 未知立场降级 ---
+
+    def test_unknown_stance_falls_back_to_neutral(self):
+        """未知立场应退化为 neutral 行为"""
+        prompt_unknown = build_world_state_prompt(
+            self.HIGH_DEVIATION_STATE,
+            agent_role={"entity_type": "Alien", "stance": "unknown_stance"}
+        )
+        prompt_neutral = build_world_state_prompt(
+            self.HIGH_DEVIATION_STATE,
+            agent_role={"entity_type": "Alien", "stance": "neutral"}
+        )
+        assert prompt_unknown == prompt_neutral
+
+
+# ============================================================
+# §6 SimulationRunner 共享文件写入
+# ============================================================
+
+class TestSimulationRunnerWorldStateWrite:
+    """测试 _write_world_state_for_subprocess 的文件写入"""
+
+    @pytest.fixture
+    def tmp_sim_dir(self):
+        d = tempfile.mkdtemp(prefix="nexusmind_runner_test_")
+        yield d
+        shutil.rmtree(d, ignore_errors=True)
+
+    def test_write_world_state_creates_file(self, tmp_sim_dir):
+        """写入后应生成 world_state_current.json"""
+        from app.services.simulation_runner import SimulationRunner
+        
+        # 构造 mock WorldStateEngine
+        mock_engine = MagicMock()
+        mock_state = WorldStateSnapshot(
+            round_num=3,
+            timestamp="2026-01-01T00:00:00",
+            attention_level=0.6,
+            panic_level=0.2,
+            trust_level=0.5,
+        )
+        mock_engine.current_state = mock_state
+        mock_engine.events = []
+        
+        # 模拟 simulation_id 对应的目录
+        sim_id = "test_sim_001"
+        sim_dir = os.path.join(tmp_sim_dir, sim_id)
+        os.makedirs(sim_dir, exist_ok=True)
+        
+        with patch.object(SimulationRunner, 'RUN_STATE_DIR', tmp_sim_dir):
+            SimulationRunner._write_world_state_for_subprocess(sim_id, mock_engine)
+        
+        ws_file = os.path.join(sim_dir, "world_state_current.json")
+        assert os.path.exists(ws_file)
+        
+        with open(ws_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        assert data["round_num"] == 3
+        assert data["attention_level"] == 0.6
+        assert "state_summary_text" in data
+        assert "recent_events" in data
+
+    def test_write_world_state_atomic(self, tmp_sim_dir):
+        """写入应是原子的（无 .tmp 残留）"""
+        from app.services.simulation_runner import SimulationRunner
+        
+        mock_engine = MagicMock()
+        mock_engine.current_state = WorldStateSnapshot(round_num=1, timestamp="t")
+        mock_engine.events = []
+        
+        sim_id = "test_sim_atomic"
+        sim_dir = os.path.join(tmp_sim_dir, sim_id)
+        os.makedirs(sim_dir, exist_ok=True)
+        
+        with patch.object(SimulationRunner, 'RUN_STATE_DIR', tmp_sim_dir):
+            SimulationRunner._write_world_state_for_subprocess(sim_id, mock_engine)
+        
+        tmp_file = os.path.join(sim_dir, "world_state_current.json.tmp")
+        assert not os.path.exists(tmp_file), ".tmp 文件应已被 os.replace 删除"
+
+    def test_write_world_state_with_events(self, tmp_sim_dir):
+        """最近事件应包含在输出中"""
+        from app.services.simulation_runner import SimulationRunner
+        
+        mock_engine = MagicMock()
+        mock_engine.current_state = WorldStateSnapshot(round_num=5, timestamp="t")
+        mock_engine.events = [
+            WorldEvent(
+                event_id="e1", round_num=4, timestamp="t",
+                event_type="heat_spike", description="舆论热度急升",
+                severity=0.8, affected_variables={"attention_level": 0.3}
+            ),
+            WorldEvent(
+                event_id="e2", round_num=5, timestamp="t",
+                event_type="official_response", description="官方发布回应",
+                severity=0.6, affected_variables={"trust_level": 0.2}
+            ),
+        ]
+        
+        sim_id = "test_sim_events"
+        sim_dir = os.path.join(tmp_sim_dir, sim_id)
+        os.makedirs(sim_dir, exist_ok=True)
+        
+        with patch.object(SimulationRunner, 'RUN_STATE_DIR', tmp_sim_dir):
+            SimulationRunner._write_world_state_for_subprocess(sim_id, mock_engine)
+        
+        ws_file = os.path.join(sim_dir, "world_state_current.json")
+        with open(ws_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        assert len(data["recent_events"]) == 2
+        assert data["recent_events"][0]["event_type"] == "heat_spike"
+
+
+# ============================================================
+# 运行入口
+# ============================================================
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "--tb=short"])

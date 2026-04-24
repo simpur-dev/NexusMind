@@ -47,6 +47,11 @@
               :class="{ available: project.report_id, unavailable: !project.report_id }"
               title="分析报告"
             >◆</span>
+            <span
+              class="card-delete-btn"
+              title="删除此推演记录"
+              @click.stop="confirmDelete(project)"
+            >×</span>
           </div>
         </div>
 
@@ -92,6 +97,11 @@
           <span class="card-progress" :class="getProgressClass(project)">
             <span class="status-dot">●</span> {{ formatRounds(project) }}
           </span>
+        </div>
+
+        <!-- 快捷入口：事件工作台 -->
+        <div v-if="project.project_id" class="card-workspace-link" @click.stop="quickGoWorkspace(project)">
+          <span class="workspace-icon">⌁</span> 事件工作台
         </div>
         
         <!-- 底部装饰线 (hover时展开) -->
@@ -170,6 +180,14 @@
                 <span class="btn-text">环境搭建</span>
               </button>
               <button 
+                class="modal-btn btn-step3" 
+                @click="goToStep3"
+              >
+                <span class="btn-step">Step3</span>
+                <span class="btn-icon">▶</span>
+                <span class="btn-text">开始模拟</span>
+              </button>
+              <button 
                 class="modal-btn btn-report" 
                 @click="goToReport"
                 :disabled="!selectedProject.report_id"
@@ -178,10 +196,23 @@
                 <span class="btn-icon">◆</span>
                 <span class="btn-text">分析报告</span>
               </button>
-            </div>
-            <!-- 不可回放提示 -->
-            <div class="modal-playback-hint">
-              <span class="hint-text">Step3「开始模拟」与 Step5「深度互动」需在运行中启动，不支持历史回放</span>
+              <button 
+                class="modal-btn btn-step5" 
+                @click="goToStep5"
+              >
+                <span class="btn-step">Step5</span>
+                <span class="btn-icon">💬</span>
+                <span class="btn-text">深度互动</span>
+              </button>
+              <button 
+                class="modal-btn btn-incident" 
+                @click="goToIncidentWorkspace"
+                :disabled="!selectedProject.project_id"
+              >
+                <span class="btn-step">OPS</span>
+                <span class="btn-icon">⌁</span>
+                <span class="btn-text">事件工作台</span>
+              </button>
             </div>
           </div>
         </div>
@@ -193,7 +224,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, onActivated, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { getSimulationHistory } from '../api/simulation'
+import { getSimulationHistory, deleteSimulation } from '../api/simulation'
 
 const router = useRouter()
 const route = useRoute()
@@ -396,6 +427,31 @@ const navigateToProject = (simulation) => {
   selectedProject.value = simulation
 }
 
+// 删除推演记录（带确认）
+const confirmDelete = async (project) => {
+  if (!project?.simulation_id) return
+  const simLabel = formatSimulationId(project.simulation_id)
+  const confirmed = window.confirm(`确定要删除推演记录 ${simLabel} 吗？\n此操作会停止运行中的进程并删除相关数据，不可撤销。`)
+  if (!confirmed) return
+  
+  try {
+    const res = await deleteSimulation(project.simulation_id)
+    if (res.success) {
+      // 乐观更新：从列表中移除
+      projects.value = projects.value.filter(p => p.simulation_id !== project.simulation_id)
+      // 若当前打开了详情弹窗则关闭
+      if (selectedProject.value?.simulation_id === project.simulation_id) {
+        selectedProject.value = null
+      }
+    } else {
+      alert('删除失败：' + (res.error || '未知错误'))
+    }
+  } catch (err) {
+    console.error('删除推演记录失败:', err)
+    alert('删除失败：' + (err.message || '网络错误'))
+  }
+}
+
 // 关闭弹窗
 const closeModal = () => {
   selectedProject.value = null
@@ -413,34 +469,85 @@ const goToProject = () => {
 }
 
 // 导航到环境配置页面（Simulation）
-// 跳转到 Process 页面，通过 projectId 加载，自动恢复到 Step 2
+// 跳转到 Process 页面，通过 query.step=2 强制定位到 Step 2
 const goToSimulation = () => {
   if (selectedProject.value?.project_id) {
     router.push({
       name: 'Process',
+      params: { projectId: selectedProject.value.project_id },
+      query: { step: 2 }
+    })
+    closeModal()
+  }
+}
+
+// 导航到开始模拟页面
+const goToStep3 = () => {
+  if (selectedProject.value?.project_id) {
+    router.push({
+      name: 'Process',
+      params: { projectId: selectedProject.value.project_id },
+      query: { step: 3 }
+    })
+    closeModal()
+  }
+}
+
+// 导航到分析报告页面
+// 跳转到 Process 页面，通过 query.step=4 强制定位到 Step 4
+const goToReport = () => {
+  if (selectedProject.value?.project_id) {
+    router.push({
+      name: 'Process',
+      params: { projectId: selectedProject.value.project_id },
+      query: { step: 4 }
+    })
+    closeModal()
+  }
+}
+
+// 导航到深度互动页面
+const goToStep5 = () => {
+  if (selectedProject.value?.project_id) {
+    router.push({
+      name: 'Process',
+      params: { projectId: selectedProject.value.project_id },
+      query: { step: 5 }
+    })
+    closeModal()
+  }
+}
+
+// 导航到事件工作台（滚动预测决策支持）
+const goToIncidentWorkspace = () => {
+  if (selectedProject.value?.project_id) {
+    router.push({
+      name: 'IncidentWorkspace',
       params: { projectId: selectedProject.value.project_id }
     })
     closeModal()
   }
 }
 
-// 导航到分析报告页面（Simulation/Step2 → Step3 → Step4）
-// 同样跳转到 Process 页面，自动恢复到 Step 4
-const goToReport = () => {
-  if (selectedProject.value?.project_id) {
+// 卡片上的快捷工作台入口
+const quickGoWorkspace = (project) => {
+  if (project.project_id) {
     router.push({
-      name: 'Process',
-      params: { projectId: selectedProject.value.project_id }
+      name: 'IncidentWorkspace',
+      params: { projectId: project.project_id }
     })
-    closeModal()
   }
 }
 
 // 加载历史项目
 const loadHistory = async () => {
+  loading.value = true
+  // 10秒超时保护，避免后端卡死导致前端永久加载
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('加载超时')), 10000)
+  )
   try {
-    loading.value = true
-    const response = await getSimulationHistory(20)
+    const response = await Promise.race([getSimulationHistory(20), timeoutPromise])
     if (response.success) {
       projects.value = response.data || []
     }
@@ -730,6 +837,26 @@ onUnmounted(() => {
 .status-icon.unavailable {
   color: #D1D5DB;
   opacity: 0.5;
+}
+
+/* 删除按钮 */
+.card-delete-btn {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #D1D5DB;
+  cursor: pointer;
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
+  transition: all 0.2s ease;
+  line-height: 1;
+  user-select: none;
+}
+
+.card-delete-btn:hover {
+  color: #EF4444;
+  background: rgba(239, 68, 68, 0.1);
+  transform: scale(1.2);
 }
 
 /* 轮数进度显示 */
@@ -1316,27 +1443,38 @@ onUnmounted(() => {
 
 .modal-btn.btn-project .btn-icon { color: #3B82F6; }
 .modal-btn.btn-simulation .btn-icon { color: #F59E0B; }
+.modal-btn.btn-step3 .btn-icon { color: #8B5CF6; }
 .modal-btn.btn-report .btn-icon { color: #10B981; }
-
-.modal-btn:hover:not(:disabled) .btn-text {
-  color: #111827;
-}
-
-/* 不可回放提示 */
-.modal-playback-hint {
+.modal-btn.btn-step5 .btn-icon { color: #EC4899; }
+/* 卡片快捷工作台入口 */
+.card-workspace-link {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 32px 20px;
-  background: #FFFFFF;
+  gap: 4px;
+  padding: 5px 0;
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #63b3ed;
+  background: rgba(99, 179, 237, 0.06);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  opacity: 0;
 }
+.project-card:hover .card-workspace-link { opacity: 1; }
+.card-workspace-link:hover {
+  background: rgba(99, 179, 237, 0.15);
+  color: #90cdf4;
+}
+.workspace-icon { font-size: 13px; }
 
-.hint-text {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.7rem;
-  color: #9CA3AF;
-  letter-spacing: 0.3px;
-  text-align: center;
-  line-height: 1.5;
+.modal-btn.btn-incident { border-color: rgba(99, 179, 237, 0.3); }
+.modal-btn.btn-incident .btn-icon { color: #63b3ed; }
+.modal-btn.btn-incident .btn-step { color: #63b3ed; }
+
+.modal-btn:hover:not(:disabled) .btn-text {
+  color: #111827;
 }
 </style>

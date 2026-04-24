@@ -4,6 +4,7 @@
 """
 
 import os
+import re
 import uuid
 import time
 import asyncio
@@ -12,6 +13,7 @@ from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from pydantic import BaseModel, Field, create_model
 from graphiti_core import Graphiti
 from graphiti_core.nodes import EpisodeType
 
@@ -20,6 +22,7 @@ from ..models.task import TaskManager, TaskStatus
 from ..utils.graphiti_client import get_graphiti, create_fresh_graphiti, run_async, run_async_batch, remove_instance, get_neo4j_async_driver
 from .text_processor import TextProcessor
 from .vector_store import VectorStore
+from .entity_cleaner import clean_node_dicts
 
 
 @dataclass
@@ -42,14 +45,71 @@ class GraphInfo:
 class GraphBuilderService:
     """
     图谱构建服务
-    负责调用 Graphiti + FalkorDB 构建知识图谱
+    负责调用 Graphiti + Neo4j 构建知识图谱
     """
     
     def __init__(self, api_key: Optional[str] = None):
         # api_key 参数保留用于兼容，但 Graphiti 使用环境变量中的 OPENAI_API_KEY
         self.task_manager = TaskManager()
         self.vector_store = VectorStore()
-    
+
+    @staticmethod
+    def _normalize_summary_line(text: str) -> str:
+        """清洗单行摘要文本，减少多余空白和标点间隔。"""
+        if not text:
+            return ""
+        text = text.replace("\u3000", " ")
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\s*([，。；：！？])\s*", r"\1", text)
+        return text.strip(" \n\t•-")
+
+    @classmethod
+    def _format_node_summary(cls, raw_summary: str, max_points: int = 4) -> str:
+        """将原始摘要整理为“简介 + 要点”格式。"""
+        if not raw_summary:
+            return ""
+
+        normalized = raw_summary.replace("\r\n", "\n").replace("\r", "\n")
+        lines = [cls._normalize_summary_line(line) for line in normalized.split("\n")]
+        lines = [line for line in lines if line]
+
+        unique_lines = []
+        seen = set()
+        for line in lines:
+            dedupe_key = re.sub(r"\s+", "", line)
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            unique_lines.append(line)
+
+        if not unique_lines:
+            return cls._normalize_summary_line(normalized)
+
+        if len(unique_lines) == 1:
+            merged = unique_lines[0]
+            clauses = [part.strip() for part in re.split(r"(?<=[。；！？])", merged) if part.strip()]
+            if len(clauses) <= 1:
+                return merged
+            intro = clauses[0]
+            points = clauses[1:1 + max_points]
+            extra_count = max(len(clauses) - 1 - max_points, 0)
+            formatted = [intro, ""]
+            formatted.extend([f"- {point}" for point in points])
+            if extra_count:
+                formatted.append(f"- 等 {extra_count} 条相关信息")
+            return "\n".join(formatted)
+
+        intro = unique_lines[0]
+        points = unique_lines[1:1 + max_points]
+        extra_count = max(len(unique_lines) - 1 - max_points, 0)
+        formatted = [intro]
+        if points:
+            formatted.append("")
+            formatted.extend([f"- {point}" for point in points])
+            if extra_count:
+                formatted.append(f"- 等 {extra_count} 条相关信息")
+        return "\n".join(formatted)
+
     def build_graph_async(
         self,
         text: str,
@@ -179,10 +239,36 @@ class GraphBuilderService:
                 )
             )
             
-            # 7. 获取图谱信息
+            # 7. 实体类型标注（用 LLM 为未分类节点标注本体类型）
             self.task_manager.update_task(
                 task_id,
-                progress=90,
+                progress=88,
+                message="标注实体类型..."
+            )
+            try:
+                from .entity_type_annotator import annotate_entity_types
+                annotations = annotate_entity_types(
+                    graph_id=graph_id,
+                    ontology=ontology,
+                    use_llm=True,
+                    progress_callback=lambda msg, prog: self.task_manager.update_task(
+                        task_id,
+                        progress=88 + int(prog * 7),  # 88-95%
+                        message=f"标注实体类型: {msg}"
+                    )
+                )
+                import logging
+                logging.getLogger(__name__).info(
+                    f"实体类型标注完成: {len(annotations)} 个节点已标注"
+                )
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"实体类型标注失败（不影响图谱使用）: {e}")
+            
+            # 8. 获取图谱信息
+            self.task_manager.update_task(
+                task_id,
+                progress=95,
                 message="获取图谱信息..."
             )
             
@@ -226,24 +312,93 @@ class GraphBuilderService:
         
         return graph_id
     
+    # 中文抽取指令，注入到每个 add_episode 调用
+    CHINESE_EXTRACTION_INSTRUCTIONS = (
+        "## 语言要求\n"
+        "所有提取的实体名称（entity name）和关系名称（edge name / fact）都必须使用简体中文。"
+        "如果原文是英文，请将实体名翻译为中文。"
+        "例如：'Harvard University' → '哈佛大学'，'Donald Trump' → '唐纳德·特朗普'，'FBI' → '美国联邦调查局'。"
+        "关系描述（fact）也使用中文。实体名称应尽量使用完整的中文名称，不要截断。\n\n"
+        "## 实体质量要求（极其重要）\n"
+        "只提取以下类型的实体——即现实世界中具体存在的、可以在社交媒体上发声或被提及的主体：\n"
+        "✅ 可以提取：具体的人名（如'张三'、'马克·扎克伯格'）、具体组织（如'北京大学'、'美国教育部'、'纽约时报'）、"
+        "具体平台（如'微博'、'Twitter'）、具体国家/地区（如'美国'、'欧盟'）、具体政党/团体（如'共和党'、'绿色和平'）\n"
+        "❌ 绝对不能提取：抽象概念、主题词、话题、情感、态度、趋势、价值观。"
+        "以下类型的词语绝对不能作为实体：'学术诚信'、'校园氛围'、'职业'、'教学'、'分歧'、"
+        "'行动呼吁'、'多样性'、'公平性'、'包容性'、'舆论'、'情绪'、'观点'、"
+        "'政策'、'分歧'、'招生'、'海外留学'、'档案'、'文件'、'调查'、'教育'等。"
+        "这些是主题/概念，不是可以独立存在的实体。\n\n"
+        "## 判断标准\n"
+        "提取实体前请自问：'这个词在现实中是否指一个具体的人、机构或组织？能否有自己的社交媒体账号？'"
+        "如果答案是否，则不要提取为实体。"
+    )
+
+    @staticmethod
+    def _build_pydantic_entity_types(ontology: Dict[str, Any]) -> Dict[str, type]:
+        """
+        将本体 entity_types 转为 Graphiti 所需的 Pydantic 模型字典。
+        每个 key 是实体类型名（PascalCase），value 是动态生成的 BaseModel 子类。
+        """
+        entity_models: Dict[str, type] = {}
+        for entity_def in ontology.get("entity_types", []):
+            name = entity_def["name"]
+            desc = entity_def.get("description", name)
+            fields: Dict[str, Any] = {}
+            for attr in entity_def.get("attributes", []):
+                attr_name = attr["name"]
+                attr_desc = attr.get("description", attr_name)
+                fields[attr_name] = (Optional[str], Field(default=None, description=attr_desc))
+            model = create_model(name, __doc__=desc, **fields)
+            entity_models[name] = model
+        return entity_models
+
+    @staticmethod
+    def _build_pydantic_edge_types(ontology: Dict[str, Any]):
+        """
+        将本体 edge_types 转为 Graphiti 所需的 Pydantic 模型字典及 edge_type_map。
+        """
+        edge_models: Dict[str, type] = {}
+        edge_type_map: Dict[tuple, List[str]] = {}
+        for edge_def in ontology.get("edge_types", []):
+            name = edge_def["name"]
+            desc = edge_def.get("description", name)
+            fields: Dict[str, Any] = {}
+            for attr in edge_def.get("attributes", []):
+                attr_name = attr["name"]
+                attr_desc = attr.get("description", attr_name)
+                fields[attr_name] = (Optional[str], Field(default=None, description=attr_desc))
+            model = create_model(name, __doc__=desc, **fields)
+            edge_models[name] = model
+            for st in edge_def.get("source_targets", []):
+                src = st.get("source", "Entity")
+                tgt = st.get("target", "Entity")
+                key = (src, tgt)
+                edge_type_map.setdefault(key, [])
+                if name not in edge_type_map[key]:
+                    edge_type_map[key].append(name)
+        return edge_models, edge_type_map
+
     def set_ontology(self, graph_id: str, ontology: Dict[str, Any]):
         """
         设置图谱本体。
         
-        Graphiti 支持 prescribed ontology（通过 Pydantic 模型）和 learned ontology。
-        这里将本体信息序列化为描述文本，作为首个 episode 注入，
-        让 Graphiti 自动学习本体结构。
+        使用 Graphiti 的 prescribed ontology（Pydantic 模型）精确约束实体和关系类型，
+        并将本体文本作为首个 episode 注入以提供上下文。
         """
-        # 构建本体描述文本
+        # 构建 Pydantic 模型，缓存在实例上供 add_text_batches 复用
+        self._entity_types = self._build_pydantic_entity_types(ontology)
+        self._edge_types, self._edge_type_map = self._build_pydantic_edge_types(ontology)
+        
+        # 仍然构建文本描述用于首个 episode 的上下文
         ontology_text_parts = ["=== 本体定义 (Ontology) ===\n"]
         
         for entity_def in ontology.get("entity_types", []):
             name = entity_def["name"]
             desc = entity_def.get("description", "")
-            attrs = entity_def.get("attributes", [])
-            attr_str = ", ".join([a["name"] for a in attrs]) if attrs else "无"
+            examples = entity_def.get("examples", [])
+            examples_str = ", ".join(examples[:3]) if examples else "无"
             ontology_text_parts.append(
-                f"实体类型 [{name}]: {desc}. 属性: {attr_str}"
+                f"实体类型 [{name}]: {desc}. 示例: {examples_str}"
             )
         
         for edge_def in ontology.get("edge_types", []):
@@ -257,15 +412,19 @@ class GraphBuilderService:
         
         ontology_text = "\n".join(ontology_text_parts)
         
-        # 作为首个 episode 注入
+        # 作为首个 episode 注入（带 prescribed 类型约束）
         graphiti = get_graphiti(graph_id)
         run_async(graphiti.add_episode(
             name="ontology_definition",
             episode_body=ontology_text,
             source=EpisodeType.text,
-            source_description="Knowledge graph ontology definition",
+            source_description="知识图谱本体定义",
             reference_time=datetime.now(timezone.utc),
-        ))
+            entity_types=self._entity_types,
+            edge_types=self._edge_types,
+            edge_type_map=self._edge_type_map,
+            custom_extraction_instructions=self.CHINESE_EXTRACTION_INSTRUCTIONS,
+        ), timeout=120)
     
     def add_text_batches(
         self,
@@ -309,8 +468,12 @@ class GraphBuilderService:
                     name=episode_name,
                     episode_body=chunk,
                     source=EpisodeType.text,
-                    source_description=f"Document chunk {idx + 1}/{total_chunks}",
+                    source_description=f"文档片段 {idx + 1}/{total_chunks}",
                     reference_time=datetime.now(timezone.utc),
+                    entity_types=getattr(self, '_entity_types', None),
+                    edge_types=getattr(self, '_edge_types', None),
+                    edge_type_map=getattr(self, '_edge_type_map', None),
+                    custom_extraction_instructions=self.CHINESE_EXTRACTION_INSTRUCTIONS,
                 ))
             
             try:
@@ -381,7 +544,7 @@ class GraphBuilderService:
         获取完整图谱数据（直接通过 Neo4j Cypher 查询）。
         
         1. 查询所有 Entity 节点和 RELATES_TO 边
-        2. 基于 ontology 类型名和边连接推断每个节点的 entity type
+        2. 基于 Neo4j 持久化的 entity_type + 推断逻辑确定每个节点的类型
         3. 将 entity type 写入 labels，供前端按类型着色
         """
         async def _fetch():
@@ -391,6 +554,7 @@ class GraphBuilderService:
             node_result = await driver.execute_query(
                 f"MATCH (n:Entity) {gid_filter} "
                 "RETURN n.uuid AS uuid, n.name AS name, n.summary AS summary, "
+                "n.entity_type AS entity_type, "
                 "n.group_id AS group_id, n.created_at AS created_at",
                 gid=graph_id,
                 database_=Config.NEO4J_DATABASE,
@@ -428,55 +592,13 @@ class GraphBuilderService:
             traceback.print_exc()
             node_records, edge_records, cooccur_records = [], [], []
         
-        # --- 推断 entity type ---
-        # 收集所有节点名称
-        all_names = set()
-        node_summaries = {}
-        for rec in node_records:
-            name = rec["name"] or ""
-            all_names.add(name)
-            node_summaries[name] = rec["summary"] or ""
-        
-        # 识别 type 定义节点（summary 包含 "属性:" 模式，说明是 ontology 类型描述）
-        type_names = set()
-        for name, summary in node_summaries.items():
-            if summary and "属性:" in summary and len(summary) > 30:
-                type_names.add(name)
-        
-        # 通过边关系推断实例节点的类型（实例 → 类型定义节点 的边）
-        node_uuid_to_name = {}
-        for rec in node_records:
-            node_uuid_to_name[rec["uuid"]] = rec["name"] or ""
-        
-        # 正向 + 反向关系：如果一个实例节点连接到一个类型定义节点，就继承该类型
-        node_type_map = {}  # node_name -> entity_type
-        for rec in edge_records:
-            src = rec["source_name"] or ""
-            tgt = rec["target_name"] or ""
-            if src in type_names and tgt not in type_names:
-                if tgt not in node_type_map:
-                    node_type_map[tgt] = src
-            elif tgt in type_names and src not in type_names:
-                if src not in node_type_map:
-                    node_type_map[src] = tgt
-        
-        # 对未分类节点，尝试从 summary 中匹配类型关键词
-        for name in all_names:
-            if name in type_names or name in node_type_map:
-                continue
-            summary = node_summaries.get(name, "")
-            for tn in type_names:
-                if tn.lower() in summary.lower():
-                    node_type_map[name] = tn
-                    break
+        # --- 复用 EntityReader 的推断逻辑（统一入口，避免重复代码） ---
+        from .entity_reader import EntityReader
+        _reader = EntityReader()
+        type_info = _reader._infer_entity_types(node_records, edge_records)
         
         def _get_labels(name: str) -> List[str]:
-            if name in type_names:
-                return ["Entity", name]
-            entity_type = node_type_map.get(name)
-            if entity_type:
-                return ["Entity", entity_type]
-            return ["Entity"]
+            return _reader._get_labels(name, type_info)
         
         # --- 构建返回数据 ---
         node_map = {}
@@ -487,11 +609,17 @@ class GraphBuilderService:
             node_map[uuid] = name
             
             created_at = rec["created_at"]
+            labels = _get_labels(name)
+            # 如果推断未产生具体类型，用 Neo4j entity_type 属性兜底
+            if len(labels) == 1 and labels[0] == "Entity":
+                stored_type = rec["entity_type"] if "entity_type" in rec.keys() else None
+                if stored_type:
+                    labels = ["Entity", stored_type]
             nodes_data.append({
                 "uuid": uuid,
                 "name": name,
-                "labels": _get_labels(name),
-                "summary": rec["summary"] or "",
+                "labels": labels,
+                "summary": self._format_node_summary(rec["summary"] or ""),
                 "attributes": {},
                 "created_at": str(created_at) if created_at else None,
             })
@@ -559,6 +687,14 @@ class GraphBuilderService:
                 "expired_at": None,
                 "episodes": [],
             })
+        
+        # --- 伪实体清洗：移除抽象概念节点和本体定义节点 ---
+        nodes_data = clean_node_dicts(nodes_data)
+        valid_uuids = {n["uuid"] for n in nodes_data}
+        edges_data = [
+            e for e in edges_data
+            if e["source_node_uuid"] in valid_uuids and e["target_node_uuid"] in valid_uuids
+        ]
         
         # --- 过滤孤立节点（无任何边的节点不显示）---
         connected_uuids = set()

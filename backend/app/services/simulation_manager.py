@@ -5,6 +5,7 @@ OASIS模拟管理器
 """
 
 import os
+import sys
 import json
 import shutil
 from typing import Dict, Any, List, Optional
@@ -71,6 +72,16 @@ class SimulationState:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
     
+    # Benchmark 知识等级控制
+    # "full": Tier A 完整信息（默认）
+    # "p1_only": Tier B 只保留 P1 阶段信息
+    # "identity": Tier C 盲测模式
+    knowledge_level: str = "full"
+    
+    # 滚动预测关联（Phase 2 新增，向后兼容）
+    baseline_id: Optional[str] = None
+    run_id: Optional[str] = None
+    
     # 错误信息
     error: Optional[str] = None
     
@@ -93,6 +104,9 @@ class SimulationState:
             "reddit_status": self.reddit_status,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "knowledge_level": self.knowledge_level,
+            "baseline_id": self.baseline_id,
+            "run_id": self.run_id,
             "error": self.error,
         }
     
@@ -107,6 +121,8 @@ class SimulationState:
             "profiles_count": self.profiles_count,
             "entity_types": self.entity_types,
             "config_generated": self.config_generated,
+            "baseline_id": self.baseline_id,
+            "run_id": self.run_id,
             "error": self.error,
         }
 
@@ -135,15 +151,21 @@ class SimulationManager:
         # 内存中的模拟状态缓存
         self._simulations: Dict[str, SimulationState] = {}
     
-    def _get_simulation_dir(self, simulation_id: str) -> str:
-        """获取模拟数据目录"""
+    def _get_simulation_dir(self, simulation_id: str, create: bool = False) -> str:
+        """获取模拟数据目录。
+
+        注意：默认 create=False，不会自动创建目录。这避免了在删除模拟时，
+        任何意外调用 `_get_simulation_dir` 的代码路径重新创建空目录的问题。
+        仅当明确需要写入时（如 `_save_simulation_state`）才设 create=True。
+        """
         sim_dir = os.path.join(self.SIMULATION_DATA_DIR, simulation_id)
-        os.makedirs(sim_dir, exist_ok=True)
+        if create:
+            os.makedirs(sim_dir, exist_ok=True)
         return sim_dir
     
     def _save_simulation_state(self, state: SimulationState):
         """保存模拟状态到文件"""
-        sim_dir = self._get_simulation_dir(state.simulation_id)
+        sim_dir = self._get_simulation_dir(state.simulation_id, create=True)
         state_file = os.path.join(sim_dir, "state.json")
         
         state.updated_at = datetime.now().isoformat()
@@ -184,6 +206,9 @@ class SimulationManager:
             reddit_status=data.get("reddit_status", "not_started"),
             created_at=data.get("created_at", datetime.now().isoformat()),
             updated_at=data.get("updated_at", datetime.now().isoformat()),
+            knowledge_level=data.get("knowledge_level", "full"),
+            baseline_id=data.get("baseline_id"),
+            run_id=data.get("run_id"),
             error=data.get("error"),
         )
         
@@ -196,19 +221,33 @@ class SimulationManager:
         graph_id: str,
         enable_twitter: bool = True,
         enable_reddit: bool = True,
+        knowledge_level: str = "full",
+        baseline_id: Optional[str] = None,
+        run_id: Optional[str] = None,
     ) -> SimulationState:
         """
-        创建新的模拟
+        创建新的模拟（同一项目复用已有模拟，避免重复生成Agent人设）
         
         Args:
             project_id: 项目ID
             graph_id: 图谱ID
             enable_twitter: 是否启用Twitter模拟
             enable_reddit: 是否启用Reddit模拟
+            knowledge_level: 信息泄漏控制等级 ("full"/"p1_only"/"identity")
+            baseline_id: 关联的基线快照ID（滚动预测时使用）
+            run_id: 关联的预测分支ID（滚动预测时使用）
             
         Returns:
             SimulationState
         """
+        # 当有 run_id 时，每个预测分支必须独立模拟，不复用
+        if not run_id:
+            # 检查该项目是否已有 *相同 knowledge_level* 的模拟，如果有则复用
+            existing = self._find_simulation_by_project(project_id, knowledge_level=knowledge_level)
+            if existing:
+                logger.info(f"复用已有模拟: {existing.simulation_id}, project={project_id}, level={knowledge_level}")
+                return existing
+        
         import uuid
         simulation_id = f"sim_{uuid.uuid4().hex[:12]}"
         
@@ -218,13 +257,39 @@ class SimulationManager:
             graph_id=graph_id,
             enable_twitter=enable_twitter,
             enable_reddit=enable_reddit,
+            knowledge_level=knowledge_level,
+            baseline_id=baseline_id,
+            run_id=run_id,
             status=SimulationStatus.CREATED,
         )
         
         self._save_simulation_state(state)
-        logger.info(f"创建模拟: {simulation_id}, project={project_id}, graph={graph_id}")
+        logger.info(f"创建模拟: {simulation_id}, project={project_id}, graph={graph_id}, run={run_id}")
         
         return state
+    
+    def _find_simulation_by_project(self, project_id: str, knowledge_level: str = "full") -> Optional[SimulationState]:
+        """查找项目对应的已有模拟（同 knowledge_level 才复用）"""
+        import os
+        sim_base = Config.OASIS_SIMULATION_DATA_DIR
+        if not os.path.exists(sim_base):
+            return None
+        
+        for sim_dir_name in os.listdir(sim_base):
+            if not sim_dir_name.startswith("sim_"):
+                continue
+            state_file = os.path.join(sim_base, sim_dir_name, "state.json")
+            if not os.path.exists(state_file):
+                continue
+            try:
+                import json
+                with open(state_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                if data.get("project_id") == project_id and data.get("knowledge_level", "full") == knowledge_level:
+                    return self._load_simulation_state(sim_dir_name)
+            except Exception:
+                continue
+        return None
     
     def prepare_simulation(
         self,
@@ -234,7 +299,8 @@ class SimulationManager:
         defined_entity_types: Optional[List[str]] = None,
         use_llm_for_profiles: bool = True,
         progress_callback: Optional[callable] = None,
-        parallel_profile_count: int = 8
+        parallel_profile_count: int = 8,
+        resume: bool = False
     ) -> SimulationState:
         """
         准备模拟环境（全程自动化）
@@ -272,6 +338,27 @@ class SimulationManager:
             if progress_callback:
                 progress_callback("reading", 0, "正在连接图谱...")
             
+            # ---- 自动标注：检查节点是否已有 entity_type，没有则自动执行 ----
+            try:
+                from ..models.project import ProjectManager
+                project_for_ontology = ProjectManager.get_project(state.project_id)
+                if project_for_ontology and project_for_ontology.ontology:
+                    from .entity_type_annotator import annotate_entity_types
+                    if progress_callback:
+                        progress_callback("reading", 5, "检查实体类型标注...")
+                    annotations = annotate_entity_types(
+                        graph_id=state.graph_id,
+                        ontology=project_for_ontology.ontology,
+                        use_llm=True,
+                        progress_callback=lambda msg, prog: (
+                            progress_callback("reading", 5 + int(prog * 20), f"标注: {msg}")
+                            if progress_callback else None
+                        )
+                    )
+                    logger.info(f"实体类型标注完成: {len(annotations)} 个节点")
+            except Exception as e:
+                logger.warning(f"自动标注实体类型失败（继续使用推断）: {e}")
+            
             reader = EntityReader()
             
             if progress_callback:
@@ -283,16 +370,7 @@ class SimulationManager:
                 enrich_with_edges=True
             )
             
-            state.entities_count = filtered.filtered_count
             state.entity_types = list(filtered.entity_types)
-            
-            if progress_callback:
-                progress_callback(
-                    "reading", 100, 
-                    f"完成，共 {filtered.filtered_count} 个实体",
-                    current=filtered.filtered_count,
-                    total=filtered.filtered_count
-                )
             
             if filtered.filtered_count == 0:
                 state.status = SimulationStatus.FAILED
@@ -300,19 +378,59 @@ class SimulationManager:
                 self._save_simulation_state(state)
                 return state
             
+            # 按名称去重（图谱中可能存在同名实体），保留首次出现的实体
+            seen_names = set()
+            unique_entities = []
+            for entity in filtered.entities:
+                key = (entity.name or '').lower()
+                if key and key in seen_names:
+                    continue
+                seen_names.add(key)
+                unique_entities.append(entity)
+            
+            if len(unique_entities) < len(filtered.entities):
+                logger.info(
+                    f"实体去重: {len(filtered.entities)} -> {len(unique_entities)} "
+                    f"（{len(filtered.entities) - len(unique_entities)} 个同名实体被合并）"
+                )
+            filtered.entities = unique_entities
+            state.entities_count = len(unique_entities)
+            
+            if progress_callback:
+                progress_callback(
+                    "reading", 100, 
+                    f"完成，共 {state.entities_count} 个实体",
+                    current=state.entities_count,
+                    total=state.entities_count
+                )
+            
             # ========== 阶段2: 生成Agent Profile ==========
             total_entities = len(filtered.entities)
+            
+            # 如果是续生成模式，加载已有的 profiles
+            existing_profiles_data = None
+            if resume:
+                try:
+                    reddit_path = os.path.join(sim_dir, "reddit_profiles.json")
+                    if os.path.exists(reddit_path):
+                        import json as _json
+                        with open(reddit_path, 'r', encoding='utf-8') as f:
+                            existing_profiles_data = _json.load(f)
+                        logger.info(f"续生成模式：加载了 {len(existing_profiles_data)} 个已有 profiles")
+                except Exception as e:
+                    logger.warning(f"加载已有 profiles 失败，将全部重新生成: {e}")
+                    existing_profiles_data = None
             
             if progress_callback:
                 progress_callback(
                     "generating_profiles", 0, 
-                    "开始生成...",
+                    f"开始生成...{'（续生成模式）' if existing_profiles_data else ''}",
                     current=0,
                     total=total_entities
                 )
             
             # 传入graph_id以启用图谱检索功能，获取更丰富的上下文
-            generator = OasisProfileGenerator(graph_id=state.graph_id)
+            generator = OasisProfileGenerator(graph_id=state.graph_id, knowledge_level=state.knowledge_level)
             
             def profile_progress(current, total, msg):
                 if progress_callback:
@@ -342,42 +460,55 @@ class SimulationManager:
                 graph_id=state.graph_id,  # 传入graph_id用于图谱检索
                 parallel_count=parallel_profile_count,  # 并行生成数量
                 realtime_output_path=realtime_output_path,  # 实时保存路径
-                output_platform=realtime_platform  # 输出格式
+                output_platform=realtime_platform,  # 输出格式
+                existing_profiles=existing_profiles_data  # 续生成时传入已有 profiles
             )
             
-            state.profiles_count = len(profiles)
+            # 过滤掉 None（续生成时被 skip 的槽位为 None）
+            valid_profiles = [p for p in profiles if p is not None]
+            state.profiles_count = len(valid_profiles)
             
-            # 保存Profile文件（注意：Twitter使用CSV格式，Reddit使用JSON格式）
-            # Reddit 已经在生成过程中实时保存了，这里再保存一次确保完整性
-            if progress_callback:
-                progress_callback(
-                    "generating_profiles", 95, 
-                    "保存Profile文件...",
-                    current=total_entities,
-                    total=total_entities
-                )
-            
-            if state.enable_reddit:
-                generator.save_profiles(
-                    profiles=profiles,
-                    file_path=os.path.join(sim_dir, "reddit_profiles.json"),
-                    platform="reddit"
-                )
-            
-            if state.enable_twitter:
-                # Twitter使用CSV格式！这是OASIS的要求
-                generator.save_profiles(
-                    profiles=profiles,
-                    file_path=os.path.join(sim_dir, "twitter_profiles.csv"),
-                    platform="twitter"
-                )
+            # 保存Profile文件
+            # 续生成模式下，realtime_output 已经合并了旧+新 profiles，
+            # 这里只在非续生成时执行最终保存，避免用不完整列表覆盖已合并的文件。
+            if not resume:
+                if progress_callback:
+                    progress_callback(
+                        "generating_profiles", 95, 
+                        "保存Profile文件...",
+                        current=total_entities,
+                        total=total_entities
+                    )
+                
+                if state.enable_reddit:
+                    generator.save_profiles(
+                        profiles=valid_profiles,
+                        file_path=os.path.join(sim_dir, "reddit_profiles.json"),
+                        platform="reddit"
+                    )
+                
+                if state.enable_twitter:
+                    # Twitter使用CSV格式！这是OASIS的要求
+                    generator.save_profiles(
+                        profiles=valid_profiles,
+                        file_path=os.path.join(sim_dir, "twitter_profiles.csv"),
+                        platform="twitter"
+                    )
+            else:
+                # 续生成模式：统计实际文件中的 profile 数量
+                reddit_path = os.path.join(sim_dir, "reddit_profiles.json")
+                if os.path.exists(reddit_path):
+                    import json as _json
+                    with open(reddit_path, 'r', encoding='utf-8') as f:
+                        state.profiles_count = len(_json.load(f))
+                logger.info(f"续生成模式：跳过最终保存，文件已由实时写入维护（共 {state.profiles_count} 个）")
             
             if progress_callback:
                 progress_callback(
                     "generating_profiles", 100, 
-                    f"完成，共 {len(profiles)} 个Profile",
-                    current=len(profiles),
-                    total=len(profiles)
+                    f"完成，共 {state.profiles_count} 个Profile",
+                    current=state.profiles_count,
+                    total=total_entities
                 )
             
             # ========== 阶段3: LLM智能生成模拟配置 ==========
@@ -406,6 +537,7 @@ class SimulationManager:
                 simulation_requirement=simulation_requirement,
                 document_text=document_text,
                 entities=filtered.entities,
+                agent_profiles=valid_profiles,
                 enable_twitter=state.enable_twitter,
                 enable_reddit=state.enable_reddit
             )
@@ -458,6 +590,181 @@ class SimulationManager:
     def get_simulation(self, simulation_id: str) -> Optional[SimulationState]:
         """获取模拟状态"""
         return self._load_simulation_state(simulation_id)
+    
+    def delete_simulation(self, simulation_id: str) -> bool:
+        """删除模拟（先停进程，再删目录）
+        
+        策略（Windows 友好）：
+        1. 停进程 + 强杀 PID
+        2. 主动关闭 Flask 进程内持有的所有文件句柄/引用（log 文件、world state engine 等）
+        3. **先删 state.json**：这样即便部分日志文件被占用导致 rmtree 失败，
+           历史列表也会立刻看不到这条记录（list_simulations 依赖 state.json 存在）
+        4. 尝试 rmtree；失败时只要 state.json 已删，仍视为成功
+        
+        Args:
+            simulation_id: 模拟ID
+            
+        Returns:
+            是否删除成功（state.json 被删即视为成功）
+        """
+        import time
+        # 注意：不使用 _get_simulation_dir，避免它的 os.makedirs 副作用重建目录
+        sim_dir = os.path.join(self.SIMULATION_DATA_DIR, simulation_id)
+        if not os.path.exists(sim_dir):
+            return False
+        
+        # 1. 尝试通过 SimulationRunner 正常停止（若有 Popen 句柄）
+        from .simulation_runner import SimulationRunner
+        try:
+            SimulationRunner.stop_simulation(simulation_id)
+        except Exception as e:
+            logger.warning(f"stop_simulation 失败（继续走强杀路径）: {e}")
+        
+        # 2. 兜底：直接用 PID 强杀（Flask 重启后 reattach 的孤儿子进程没有 Popen 句柄）
+        run_state = SimulationRunner.get_run_state(simulation_id)
+        pid = getattr(run_state, 'process_pid', None) if run_state else None
+        if pid and SimulationRunner._pid_alive(pid):
+            try:
+                import signal
+                if sys.platform == 'win32':
+                    os.system(f'taskkill /F /T /PID {pid} >nul 2>&1')
+                else:
+                    os.kill(pid, signal.SIGKILL)
+                logger.info(f"已强杀模拟进程: pid={pid}")
+                # 等待句柄释放
+                for _ in range(20):
+                    if not SimulationRunner._pid_alive(pid):
+                        break
+                    time.sleep(0.2)
+            except Exception as e:
+                logger.warning(f"强杀进程 {pid} 失败: {e}")
+        
+        # 3. 主动关闭 Flask 进程内持有的文件句柄（Windows 删除失败的主要原因）
+        try:
+            fh = SimulationRunner._stdout_files.pop(simulation_id, None)
+            if fh:
+                try:
+                    fh.close()
+                except Exception:
+                    pass
+            fh = SimulationRunner._stderr_files.pop(simulation_id, None)
+            if fh:
+                try:
+                    fh.close()
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning(f"关闭日志句柄失败（忽略）: {e}")
+        
+        # 4. 停止图谱记忆更新器（若启用）
+        try:
+            if SimulationRunner._graph_memory_enabled.get(simulation_id, False):
+                from .graph_memory_updater import GraphMemoryManager
+                try:
+                    GraphMemoryManager.stop_updater(simulation_id)
+                except Exception as e:
+                    logger.warning(f"停止图谱记忆更新器失败（忽略）: {e}")
+                SimulationRunner._graph_memory_enabled.pop(simulation_id, None)
+        except Exception:
+            pass
+        
+        # 5. 清除 Runner 的内存状态与引用（包括 world state engine / action buffer）
+        try:
+            SimulationRunner._run_states.pop(simulation_id, None)
+            SimulationRunner._processes.pop(simulation_id, None)
+            SimulationRunner._monitor_threads.pop(simulation_id, None)
+            SimulationRunner._action_queues.pop(simulation_id, None) if hasattr(SimulationRunner, '_action_queues') else None
+            SimulationRunner._world_state_engines.pop(simulation_id, None)
+            SimulationRunner._round_action_buffers.pop(simulation_id, None)
+        except Exception:
+            pass
+        
+        # 6. 解除项目与该模拟的关联
+        try:
+            from ..models.project import ProjectManager
+            state = self._load_simulation_state(simulation_id)
+            if state and state.project_id:
+                project = ProjectManager.get_project(state.project_id)
+                if project and project.simulation_id == simulation_id:
+                    project.simulation_id = None
+                    ProjectManager.save_project(project)
+                    logger.info(f"已解除项目 {state.project_id} 与模拟 {simulation_id} 的关联")
+        except Exception as e:
+            logger.warning(f"清理项目关联失败（忽略）: {e}")
+        
+        # 7. 清除 Manager 的内存缓存
+        self._simulations.pop(simulation_id, None)
+        
+        # 8. 【关键】先删 state.json：使模拟立即从 list_simulations 消失
+        #    即便后面 rmtree 因文件占用而失败，用户 UX 层面也是"已删除"
+        state_file = os.path.join(sim_dir, "state.json")
+        state_json_removed = False
+        try:
+            if os.path.exists(state_file):
+                os.remove(state_file)
+                state_json_removed = True
+                logger.info(f"已删除 state.json: {state_file}")
+        except Exception as e:
+            logger.warning(f"删除 state.json 失败: {e}")
+        
+        # 9. 尝试删除整个目录（Windows 文件占用时重试几次，允许部分失败）
+        def _on_rm_error(func, path, exc_info):
+            try:
+                os.chmod(path, 0o777)
+                func(path)
+            except Exception:
+                pass
+        
+        # 轻度 gc 促使未引用的文件对象被关闭
+        try:
+            import gc
+            gc.collect()
+        except Exception:
+            pass
+        
+        last_err = None
+        for attempt in range(5):
+            try:
+                shutil.rmtree(sim_dir, onerror=_on_rm_error)
+                if not os.path.exists(sim_dir):
+                    logger.info(f"已删除模拟目录: {sim_dir}")
+                    return True
+            except Exception as e:
+                last_err = e
+                logger.warning(f"rmtree 第{attempt+1}次失败: {e}")
+            time.sleep(0.5 * (attempt + 1))
+        
+        # 10. 最后兜底：rmtree 失败时忽略错误删一次，尽量清空可删的文件
+        try:
+            shutil.rmtree(sim_dir, ignore_errors=True)
+        except Exception:
+            pass
+        
+        if not os.path.exists(sim_dir):
+            logger.info(f"已删除模拟目录（忽略错误兜底）: {sim_dir}")
+            return True
+        
+        # state.json 已删 → 列表层面已不可见，视为成功；残留文件用户可手动清理
+        if state_json_removed:
+            remaining = []
+            try:
+                for root, dirs, files in os.walk(sim_dir):
+                    for name in files:
+                        remaining.append(os.path.join(root, name))
+                        if len(remaining) >= 10:
+                            break
+                    if len(remaining) >= 10:
+                        break
+            except Exception:
+                pass
+            logger.warning(
+                f"模拟目录部分残留（state.json 已删，列表不再显示此记录）: {sim_dir}, "
+                f"残留文件示例: {remaining}, 最后错误: {last_err}"
+            )
+            return True
+        
+        logger.error(f"删除模拟目录最终失败: {sim_dir}, 最后错误: {last_err}")
+        return False
     
     def list_simulations(self, project_id: Optional[str] = None) -> List[SimulationState]:
         """列出所有模拟"""

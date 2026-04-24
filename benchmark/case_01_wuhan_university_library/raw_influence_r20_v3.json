@@ -1,0 +1,210 @@
+﻿{
+    "data":  {
+                 "concentration_description":  "å5åAgentï¼18%ï¼è´¡ç®äº49.2%çå¸å­",
+                 "information_concentration":  0.4925,
+                 "top_agents":  [
+                                    {
+                                        "agent_id":  19,
+                                        "agent_name":  "ä¸­å½å¿çå«çåä¼",
+                                        "comments":  0,
+                                        "influence_score":  27.0,
+                                        "likes":  0,
+                                        "posts":  9,
+                                        "reposts":  0,
+                                        "total_actions":  9
+                                    },
+                                    {
+                                        "agent_id":  10,
+                                        "agent_name":  "æ¾æ¹æ°é»æè²é¢é",
+                                        "comments":  0,
+                                        "influence_score":  21.0,
+                                        "likes":  0,
+                                        "posts":  7,
+                                        "reposts":  0,
+                                        "total_actions":  8
+                                    },
+                                    {
+                                        "agent_id":  0,
+                                        "agent_name":  "èæç«",
+                                        "comments":  0,
+                                        "influence_score":  18.0,
+                                        "likes":  0,
+                                        "posts":  6,
+                                        "reposts":  0,
+                                        "total_actions":  9
+                                    },
+                                    {
+                                        "agent_id":  28,
+                                        "agent_name":  "å¾®å",
+                                        "comments":  0,
+                                        "influence_score":  18.0,
+                                        "likes":  0,
+                                        "posts":  6,
+                                        "reposts":  0,
+                                        "total_actions":  8
+                                    },
+                                    {
+                                        "agent_id":  13,
+                                        "agent_name":  "æ­¦æ±å¤§å­¦",
+                                        "comments":  0,
+                                        "influence_score":  15.0,
+                                        "likes":  0,
+                                        "posts":  5,
+                                        "reposts":  0,
+                                        "total_actions":  5
+                                    },
+                                    {
+                                        "agent_id":  11,
+                                        "agent_name":  "æ­¦æ±ç»æµææ¯å¼ååºäººæ°æ³é¢",
+                                        "comments":  0,
+                                        "influence_score":  15.0,
+                                        "likes":  0,
+                                        "posts":  5,
+                                        "reposts":  0,
+                                        "total_actions":  5
+                                    },
+                                    {
+                                        "agent_id":  9,
+                                        "agent_name":  "æ­¦æ±å¤§å­¦å®æ¹å\u0085¬ä¼å·",
+                                        "comments":  0,
+                                        "influence_score":  15.0,
+                                        "likes":  0,
+                                        "posts":  5,
+                                        "reposts":  0,
+                                        "total_actions":  5
+                                    },
+                                    {
+                                        "agent_id":  16,
+                                        "agent_name":  "èæç«æ¯äº²",
+                                        "comments":  0,
+                                        "influence_score":  15.0,
+                                        "likes":  0,
+                                        "posts":  5,
+                                        "reposts":  0,
+                                        "total_actions":  6
+                                    },
+                                    {
+                                        "agent_id":  20,
+                                        "agent_name":  "é«æ ¡å­¦çæçä¿æ¤èç",
+                                        "comments":  0,
+                                        "influence_score":  12.0,
+                                        "likes":  0,
+                                        "posts":  4,
+                                        "reposts":  0,
+                                        "total_actions":  4
+                                    },
+                                    {
+                                        "agent_id":  6,
+                                        "agent_name":  "åæé",
+                                        "comments":  0,
+                                        "influence_score":  6.0,
+                                        "likes":  0,
+                                        "posts":  2,
+                                        "reposts":  0,
+                                        "total_actions":  2
+                                    },
+                                    {
+                                        "agent_id":  3,
+                                        "agent_name":  "è°¢æç»´",
+                                        "comments":  0,
+                                        "influence_score":  6.0,
+                                        "likes":  0,
+                                        "posts":  2,
+                                        "reposts":  0,
+                                        "total_actions":  2
+                                    },
+                                    {
+                                        "agent_id":  17,
+                                        "agent_name":  "æå¿åæ ¡å",
+                                        "comments":  0,
+                                        "influence_score":  6.0,
+                                        "likes":  0,
+                                        "posts":  2,
+                                        "reposts":  0,
+                                        "total_actions":  2
+                                    },
+                                    {
+                                        "agent_id":  26,
+                                        "agent_name":  "æ­¦æ±å¤§å­¦å­¦çå·¥ä½é¨",
+                                        "comments":  0,
+                                        "influence_score":  3.0,
+                                        "likes":  0,
+                                        "posts":  1,
+                                        "reposts":  0,
+                                        "total_actions":  1
+                                    },
+                                    {
+                                        "agent_id":  2,
+                                        "agent_name":  "é­æé£",
+                                        "comments":  0,
+                                        "influence_score":  3.0,
+                                        "likes":  0,
+                                        "posts":  1,
+                                        "reposts":  0,
+                                        "total_actions":  3
+                                    },
+                                    {
+                                        "agent_id":  23,
+                                        "agent_name":  "ç ç©¶çé¢",
+                                        "comments":  0,
+                                        "influence_score":  3.0,
+                                        "likes":  0,
+                                        "posts":  1,
+                                        "reposts":  0,
+                                        "total_actions":  1
+                                    },
+                                    {
+                                        "agent_id":  27,
+                                        "agent_name":  "é«æ ¡",
+                                        "comments":  0,
+                                        "influence_score":  3.0,
+                                        "likes":  0,
+                                        "posts":  1,
+                                        "reposts":  0,
+                                        "total_actions":  1
+                                    },
+                                    {
+                                        "agent_id":  22,
+                                        "agent_name":  "å¤å½è¯­è¨æå­¦å­¦é¢",
+                                        "comments":  0,
+                                        "influence_score":  3.0,
+                                        "likes":  0,
+                                        "posts":  1,
+                                        "reposts":  0,
+                                        "total_actions":  1
+                                    },
+                                    {
+                                        "agent_id":  21,
+                                        "agent_name":  "ç»æµä¸ç®¡çå­¦é¢",
+                                        "comments":  0,
+                                        "influence_score":  3.0,
+                                        "likes":  0,
+                                        "posts":  1,
+                                        "reposts":  0,
+                                        "total_actions":  1
+                                    },
+                                    {
+                                        "agent_id":  18,
+                                        "agent_name":  "æç»´æåä¸»",
+                                        "comments":  0,
+                                        "influence_score":  3.0,
+                                        "likes":  0,
+                                        "posts":  1,
+                                        "reposts":  0,
+                                        "total_actions":  4
+                                    },
+                                    {
+                                        "agent_id":  25,
+                                        "agent_name":  "éææ",
+                                        "comments":  0,
+                                        "influence_score":  3.0,
+                                        "likes":  0,
+                                        "posts":  1,
+                                        "reposts":  0,
+                                        "total_actions":  2
+                                    }
+                                ],
+                 "total_agents":  28
+             },
+    "success":  true
+}

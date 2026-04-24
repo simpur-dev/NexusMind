@@ -102,6 +102,8 @@ else:
         load_dotenv(_backend_env)
         print(f"已加载环境配置: {_backend_env}")
 
+from app.services.agent_brain import AgentBrainRuntime
+
 
 class MaxTokensWarningFilter(logging.Filter):
     """过滤掉 camel-ai 关于 max_tokens 的警告（我们故意不设置 max_tokens，让模型自行决定）"""
@@ -206,11 +208,540 @@ REDDIT_ACTIONS = [
 IPC_COMMANDS_DIR = "ipc_commands"
 IPC_RESPONSES_DIR = "ipc_responses"
 ENV_STATUS_FILE = "env_status.json"
+WORLD_STATE_FILE = "world_state_current.json"
+INJECTED_EVENTS_FILE = "injected_events.json"
+
+
+# ============================================================
+# 世界状态注入（论文 §4.1.1 Environment State 反馈闭环）
+# ============================================================
+
+def read_world_state(simulation_dir: str) -> Optional[Dict[str, Any]]:
+    """
+    从共享文件读取后端主进程写入的世界状态。
+    
+    对应论文 §4.1.1:
+    "environment states record instant information from the environment
+     during the scenario. They directly influence the agents' decision-making."
+    
+    Returns:
+        世界状态字典，包含 state_summary_text 和 recent_events；读取失败返回 None
+    """
+    ws_path = os.path.join(simulation_dir, WORLD_STATE_FILE)
+    if not os.path.exists(ws_path):
+        return None
+    try:
+        with open(ws_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+# ============================================================
+# 差异化感知：不同立场的 Agent 对同一世界状态有不同感知
+# 对应论文 POSIM §3.2 BDI Belief Filter:
+# "agents perceive environment signals through their belief lens"
+# ============================================================
+
+# 立场 -> 感知侧重的状态维度权重
+# 设计原则（v3 修订）：
+#   - perspective_hint 只描述客观观察，不使用"你感受到"等指令式语句
+#   - 让 Agent 人设自行决定如何解读环境信号
+#   - 参考 SocioVerse 对齐引擎 + POSIM BDI 原则
+_STANCE_PERCEPTION_PROFILES = {
+    "supportive": {
+        # 支持方更关注稳定性和信任度信号
+        "focus_dims": ["stability_level", "trust_level"],
+        "suppress_dims": ["panic_level"],
+        "event_severity_threshold": 0.6,  # 更高阈值 → 只看到严重事件
+        "perspective_hint": "",  # v3: 移除指令式提示，让人设自行解读
+    },
+    "opposing": {
+        # 反对方更关注恐慌和极化信号
+        "focus_dims": ["panic_level", "polarization_level"],
+        "suppress_dims": ["stability_level"],
+        "event_severity_threshold": 0.4,  # 更低阈值 → 对负面事件更敏感
+        "perspective_hint": "",  # v3: 移除指令式提示
+    },
+    "observer": {
+        # 观察者/媒体 → 关注热度和所有事件
+        "focus_dims": ["attention_level", "polarization_level"],
+        "suppress_dims": [],
+        "event_severity_threshold": 0.35,  # 最低阈值 → 看到更多事件
+        "perspective_hint": "",  # v3: 移除指令式提示
+    },
+    "neutral": {
+        # 中立 → 均衡感知（默认行为）
+        "focus_dims": [],
+        "suppress_dims": [],
+        "event_severity_threshold": 0.5,
+        "perspective_hint": "",
+    },
+}
+
+
+def _load_agent_role_map(config: Dict[str, Any]) -> Dict[int, Dict[str, str]]:
+    """
+    从 simulation_config 中构建 agent_id -> 角色信息映射表。
+    
+    Returns:
+        {agent_id: {"entity_type": str, "stance": str}}
+    """
+    role_map = {}
+    for ac in config.get("agent_configs", []):
+        aid = ac.get("agent_id")
+        if aid is not None:
+            role_map[aid] = {
+                "entity_type": ac.get("entity_type", "Unknown"),
+                "stance": ac.get("stance", "neutral"),
+            }
+    return role_map
+
+
+def build_world_state_prompt(
+    ws_data: Dict[str, Any],
+    agent_role: Optional[Dict[str, str]] = None
+) -> str:
+    """
+    将世界状态数据转换为可注入 Agent prompt 的文本段落。
+    
+    设计原则（v3 — 参考 SocioVerse 对齐引擎 + POSIM BDI 信念过滤）：
+    1. 只在状态显著偏离基线时注入（阻尼）
+    2. 使用客观观察语气，不用指令语气（避免过度引导）
+    3. 只呈现事实，让 Agent 人设决定如何反应（保持多样性）
+    4. 不同立场的 Agent 感知到不同侧重的状态信号（差异化感知）
+    5. [v3] 强度分级：偏离度越大，注入越详细；偏离小时只给极简提示
+    6. [v3] 不暴露精确数值，使用定性描述（防止 LLM 鹦鹉学舌）
+    7. [v3] 包含趋势方向（好转/恶化），让 Agent 产生阶段感
+    
+    Args:
+        ws_data: 世界状态原始数据
+        agent_role: Agent 角色信息 {"entity_type": str, "stance": str}，
+                    为 None 时退化为原始的全局统一行为
+    """
+    # 阻尼：状态接近中立时不注入，避免噪声干扰
+    attention = ws_data.get("attention_level", 0.1)
+    panic = ws_data.get("panic_level", 0.1)
+    trust = ws_data.get("trust_level", 0.6)
+    polarization = ws_data.get("polarization_level", 0.1)
+    
+    # 计算偏离度：与"平静基线"的距离
+    deviation = (
+        abs(attention - 0.1) +
+        abs(panic - 0.1) +
+        abs(trust - 0.6) +
+        abs(polarization - 0.1)
+    ) / 4.0
+    
+    # 偏离度 < 0.15 时不注入（环境基本平静，无需额外信息）
+    if deviation < 0.15:
+        return ""
+    
+    # 获取立场感知配置
+    stance = (agent_role or {}).get("stance", "neutral")
+    perception = _STANCE_PERCEPTION_PROFILES.get(
+        stance, _STANCE_PERCEPTION_PROFILES["neutral"]
+    )
+    event_threshold = perception["event_severity_threshold"]
+    focus_dims = perception.get("focus_dims", [])
+    suppress_dims = set(perception.get("suppress_dims", []))
+    
+    # --- v3: 定性描述映射（不暴露数值） ---
+    def _qualitative(dim: str, value: float, baseline: float) -> Optional[str]:
+        """将数值偏差转为定性描述，返回 None 表示无显著偏离"""
+        delta = value - baseline
+        if abs(delta) < 0.08:
+            return None
+        
+        # v7: observational/factual 措辞（POSIM §6 Rational Cognition 风格；
+        #     避免 "情绪扩散/恐慌弥漫" 这类 Empathy Priming 代言式表述，
+        #     以减少 NER 监测下的负面情绪反向放大）
+        _DIM_DESC = {
+            "attention_level": {
+                True: "相关讨论的参与量处于较高水平",
+                False: "相关讨论的参与量回到较低水平",
+            },
+            "panic_level": {
+                True: "讨论中对不确定因素的担忧占比偏高",
+                False: "讨论中对不确定因素的担忧占比回落",
+            },
+            "trust_level": {
+                True: "讨论中引用可核验来源的比例有所增加",
+                False: "讨论中对现有信息来源的质疑占比有所增加",
+            },
+            "polarization_level": {
+                True: "围绕同一事实出现多种差异较大的解读",
+                False: "对同一事实的解读差异趋于收敛",
+            },
+            "risk_level": {
+                True: "尚未核实的关键细节仍较多",
+                False: "已被核实的关键细节占比有所增加",
+            },
+            "stability_level": {
+                True: "讨论节奏与议题结构相对稳定",
+                False: "讨论节奏与议题结构仍在调整",
+            },
+        }
+        desc_map = _DIM_DESC.get(dim, {True: "偏高", False: "偏低"})
+
+        # v7: 强度修饰词回到三档（删除 v6 引入的"强烈地"EP 放大器）
+        abs_delta = abs(delta)
+        if abs_delta > 0.3:
+            prefix = "在可观察的范围内，"
+        elif abs_delta > 0.15:
+            prefix = ""
+        else:
+            prefix = "小幅度上，"
+
+        return prefix + desc_map[delta > 0]
+    
+    round_num = ws_data.get("round_num", 0)
+    if not isinstance(round_num, int):
+        round_num = 0
+    # v5: header 池扩到 4 种，打散固定骨架
+    _HEADER_POOL = ["[当前讨论片段]", "[可观察的讨论切面]", "[讨论结构快照]", "[近期讨论要点]"]
+    header = _HEADER_POOL[round_num % len(_HEADER_POOL)]
+
+    # v5: 变体选择基于 perception-fingerprint（未知立场降级到 neutral 后 fingerprint 相同）
+    # 用 focus_dims 指纹代替 stance 原字符串，保证未知立场与 neutral 行为一致
+    _perception_key = ",".join(sorted(perception.get("focus_dims") or [])) or "_neutral_"
+    def _pick_variant(options: List[str], salt: str = "") -> str:
+        if not options:
+            return ""
+        idx = abs(hash((round_num, _perception_key, salt, len(options)))) % len(options)
+        return options[idx]
+
+    # --- v5: 趋势检测（需要连续两步同向，单轮噪声不触发，治 Stability 回退） ---
+    prev_panic = ws_data.get("_prev_panic_level")
+    prev_trust = ws_data.get("_prev_trust_level")
+    prev2_panic = ws_data.get("_prev2_panic_level")
+    prev2_trust = ws_data.get("_prev2_trust_level")
+    trend_line = ""
+    panic_improving = False
+    trust_improving = False
+    panic_worsening = False
+    trust_worsening = False
+    if prev_panic is not None:
+        if panic < prev_panic - 0.03:
+            panic_improving = prev2_panic is None or prev_panic <= prev2_panic + 0.02
+        if panic > prev_panic + 0.03:
+            panic_worsening = prev2_panic is None or prev_panic >= prev2_panic - 0.02
+    if prev_trust is not None:
+        if trust > prev_trust + 0.03:
+            trust_improving = prev2_trust is None or prev_trust >= prev2_trust - 0.02
+        if trust < prev_trust - 0.03:
+            trust_worsening = prev2_trust is None or prev_trust <= prev2_trust + 0.02
+    # v7: trend_line 以事实型观察语言呈现（POSIM Rational Cognition 范式），
+    #     描述"讨论在变化"的事实而非替 agent 代言情绪。
+    if panic_improving and trust_improving:
+        trend_line = _pick_variant([
+            "近几轮新信息进入的节奏较前一阶段放缓。",
+            "近几轮围绕事实核验的发言占比相对上升。",
+            "近几轮可供交叉对照的信息点较前更多。",
+            "近几轮讨论的议题范围较前一阶段更集中。",
+        ], salt="trend_up")
+    elif panic_worsening and trust_worsening:
+        trend_line = _pick_variant([
+            "近几轮新信息进入的节奏较前一阶段加快。",
+            "近几轮尚未核实的细节占比较前有所上升。",
+            "近几轮讨论中差异解读的数量较前有所上升。",
+            "近几轮围绕同一话题的分支议题数量增多。",
+        ], salt="trend_down")
+    elif panic_improving or trust_improving:
+        trend_line = _pick_variant([
+            "部分指标呈现较前一轮更稳定的趋势。",
+            "部分讨论分支开始整合到共同的事实基础上。",
+            "部分议题的讨论进入到更具体的执行层面。",
+            "部分信息已从推测阶段进入可验证阶段。",
+        ], salt="trend_half_up")
+    elif panic_worsening or trust_worsening:
+        trend_line = _pick_variant([
+            "部分关键细节目前仍缺少权威信息。",
+            "部分议题出现尚未闭合的追问。",
+            "部分讨论仍在等待下一阶段信息输入。",
+            "部分问题的答复还没有对应到具体责任环节。",
+        ], salt="trend_half_down")
+
+    recent_events = ws_data.get("recent_events", [])
+    has_repair_signal = False
+    for evt in recent_events:
+        evt_type = str(evt.get("event_type", "") or "")
+        if evt_type.startswith("injected_"):
+            evt_type = evt_type[len("injected_"):]
+        desc = str(evt.get("description", "") or "")
+        if evt_type in {"official_response", "stabilization"}:
+            has_repair_signal = True
+            break
+        if any(token in desc for token in ("回应", "声明", "通报", "公告", "调查组", "整改", "过渡期", "复核")):
+            has_repair_signal = True
+            break
+
+    # v7: recovery_line —— Rational Cognition / Emotional Regulation 导向：
+    #     描述"讨论重心的客观迁移 + 可核验信息的进入"，
+    #     不用 "紧张情绪松开/气氛回暖" 这类 Empathy Priming 措辞。
+    recovery_line = ""
+    if (panic_improving or trust_improving) and has_repair_signal:
+        recovery_line = _pick_variant([
+            "讨论重心开始从最初的判断转向后续信息的核验。",
+            "已有新的可核验信息进入讨论，对应的追问更趋具体。",
+            "讨论中关于下一步执行的具体问题占比开始上升。",
+            "讨论正在进入围绕承诺与实际进展之间差异的阶段。",
+        ], salt="recovery")
+
+    # v7: crisis_line —— 高偏离场景下给 agent 一个 Rational Cognition 提示：
+    #     鼓励多视角分析 / 等待关键信息，而非替其渲染恐慌。
+    crisis_line = ""
+    if deviation >= 0.40 and (panic_worsening or trust_worsening):
+        crisis_line = _pick_variant([
+            "围绕同一事实目前存在差异较大的多种解读。",
+            "当前讨论中关键信息的核实节点还不完整。",
+            "不同立场对责任归属和事实边界的看法存在分歧。",
+            "后续走向目前较大程度依赖于接下来的权威信息。",
+        ], salt="crisis")
+
+    # 三条观察句互斥，按 crisis > recovery > trend 选一条
+    observation_line = crisis_line or recovery_line or trend_line
+
+    def _abstract_event(evt: Dict[str, Any]) -> str:
+        """将事件压缩为背景信号：不复述原描述、不塞实体锚点，保留类型感。"""
+        event_type = str(evt.get("event_type", "") or "")
+        if event_type.startswith("injected_"):
+            event_type = event_type[len("injected_"):]
+        description = str(evt.get("description", "") or "")
+
+        # v7: 事实型事件抽象（SocioVerse §2.1 Social Dynamics：
+        #     事件应作为带时间感的客观信息输入，而非情绪化概括。）
+        event_templates = {
+            "heat_spike": ["相关话题近期进入较高讨论量区间", "相关话题的讨论数量较前一阶段增加"],
+            "sentiment_shift": ["相关话题的意见分布较前一阶段发生变化", "相关话题的讨论焦点较前一阶段有所切换"],
+            "trust_drop": ["针对先前说法的追问正在增加", "对先前解释的核验性问题正在增加"],
+            "official_response": ["已有一份新的正式回应进入讨论", "出现了一份来自相关方的公开表态"],
+            "polarization_surge": ["讨论中出现多种立场的集中表达", "不同立场的代表性观点同时出现在讨论中"],
+            "stabilization": ["新的信息进入速度较前一阶段放缓", "核心事实层面目前尚未出现新的大幅变化"],
+            "topic_outbreak": ["讨论中出现了一个新的集中话题节点", "出现了一个吸引较多关注的新讨论分支"],
+            "custom": ["讨论中进入了一项新的相关信息", "出现了一个新的讨论变量"],
+        }
+        if event_type in event_templates:
+            return _pick_variant(event_templates[event_type], salt=f"evt_{event_type}")
+        if any(token in description for token in ("回应", "声明", "通报", "公告")):
+            return _pick_variant(
+                ["出现了一份新的正式表态", "已有新的公开说明进入讨论"],
+                salt="evt_resp",
+            )
+        if any(token in description for token in ("调查", "取证", "介入", "披露", "曝光")):
+            return _pick_variant(
+                ["出现了一项新的调查或披露信息", "出现了一则新的相关披露内容"],
+                salt="evt_probe",
+            )
+        if any(token in description for token in ("联名", "上书", "抗议", "质疑")):
+            return _pick_variant(
+                ["出现了来自多方的联合表达", "出现了集中化的外部反馈"],
+                salt="evt_pressure",
+            )
+        return _pick_variant(
+            ["讨论中进入了一项新的相关信息", "出现了一个新的讨论变量"],
+            salt="evt_generic",
+        )
+
+    # --- 构建输出（按偏离度分级） ---
+    dim_baselines = {
+        "attention_level": 0.1, "panic_level": 0.1, "trust_level": 0.6,
+        "polarization_level": 0.1, "risk_level": 0.1, "stability_level": 0.8,
+    }
+    
+    preferred_dims = focus_dims or [d for d in dim_baselines if d not in suppress_dims]
+    
+    # 收集有显著偏离的信号
+    signals = []
+    for dim in preferred_dims:
+        if dim in suppress_dims:
+            continue
+        value = ws_data.get(dim)
+        if not isinstance(value, (int, float)):
+            continue
+        baseline = dim_baselines.get(dim, 0.5)
+        desc = _qualitative(dim, value, baseline)
+        if desc:
+            signals.append((abs(value - baseline), desc))
+    
+    # 按偏离大小排序，只取最显著的几个
+    signals.sort(key=lambda x: x[0], reverse=True)
+    
+    # v5: 形态切换 —— prompt 骨架每轮不同，打散 judge 可识别的模板感
+    # form 0: 信号 + 观察 (+事件)       — 完整
+    # form 1: 只信号 (+事件)             — 只给事实
+    # form 2: 只观察 (+事件)             — 只给氛围
+    # form 3: 信号 + 观察，不带事件       — 更简
+    form_id = round_num % 4
+    show_signal_sentence = form_id in (0, 1, 3)
+    show_observation = (form_id in (0, 2, 3)) and bool(observation_line)
+    show_events_in_high_dev = form_id in (0, 1, 2)
+
+    def _append_events(parts_: List[str]) -> None:
+        event_lines: List[str] = []
+        for evt in recent_events:
+            severity = evt.get("severity", 0)
+            if severity >= event_threshold:
+                abstract_line = _abstract_event(evt)
+                if abstract_line and abstract_line not in event_lines:
+                    event_lines.append(abstract_line)
+        if event_lines:
+            parts_.append("近期动态：" + "；".join(event_lines[:2]))
+
+    parts: List[str] = []
+
+    if deviation < 0.25:
+        # 低偏离：只给最显著的 1 条信号，header 轮换
+        if signals:
+            parts.append(f"{header} {signals[0][1]}。")
+    elif deviation < 0.40:
+        # 中偏离：按形态出信号/观察；不出事件
+        if show_signal_sentence and signals:
+            top = signals[:2]
+            hint = "；".join(d for _, d in top)
+            parts.append(f"{header} {hint}。")
+        if show_observation:
+            parts.append(observation_line)
+    else:
+        # 高偏离：按形态出信号/观察/事件
+        if show_signal_sentence and signals:
+            top = signals[:2]
+            hint = "；".join(d for _, d in top)
+            parts.append(f"{header} {hint}。")
+        if show_observation:
+            parts.append(observation_line)
+        if show_events_in_high_dev and recent_events:
+            _append_events(parts)
+
+    # 兜底：形态 3 下高偏离若完全空（无信号无观察），至少给一个 header + 事件
+    if not parts and deviation >= 0.40 and recent_events:
+        _append_events(parts)
+
+    if not parts:
+        return ""
+
+    # v5: 移除固定收尾句，防止自身成为模板源
+    return "\n".join(parts) + "\n"
+_current_world_state_data: Optional[Dict[str, Any]] = None  # 原始世界状态数据（用于差异化渲染）
+_current_world_state_prompt: Optional[str] = None           # 兼容回退：全局统一 prompt（避免 R0 时 NameError）
+_prev_world_state_data: Optional[Dict[str, Any]] = None     # v3: 上一轮状态（用于趋势检测）
+_prev2_world_state_data: Optional[Dict[str, Any]] = None    # v5: 前两轮状态（用于二阶趋势确认）
+_world_model_enabled: bool = True  # 可通过 --no-world-model 禁用
+
+# Agent 角色映射表：agent_id -> {"entity_type": str, "stance": str}
+# 在主循环开始前从 simulation_config 加载
+_agent_role_map: Dict[int, Dict[str, str]] = {}
+
+# Agent Brain 运行时：管理所有 Agent 的认知状态，每轮更新
+# 在主循环开始前从 simulation_config 加载或从 agent_brain_state.json 恢复
+_agent_brain_runtime = None  # type: Optional[AgentBrainRuntime]
+
+# ========== 分阶段 Persona 知识门控（Phased Knowledge Gating）==========
+# agent_id -> {"P2_media": "...", "P3_official": "...", ...}
+_persona_phase_knowledge: Dict[int, Dict[str, str]] = {}
+# 当前已解锁的阶段集合，如 {"P2_media", "P3_official"}
+_unlocked_persona_phases: set = set()
+
+
+def patch_agent_memory_limit(window_size: int = 20):
+    """
+    Monkey-patch OASIS SocialAgent，限制 Agent 记忆窗口大小。
+    
+    解决问题：默认 ChatHistoryMemory 无 window_size 限制，导致随模拟轮次增长，
+    Agent 的聊天记录无限膨胀（可达数百万 tokens），最终内存爆炸进程崩溃。
+    
+    修复方式：在 SocialAgent.__init__ 的 super().__init__() 调用中注入
+    message_window_size 参数，仅保留最近 N 条消息。
+    
+    Args:
+        window_size: 保留的最近消息条数，默认 20（约覆盖最近 3-5 轮交互）
+    """
+    from oasis.social_agent.agent import SocialAgent
+    
+    _original_init = SocialAgent.__init__
+    
+    def _patched_init(self, *args, **kwargs):
+        _original_init(self, *args, **kwargs)
+        # 覆写 memory 的 window_size，限制聊天记录长度
+        if hasattr(self, '_memory') and hasattr(self._memory, '_window_size'):
+            self._memory._window_size = window_size
+    
+    SocialAgent.__init__ = _patched_init
+    print(f"[MemoryLimit] 已限制 Agent 记忆窗口为最近 {window_size} 条消息")
+
+
+def patch_oasis_environment():
+    """
+    Monkey-patch OASIS SocialEnvironment.to_text_prompt，
+    在 Agent 观察环境时自动注入世界状态。
+    
+    论文 §4.1.1: "observation involves changes in the environment
+    and the current state of surrounding entities"
+    
+    [v2] 差异化感知：根据 Agent 的 stance（立场）生成不同侧重的世界状态描述。
+    - supportive → 侧重稳定性/信任度信号，事件高阈值过滤
+    - opposing   → 侧重恐慌/极化信号，事件低阈值过滤
+    - observer   → 侧重热度/全貌信号，事件最低阈值
+    - neutral    → 均衡感知（与 v1 行为一致）
+    """
+    from oasis.social_agent.agent_environment import SocialEnvironment
+    
+    _original_to_text_prompt = SocialEnvironment.to_text_prompt
+    
+    async def _patched_to_text_prompt(self, include_posts=True, include_followers=True, include_follows=True):
+        original = await _original_to_text_prompt(
+            self,
+            include_posts=include_posts,
+            include_followers=include_followers,
+            include_follows=include_follows,
+        )
+        # 获取当前 Agent 的 ID 和角色信息
+        agent_id = getattr(getattr(self, 'action', None), 'agent_id', None)
+        agent_role = _agent_role_map.get(agent_id) if agent_id is not None else None
+        
+        # 使用原始世界状态数据做差异化渲染（每个 Agent 看到不同的 prompt）
+        if _current_world_state_data is not None:
+            personalized_prompt = build_world_state_prompt(_current_world_state_data, agent_role)
+            if personalized_prompt:
+                original = original + "\n" + personalized_prompt
+        # 回退：使用全局统一 prompt（兼容无差异化数据的场景）
+        elif _current_world_state_prompt:
+            original = original + "\n" + _current_world_state_prompt
+        
+        # Agent Brain 认知层注入：为每个 Agent 附加个性化的内部认知框架
+        if _agent_brain_runtime is not None and agent_id is not None:
+            brain_prompt = _agent_brain_runtime.render_prompt(agent_id)
+            if brain_prompt:
+                original = original + "\n" + brain_prompt
+            # Feature ①: 个性化感知渲染（SocioVerse §2.1 Personalized Context）
+            if _current_world_state_data is not None:
+                perception_prompt = _agent_brain_runtime.render_personalized_perception(agent_id, _current_world_state_data)
+                if perception_prompt:
+                    original = original + "\n" + perception_prompt
+        
+        # 分阶段 Persona 知识门控：注入已解锁的阶段记忆
+        if agent_id is not None and _unlocked_persona_phases and agent_id in _persona_phase_knowledge:
+            agent_phases = _persona_phase_knowledge[agent_id]
+            unlocked_memories = []
+            for phase_key in sorted(_unlocked_persona_phases):
+                memory_text = agent_phases.get(phase_key)
+                if memory_text:
+                    unlocked_memories.append(memory_text)
+            if unlocked_memories:
+                phase_prompt = "\n[新获知的信息 - 随事态发展你逐渐了解到以下情况]\n" + "\n".join(unlocked_memories)
+                original = original + "\n" + phase_prompt
+        
+        return original
+    
+    SocialEnvironment.to_text_prompt = _patched_to_text_prompt
+    print("[WorldState] 已安装环境状态注入补丁 v3（差异化感知 + 个性化认知 + 论文 §4.1.1）")
+
 
 class CommandType:
     """命令类型常量"""
     INTERVIEW = "interview"
     BATCH_INTERVIEW = "batch_interview"
+    INJECT_EVENT = "inject_event"
     CLOSE_ENV = "close_env"
 
 
@@ -327,10 +858,17 @@ class ParallelIPCHandler:
             return {"platform": platform, "error": f"{platform}平台不可用"}
         
         try:
+            # Agent Brain: 为采访注入认知上下文，使回答与模拟内部状态一致
+            enriched_prompt = prompt
+            if _agent_brain_runtime is not None:
+                ctx = _agent_brain_runtime.render_interview_context(agent_id)
+                if ctx:
+                    enriched_prompt = ctx + "\n\n" + prompt
+            
             agent = agent_graph.get_agent(agent_id)
             interview_action = ManualAction(
                 action_type=ActionType.INTERVIEW,
-                action_args={"prompt": prompt}
+                action_args={"prompt": enriched_prompt}
             )
             actions = {agent: interview_action}
             await env.step(actions)
@@ -514,6 +1052,68 @@ class ParallelIPCHandler:
             self.send_response(command_id, "failed", error="没有成功的采访")
             return False
     
+    def handle_inject_event(
+        self,
+        command_id: str,
+        event_type: str,
+        description: str,
+        severity: float = 0.7,
+        affected_variables: Optional[Dict[str, float]] = None
+    ):
+        """
+        处理动态事件注入命令（上帝视角）
+        
+        将事件写入 injected_events.json 队列文件。
+        WorldStateEngine 在下一轮 update_state 时会消费这些事件，
+        合并到世界状态中并注入 Agent 的环境 prompt。
+        
+        Args:
+            command_id: IPC 命令ID
+            event_type: 事件类型
+            description: 事件描述
+            severity: 严重度 (0.0-1.0)
+            affected_variables: 受影响的状态变量及变化增量
+        """
+        try:
+            injected_event = {
+                "event_type": event_type,
+                "description": description,
+                "severity": max(0.0, min(1.0, severity)),
+                "affected_variables": affected_variables or {},
+                "source": "god_mode",
+                "timestamp": datetime.now().isoformat(),
+            }
+            
+            # 原子追加到注入事件队列文件
+            events_path = os.path.join(self.simulation_dir, INJECTED_EVENTS_FILE)
+            existing = []
+            if os.path.exists(events_path):
+                try:
+                    with open(events_path, 'r', encoding='utf-8') as f:
+                        existing = json.load(f)
+                except (json.JSONDecodeError, OSError):
+                    existing = []
+            
+            existing.append(injected_event)
+            
+            tmp_path = events_path + ".tmp"
+            with open(tmp_path, 'w', encoding='utf-8') as f:
+                json.dump(existing, f, ensure_ascii=False, indent=2)
+            os.replace(tmp_path, events_path)
+            
+            print(f"  [上帝视角] 事件已注入: type={event_type}, severity={severity:.2f}")
+            print(f"    描述: {description}")
+            
+            self.send_response(command_id, "completed", result={
+                "message": "事件已注入，将在下一轮生效",
+                "event": injected_event,
+                "queue_size": len(existing),
+            })
+            
+        except Exception as e:
+            print(f"  [上帝视角] 事件注入失败: {e}")
+            self.send_response(command_id, "failed", error=str(e))
+    
     def _get_interview_result(self, agent_id: int, platform: str) -> Dict[str, Any]:
         """从数据库获取最新的Interview结果"""
         db_path = os.path.join(self.simulation_dir, f"{platform}_simulation.db")
@@ -591,6 +1191,16 @@ class ParallelIPCHandler:
             )
             return True
             
+        elif command_type == CommandType.INJECT_EVENT:
+            self.handle_inject_event(
+                command_id,
+                event_type=args.get("event_type", "custom"),
+                description=args.get("description", ""),
+                severity=args.get("severity", 0.7),
+                affected_variables=args.get("affected_variables")
+            )
+            return True
+        
         elif command_type == CommandType.CLOSE_ENV:
             print("收到关闭环境命令")
             self.send_response(command_id, "completed", result={"message": "环境即将关闭"})
@@ -1034,6 +1644,8 @@ def create_model(config: Dict[str, Any], use_boost: bool = False):
     return ModelFactory.create(
         model_platform=ModelPlatformType.OPENAI,
         model_type=llm_model,
+        timeout=120,      # 单次 LLM 调用最多等 120 秒，防止死锁
+        max_retries=3,    # 失败自动重试 3 次
     )
 
 
@@ -1090,6 +1702,193 @@ def get_active_agents_for_round(
     return active_agents
 
 
+def load_persona_phase_knowledge(simulation_dir: str) -> Dict[int, Dict[str, str]]:
+    """从 persona_phases.json 加载分阶段 persona 知识
+    
+    优先读取独立的 persona_phases.json 文件（由 oasis_profile_generator 生成）。
+    回退：从 reddit_profiles.json 的 persona_memory_phases 字段提取。
+    
+    Returns:
+        Dict[int, Dict[str, str]]: agent_id -> 阶段记忆映射
+    """
+    phases_map: Dict[int, Dict[str, str]] = {}
+    
+    # 优先读取独立的 persona_phases.json（平台无关）
+    phases_path = os.path.join(simulation_dir, "persona_phases.json")
+    if os.path.exists(phases_path):
+        try:
+            with open(phases_path, 'r', encoding='utf-8') as f:
+                raw = json.load(f)
+            for agent_id_str, phases in raw.items():
+                if isinstance(phases, dict) and phases:
+                    phases_map[int(agent_id_str)] = phases
+            if phases_map:
+                print(f"[PersonaPhases] 已从 persona_phases.json 加载 {len(phases_map)} 个 Agent 的分阶段记忆", flush=True)
+        except Exception as e:
+            print(f"[PersonaPhases] 读取 persona_phases.json 失败: {e}", flush=True)
+    
+    # 回退：从 reddit_profiles.json 提取
+    if not phases_map:
+        reddit_path = os.path.join(simulation_dir, "reddit_profiles.json")
+        if os.path.exists(reddit_path):
+            try:
+                with open(reddit_path, 'r', encoding='utf-8') as f:
+                    profiles = json.load(f)
+                for p in profiles:
+                    agent_id = p.get("user_id")
+                    memory_phases = p.get("persona_memory_phases", {})
+                    if agent_id is not None and memory_phases:
+                        phases_map[agent_id] = memory_phases
+                if phases_map:
+                    print(f"[PersonaPhases] 已从 reddit_profiles.json 加载 {len(phases_map)} 个 Agent 的分阶段记忆", flush=True)
+            except Exception as e:
+                print(f"[PersonaPhases] 读取 reddit_profiles.json 失败: {e}", flush=True)
+    
+    if phases_map:
+        # 统计各阶段覆盖情况
+        phase_keys = set()
+        for phases in phases_map.values():
+            phase_keys.update(phases.keys())
+        print(f"[PersonaPhases] 可用阶段: {sorted(phase_keys)}", flush=True)
+    else:
+        print(f"[PersonaPhases] 未找到分阶段记忆知识（旧版 profile 或无事件阶段）", flush=True)
+    
+    return phases_map
+
+
+def resolve_phase_unlock_rounds(
+    scheduled_round_events: Dict[int, List[Dict]]
+) -> Dict[int, set]:
+    """根据 scheduled_events 的触发轮次，构建 {round: {phase_keys_to_unlock}} 映射
+    
+    当 scheduled_event 在某轮触发时，对应的 persona phase 也同时解锁。
+    映射关系：P2 事件 -> P2_media, P3 事件 -> P3_official, etc.
+    """
+    phase_to_key = {
+        "P2": "P2_media",
+        "P3": "P3_official",
+        "P4": "P4_secondary",
+        "P5": "P5_resolution",
+    }
+    
+    unlock_map: Dict[int, set] = {}
+    for round_num, events in scheduled_round_events.items():
+        for evt in events:
+            phase = evt.get("phase", "")
+            phase_key = phase_to_key.get(phase)
+            if phase_key:
+                unlock_map.setdefault(round_num, set()).add(phase_key)
+    
+    if unlock_map:
+        print(f"[PersonaPhases] 知识解锁计划:", flush=True)
+        for r, keys in sorted(unlock_map.items()):
+            print(f"  R{r + 1}: 解锁 {sorted(keys)}", flush=True)
+    
+    return unlock_map
+
+
+def resolve_scheduled_events(config: Dict[str, Any], total_rounds: int) -> Dict[int, List[Dict]]:
+    """将 scheduled_events 的 trigger_round_pct 转换为具体轮次号
+    
+    分阶段信息释放（SocioVerse §2.1）：按百分比计算每个事件的触发轮次，
+    返回 {round_num: [events]} 的映射。
+    
+    Args:
+        config: 模拟配置
+        total_rounds: 总轮数
+    
+    Returns:
+        Dict[int, List[Dict]]: 轮次 -> 该轮要释放的事件列表
+    """
+    event_config = config.get("event_config", {})
+    scheduled_events = event_config.get("scheduled_events", [])
+    
+    if not scheduled_events:
+        return {}
+    
+    round_events: Dict[int, List[Dict]] = {}
+    for evt in scheduled_events:
+        pct = evt.get("trigger_round_pct", 50)
+        # 将百分比转换为实际轮次（0-indexed）
+        trigger_round = max(0, min(total_rounds - 1, int(total_rounds * pct / 100)))
+        round_events.setdefault(trigger_round, []).append(evt)
+    
+    # 日志输出分阶段计划
+    phases_summary = {}
+    for r, evts in sorted(round_events.items()):
+        for e in evts:
+            phase = e.get("phase", "?")
+            phases_summary.setdefault(phase, []).append(r)
+    
+    print(f"[ScheduledEvents] 分阶段信息释放计划 (总轮数={total_rounds}):")
+    for phase, rounds in sorted(phases_summary.items()):
+        print(f"  {phase}: 轮次 {rounds}")
+    
+    return round_events
+
+
+async def inject_scheduled_events(
+    env,
+    round_events: Dict[int, List[Dict]],
+    round_num: int,
+    agent_names: Dict[int, str],
+    action_logger=None,
+) -> int:
+    """在指定轮次注入定时事件帖子
+    
+    Args:
+        env: OASIS 环境
+        round_events: resolve_scheduled_events 返回的映射
+        round_num: 当前轮次号（0-indexed）
+        agent_names: agent_id -> name 映射
+        action_logger: 动作日志记录器
+    
+    Returns:
+        int: 本轮注入的动作数
+    """
+    events_this_round = round_events.get(round_num, [])
+    if not events_this_round:
+        return 0
+    
+    injected_actions = {}
+    injected_count = 0
+    
+    for evt in events_this_round:
+        agent_id = evt.get("poster_agent_id", 0)
+        content = evt.get("content", "")
+        phase = evt.get("phase", "?")
+        
+        try:
+            agent = env.agent_graph.get_agent(agent_id)
+            injected_actions[agent] = ManualAction(
+                action_type=ActionType.CREATE_POST,
+                action_args={"content": content}
+            )
+            
+            if action_logger:
+                action_logger.log_action(
+                    round_num=round_num + 1,
+                    agent_id=agent_id,
+                    agent_name=agent_names.get(agent_id, f"Agent_{agent_id}"),
+                    action_type="CREATE_POST",
+                    action_args={"content": content, "_phase": phase, "_scheduled": True}
+                )
+            
+            injected_count += 1
+            print(
+                f"[ScheduledEvents] R{round_num + 1} 注入 {phase} 阶段帖子: "
+                f"agent={agent_names.get(agent_id, agent_id)}, "
+                f"content={content[:60]}..."
+            )
+        except Exception as e:
+            print(f"[ScheduledEvents] 注入失败: agent_id={agent_id}, error={e}")
+    
+    if injected_actions:
+        await env.step(injected_actions)
+    
+    return injected_count
+
+
 class PlatformSimulation:
     """平台模拟结果容器"""
     def __init__(self):
@@ -1103,7 +1902,8 @@ async def run_twitter_simulation(
     simulation_dir: str,
     action_logger: Optional[PlatformActionLogger] = None,
     main_logger: Optional[SimulationLogManager] = None,
-    max_rounds: Optional[int] = None
+    max_rounds: Optional[int] = None,
+    start_round: int = 0
 ) -> PlatformSimulation:
     """运行Twitter模拟
     
@@ -1149,8 +1949,11 @@ async def run_twitter_simulation(
             agent_names[agent_id] = getattr(agent, 'name', f'Agent_{agent_id}')
     
     db_path = os.path.join(simulation_dir, "twitter_simulation.db")
+    is_resume = start_round > 0
     if os.path.exists(db_path):
         os.remove(db_path)
+    if is_resume:
+        log_info(f"续跑模式：从第 {start_round + 1} 轮开始")
     
     result.env = oasis.make(
         agent_graph=result.agent_graph,
@@ -1172,12 +1975,9 @@ async def run_twitter_simulation(
     event_config = config.get("event_config", {})
     initial_posts = event_config.get("initial_posts", [])
     
-    # 记录 round 0 开始（初始事件阶段）
-    if action_logger:
-        action_logger.log_round_start(0, 0)  # round 0, simulated_hour 0
-    
+    # 初始事件阶段（不计入正式轮次，避免 max_rounds=N 时实际跑 N+1 轮）
     initial_action_count = 0
-    if initial_posts:
+    if initial_posts and not is_resume:
         initial_actions = {}
         for post in initial_posts:
             agent_id = post.get("poster_agent_id", 0)
@@ -1205,10 +2005,11 @@ async def run_twitter_simulation(
         if initial_actions:
             await result.env.step(initial_actions)
             log_info(f"已发布 {len(initial_actions)} 条初始帖子")
+    elif is_resume:
+        log_info(f"续跑模式：跳过初始事件")
     
-    # 记录 round 0 结束
-    if action_logger:
-        action_logger.log_round_end(0, initial_action_count)
+    if initial_action_count > 0:
+        log_info(f"初始事件阶段完成: {initial_action_count} 个动作（不计入轮次）")
     
     # 主模拟循环
     time_config = config.get("time_config", {})
@@ -1223,16 +2024,65 @@ async def run_twitter_simulation(
         if total_rounds < original_rounds:
             log_info(f"轮数已截断: {original_rounds} -> {total_rounds} (max_rounds={max_rounds})")
     
+    # 分阶段信息释放：将 scheduled_events 的百分比转换为具体轮次
+    twitter_scheduled = resolve_scheduled_events(config, total_rounds)
+    if twitter_scheduled:
+        log_info(f"分阶段信息释放已启用: {sum(len(v) for v in twitter_scheduled.values())} 个定时事件")
+    
+    # 分阶段 Persona 知识门控：加载阶段记忆 + 构建解锁时间表
+    global _persona_phase_knowledge, _unlocked_persona_phases
+    _persona_phase_knowledge = load_persona_phase_knowledge(simulation_dir)
+    _unlocked_persona_phases = set()  # 每次模拟重置
+    twitter_phase_unlock = resolve_phase_unlock_rounds(twitter_scheduled) if twitter_scheduled else {}
+    
     start_time = datetime.now()
     
-    for round_num in range(total_rounds):
+    for round_num in range(start_round, total_rounds):
         # 检查是否收到退出信号
         if _shutdown_event and _shutdown_event.is_set():
             if main_logger:
                 main_logger.info(f"收到退出信号，在第 {round_num + 1} 轮停止模拟")
             break
         
-        simulated_minutes = round_num * minutes_per_round
+        # 分阶段信息释放：在本轮注入定时事件（SocioVerse §2.1 时间线释放）
+        if twitter_scheduled:
+            injected = await inject_scheduled_events(
+                result.env, twitter_scheduled, round_num, agent_names, action_logger
+            )
+            if injected > 0:
+                total_actions += injected
+                log_info(f"R{round_num + 1} 注入了 {injected} 个分阶段事件")
+        
+        # 分阶段 Persona 知识门控：解锁本轮对应的记忆阶段
+        if round_num in twitter_phase_unlock:
+            new_phases = twitter_phase_unlock[round_num]
+            _unlocked_persona_phases.update(new_phases)
+            log_info(f"R{round_num + 1} 解锁 Persona 记忆阶段: {sorted(new_phases)} (累计: {sorted(_unlocked_persona_phases)})")
+        
+        # 读取世界状态并注入到全局环境 prompt（论文 §4.1.1 反馈闭环）
+        if _world_model_enabled:
+            global _current_world_state_prompt, _current_world_state_data, _prev_world_state_data, _prev2_world_state_data
+            ws_data = read_world_state(simulation_dir)
+            if ws_data:
+                # v5: 注入最近两轮状态用于二阶趋势确认
+                if _prev_world_state_data:
+                    ws_data["_prev_panic_level"] = _prev_world_state_data.get("panic_level")
+                    ws_data["_prev_trust_level"] = _prev_world_state_data.get("trust_level")
+                if _prev2_world_state_data:
+                    ws_data["_prev2_panic_level"] = _prev2_world_state_data.get("panic_level")
+                    ws_data["_prev2_trust_level"] = _prev2_world_state_data.get("trust_level")
+                _prev2_world_state_data = _prev_world_state_data
+                _prev_world_state_data = {k: v for k, v in ws_data.items() if not k.startswith("_")}
+                _current_world_state_data = ws_data
+                _current_world_state_prompt = build_world_state_prompt(ws_data)
+                # Agent Brain: 根据世界状态更新所有 Agent 的认知状态
+                if _agent_brain_runtime is not None:
+                    _agent_brain_runtime.apply_world_state(round_num, ws_data)
+        
+        # 支持 simulation_start_hour：将模拟时钟偏移到指定起始小时
+        # 默认从 8:00 开始，避免前 N 轮全在深夜导致无 Agent 活跃
+        start_hour = time_config.get("simulation_start_hour", 8)
+        simulated_minutes = round_num * minutes_per_round + start_hour * 60
         simulated_hour = (simulated_minutes // 60) % 24
         simulated_day = simulated_minutes // (60 * 24) + 1
         
@@ -1271,6 +2121,16 @@ async def run_twitter_simulation(
                 total_actions += 1
                 round_action_count += 1
         
+        # Agent Brain: 记录本轮实际动作，更新认知状态
+        if _agent_brain_runtime is not None and actual_actions:
+            _agent_brain_runtime.record_actions(round_num, actual_actions)
+        # Feature ④: 反思机制（Generative Agents §4.3）— 每 N 轮触发
+        if _agent_brain_runtime is not None:
+            _agent_brain_runtime.trigger_reflection(round_num)
+        # Agent Brain: 写入认知轨迹快照（供报告/证据检索）
+        if _agent_brain_runtime is not None:
+            _agent_brain_runtime.write_cognition_snapshot(round_num)
+        
         if action_logger:
             action_logger.log_round_end(round_num + 1, round_action_count)
         
@@ -1295,7 +2155,8 @@ async def run_reddit_simulation(
     simulation_dir: str,
     action_logger: Optional[PlatformActionLogger] = None,
     main_logger: Optional[SimulationLogManager] = None,
-    max_rounds: Optional[int] = None
+    max_rounds: Optional[int] = None,
+    start_round: int = 0
 ) -> PlatformSimulation:
     """运行Reddit模拟
     
@@ -1340,8 +2201,11 @@ async def run_reddit_simulation(
             agent_names[agent_id] = getattr(agent, 'name', f'Agent_{agent_id}')
     
     db_path = os.path.join(simulation_dir, "reddit_simulation.db")
+    is_resume = start_round > 0
     if os.path.exists(db_path):
         os.remove(db_path)
+    if is_resume:
+        log_info(f"续跑模式：从第 {start_round + 1} 轮开始")
     
     result.env = oasis.make(
         agent_graph=result.agent_graph,
@@ -1363,12 +2227,9 @@ async def run_reddit_simulation(
     event_config = config.get("event_config", {})
     initial_posts = event_config.get("initial_posts", [])
     
-    # 记录 round 0 开始（初始事件阶段）
-    if action_logger:
-        action_logger.log_round_start(0, 0)  # round 0, simulated_hour 0
-    
+    # 初始事件阶段（不计入正式轮次，避免 max_rounds=N 时实际跑 N+1 轮）
     initial_action_count = 0
-    if initial_posts:
+    if initial_posts and not is_resume:
         initial_actions = {}
         for post in initial_posts:
             agent_id = post.get("poster_agent_id", 0)
@@ -1404,10 +2265,11 @@ async def run_reddit_simulation(
         if initial_actions:
             await result.env.step(initial_actions)
             log_info(f"已发布 {len(initial_actions)} 条初始帖子")
+    elif is_resume:
+        log_info(f"续跑模式：跳过初始事件")
     
-    # 记录 round 0 结束
-    if action_logger:
-        action_logger.log_round_end(0, initial_action_count)
+    if initial_action_count > 0:
+        log_info(f"初始事件阶段完成: {initial_action_count} 个动作（不计入轮次）")
     
     # 主模拟循环
     time_config = config.get("time_config", {})
@@ -1422,16 +2284,65 @@ async def run_reddit_simulation(
         if total_rounds < original_rounds:
             log_info(f"轮数已截断: {original_rounds} -> {total_rounds} (max_rounds={max_rounds})")
     
+    # 分阶段信息释放：将 scheduled_events 的百分比转换为具体轮次
+    reddit_scheduled = resolve_scheduled_events(config, total_rounds)
+    if reddit_scheduled:
+        log_info(f"分阶段信息释放已启用: {sum(len(v) for v in reddit_scheduled.values())} 个定时事件")
+    
+    # 分阶段 Persona 知识门控：加载阶段记忆 + 构建解锁时间表
+    global _persona_phase_knowledge, _unlocked_persona_phases
+    _persona_phase_knowledge = load_persona_phase_knowledge(simulation_dir)
+    _unlocked_persona_phases = set()  # 每次模拟重置
+    reddit_phase_unlock = resolve_phase_unlock_rounds(reddit_scheduled) if reddit_scheduled else {}
+    
     start_time = datetime.now()
     
-    for round_num in range(total_rounds):
+    for round_num in range(start_round, total_rounds):
         # 检查是否收到退出信号
         if _shutdown_event and _shutdown_event.is_set():
             if main_logger:
                 main_logger.info(f"收到退出信号，在第 {round_num + 1} 轮停止模拟")
             break
         
-        simulated_minutes = round_num * minutes_per_round
+        # 分阶段信息释放：在本轮注入定时事件（SocioVerse §2.1 时间线释放）
+        if reddit_scheduled:
+            injected = await inject_scheduled_events(
+                result.env, reddit_scheduled, round_num, agent_names, action_logger
+            )
+            if injected > 0:
+                total_actions += injected
+                log_info(f"R{round_num + 1} 注入了 {injected} 个分阶段事件")
+        
+        # 分阶段 Persona 知识门控：解锁本轮对应的记忆阶段
+        if round_num in reddit_phase_unlock:
+            new_phases = reddit_phase_unlock[round_num]
+            _unlocked_persona_phases.update(new_phases)
+            log_info(f"R{round_num + 1} 解锁 Persona 记忆阶段: {sorted(new_phases)} (累计: {sorted(_unlocked_persona_phases)})")
+        
+        # 读取世界状态并注入到全局环境 prompt（论文 §4.1.1 反馈闭环）
+        if _world_model_enabled:
+            global _current_world_state_prompt, _current_world_state_data, _prev_world_state_data, _prev2_world_state_data
+            ws_data = read_world_state(simulation_dir)
+            if ws_data:
+                # v5: 注入最近两轮状态用于二阶趋势确认
+                if _prev_world_state_data:
+                    ws_data["_prev_panic_level"] = _prev_world_state_data.get("panic_level")
+                    ws_data["_prev_trust_level"] = _prev_world_state_data.get("trust_level")
+                if _prev2_world_state_data:
+                    ws_data["_prev2_panic_level"] = _prev2_world_state_data.get("panic_level")
+                    ws_data["_prev2_trust_level"] = _prev2_world_state_data.get("trust_level")
+                _prev2_world_state_data = _prev_world_state_data
+                _prev_world_state_data = {k: v for k, v in ws_data.items() if not k.startswith("_")}
+                _current_world_state_data = ws_data
+                _current_world_state_prompt = build_world_state_prompt(ws_data)
+                # Agent Brain: 根据世界状态更新所有 Agent 的认知状态
+                if _agent_brain_runtime is not None:
+                    _agent_brain_runtime.apply_world_state(round_num, ws_data)
+        
+        # 支持 simulation_start_hour：将模拟时钟偏移到指定起始小时
+        # 默认从 8:00 开始，避免前 N 轮全在深夜导致无 Agent 活跃
+        start_hour = time_config.get("simulation_start_hour", 8)
+        simulated_minutes = round_num * minutes_per_round + start_hour * 60
         simulated_hour = (simulated_minutes // 60) % 24
         simulated_day = simulated_minutes // (60 * 24) + 1
         
@@ -1469,6 +2380,16 @@ async def run_reddit_simulation(
                 )
                 total_actions += 1
                 round_action_count += 1
+        
+        # Agent Brain: 记录本轮实际动作，更新认知状态
+        if _agent_brain_runtime is not None and actual_actions:
+            _agent_brain_runtime.record_actions(round_num, actual_actions)
+        # Feature ④: 反思机制（Generative Agents §4.3）— 每 N 轮触发
+        if _agent_brain_runtime is not None:
+            _agent_brain_runtime.trigger_reflection(round_num)
+        # Agent Brain: 写入认知轨迹快照（供报告/证据检索）
+        if _agent_brain_runtime is not None:
+            _agent_brain_runtime.write_cognition_snapshot(round_num)
         
         if action_logger:
             action_logger.log_round_end(round_num + 1, round_action_count)
@@ -1514,10 +2435,22 @@ async def main():
         help='最大模拟轮数（可选，用于截断过长的模拟）'
     )
     parser.add_argument(
+        '--start-round',
+        type=int,
+        default=0,
+        help='从指定轮次开始续跑（默认 0 表示从头开始）'
+    )
+    parser.add_argument(
         '--no-wait',
         action='store_true',
         default=False,
         help='模拟完成后立即关闭环境，不进入等待命令模式'
+    )
+    parser.add_argument(
+        '--no-world-model',
+        action='store_true',
+        default=False,
+        help='A/B测试用：禁用世界模型反馈闭环，Agent不感知环境状态'
     )
     
     args = parser.parse_args()
@@ -1558,6 +2491,8 @@ async def main():
     log_manager.info(f"  - 总模拟时长: {total_hours}小时")
     log_manager.info(f"  - 每轮时间: {minutes_per_round}分钟")
     log_manager.info(f"  - 配置总轮数: {config_total_rounds}")
+    if args.start_round > 0:
+        log_manager.info(f"  - 续跑起始轮: {args.start_round}")
     if args.max_rounds:
         log_manager.info(f"  - 最大轮数限制: {args.max_rounds}")
         if args.max_rounds < config_total_rounds:
@@ -1570,6 +2505,36 @@ async def main():
     log_manager.info(f"  - Reddit动作: reddit/actions.jsonl")
     log_manager.info("=" * 60)
     
+    # 加载 Agent 角色映射表（差异化感知）
+    global _agent_role_map
+    _agent_role_map = _load_agent_role_map(config)
+    if _agent_role_map:
+        stances = {}
+        for r in _agent_role_map.values():
+            s = r.get("stance", "neutral")
+            stances[s] = stances.get(s, 0) + 1
+        log_manager.info(f"  - 差异化感知: 已加载 {len(_agent_role_map)} 个Agent角色, 立场分布={stances}")
+    
+    # 加载 Agent Brain 运行时（认知层）
+    global _agent_brain_runtime
+    try:
+        _agent_brain_runtime = AgentBrainRuntime.load_or_create(config, simulation_dir)
+        log_manager.info(f"  - Agent Brain: 已加载 {len(_agent_brain_runtime)} 个认知状态")
+    except Exception as e:
+        log_manager.warning(f"  - Agent Brain: 加载失败 ({e})，认知层将被跳过")
+        _agent_brain_runtime = None
+    
+    # 限制 Agent 记忆窗口，防止长模拟内存爆炸
+    patch_agent_memory_limit(window_size=20)
+    
+    # 安装世界状态注入补丁（论文 §4.1.1 Environment State 反馈闭环）
+    global _world_model_enabled
+    if not args.no_world_model:
+        patch_oasis_environment()
+    else:
+        _world_model_enabled = False
+        log_manager.info("[A/B测试] 世界模型反馈已禁用 (--no-world-model)")
+    
     start_time = datetime.now()
     
     # 存储两个平台的模拟结果
@@ -1577,20 +2542,28 @@ async def main():
     reddit_result: Optional[PlatformSimulation] = None
     
     if args.twitter_only:
-        twitter_result = await run_twitter_simulation(config, simulation_dir, twitter_logger, log_manager, args.max_rounds)
+        twitter_result = await run_twitter_simulation(config, simulation_dir, twitter_logger, log_manager, args.max_rounds, args.start_round)
     elif args.reddit_only:
-        reddit_result = await run_reddit_simulation(config, simulation_dir, reddit_logger, log_manager, args.max_rounds)
+        reddit_result = await run_reddit_simulation(config, simulation_dir, reddit_logger, log_manager, args.max_rounds, args.start_round)
     else:
         # 并行运行（每个平台使用独立的日志记录器）
         results = await asyncio.gather(
-            run_twitter_simulation(config, simulation_dir, twitter_logger, log_manager, args.max_rounds),
-            run_reddit_simulation(config, simulation_dir, reddit_logger, log_manager, args.max_rounds),
+            run_twitter_simulation(config, simulation_dir, twitter_logger, log_manager, args.max_rounds, args.start_round),
+            run_reddit_simulation(config, simulation_dir, reddit_logger, log_manager, args.max_rounds, args.start_round),
         )
         twitter_result, reddit_result = results
     
     total_elapsed = (datetime.now() - start_time).total_seconds()
     log_manager.info("=" * 60)
     log_manager.info(f"模拟循环完成! 总耗时: {total_elapsed:.1f}秒")
+    
+    # Agent Brain: 生成认知摘要（供报告生成和证据检索使用）
+    if _agent_brain_runtime is not None:
+        try:
+            summary = _agent_brain_runtime.generate_cognition_summary()
+            log_manager.info(f"  - Agent Brain: 已生成认知摘要（{summary.get('total_agents', 0)} 个Agent）")
+        except Exception as e:
+            log_manager.warning(f"  - Agent Brain: 生成认知摘要失败 ({e})")
     
     # 是否进入等待命令模式
     if wait_for_commands:

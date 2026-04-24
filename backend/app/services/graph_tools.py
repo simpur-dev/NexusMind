@@ -400,7 +400,7 @@ class InterviewResult:
 
 class GraphToolsService:
     """
-    图谱检索工具服务（使用 Graphiti + FalkorDB）
+    图谱检索工具服务（使用 Graphiti + Neo4j）
     
     【核心检索工具 - 优化后】
     1. insight_forge - 深度洞察检索（最强大，自动生成子问题，多维度检索）
@@ -423,7 +423,7 @@ class GraphToolsService:
     RETRY_DELAY = 2.0
     
     def __init__(self, api_key: Optional[str] = None, llm_client: Optional[LLMClient] = None):
-        # api_key 参数保留用于接口兼容，Graphiti 使用 FalkorDB 本地连接
+        # api_key 参数保留用于接口兼容，Graphiti 使用 Neo4j 本地连接
         # LLM客户端用于InsightForge生成子问题
         self._llm_client = llm_client
         self._vector_store = VectorStore()
@@ -1486,7 +1486,7 @@ class GraphToolsService:
                 simulation_id=simulation_id,
                 interviews=interviews_request,
                 platform=None,  # 不指定platform，双平台采访
-                timeout=180.0   # 双平台需要更长超时
+                timeout=60.0    # 有早期退出检测，无需等太久
             )
             
             logger.info(f"采访API返回: {api_result.get('interviews_count', 0)} 个结果, success={api_result.get('success')}")
@@ -1569,6 +1569,11 @@ class GraphToolsService:
             # 模拟环境未运行
             logger.warning(f"采访API调用失败（环境未运行？）: {e}")
             result.summary = f"采访失败：{str(e)}。模拟环境可能已关闭，请确保OASIS环境正在运行。"
+            return result
+        except TimeoutError as e:
+            # IPC 超时 —— 模拟进程可能卡死或已退出
+            logger.warning(f"采访IPC超时，改用LLM直接回答: {e}")
+            result.summary = f"采访超时（模拟进程可能繁忙或已退出），已跳过Agent采访环节。"
             return result
         except Exception as e:
             logger.error(f"采访API调用异常: {e}")

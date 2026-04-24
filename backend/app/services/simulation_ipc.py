@@ -26,6 +26,7 @@ class CommandType(str, Enum):
     """命令类型"""
     INTERVIEW = "interview"           # 单个Agent采访
     BATCH_INTERVIEW = "batch_interview"  # 批量采访
+    INJECT_EVENT = "inject_event"     # 动态事件注入（上帝视角）
     CLOSE_ENV = "close_env"           # 关闭环境
 
 
@@ -154,6 +155,9 @@ class SimulationIPCClient:
         response_file = os.path.join(self.responses_dir, f"{command_id}.json")
         start_time = time.time()
         
+        alive_check_interval = 15  # 每 15 秒检查一次进程存活
+        last_alive_check = start_time
+        
         while time.time() - start_time < timeout:
             if os.path.exists(response_file):
                 try:
@@ -172,6 +176,18 @@ class SimulationIPCClient:
                     return response
                 except (json.JSONDecodeError, KeyError) as e:
                     logger.warning(f"解析响应失败: {e}")
+            
+            # 定期检查模拟进程是否仍然存活，避免白等
+            now = time.time()
+            if now - last_alive_check >= alive_check_interval:
+                last_alive_check = now
+                if not self.check_env_alive():
+                    logger.warning(f"等待IPC响应期间检测到模拟进程已退出，提前终止: command_id={command_id}")
+                    try:
+                        os.remove(command_file)
+                    except OSError:
+                        pass
+                    raise TimeoutError(f"模拟进程已退出，无法完成命令 ({command_type.value})")
             
             time.sleep(poll_interval)
         
@@ -251,6 +267,52 @@ class SimulationIPCClient:
             timeout=timeout
         )
     
+    def send_inject_event(
+        self,
+        event_type: str,
+        description: str,
+        severity: float = 0.7,
+        affected_variables: Dict[str, float] = None,
+        timeout: float = 10.0
+    ) -> IPCResponse:
+        """
+        发送动态事件注入命令（上帝视角）
+        
+        在模拟运行过程中注入一个外部事件，影响世界状态和Agent行为。
+        
+        Args:
+            event_type: 事件类型
+                - "breaking_news": 突发新闻
+                - "official_statement": 官方声明
+                - "policy_change": 政策变化
+                - "rumor_spread": 谣言传播
+                - "public_protest": 公众抗议
+                - "expert_opinion": 专家观点
+                - "custom": 自定义事件
+            description: 事件描述（会出现在Agent的环境prompt中）
+            severity: 事件严重度 (0.0-1.0)，影响事件可见性和状态变化幅度
+            affected_variables: 受影响的状态变量及变化方向
+                例: {"panic_level": 0.15, "trust_level": -0.1}
+                正值表示上升，负值表示下降
+            timeout: 超时时间
+            
+        Returns:
+            IPCResponse
+        """
+        args = {
+            "event_type": event_type,
+            "description": description,
+            "severity": max(0.0, min(1.0, severity)),
+        }
+        if affected_variables:
+            args["affected_variables"] = affected_variables
+            
+        return self.send_command(
+            command_type=CommandType.INJECT_EVENT,
+            args=args,
+            timeout=timeout
+        )
+    
     def send_close_env(self, timeout: float = 30.0) -> IPCResponse:
         """
         发送关闭环境命令
@@ -271,7 +333,7 @@ class SimulationIPCClient:
         """
         检查模拟环境是否存活
         
-        通过检查 env_status.json 文件来判断
+        通过检查 env_status.json 文件 + PID 存活性 + 文件新鲜度来判断
         """
         status_file = os.path.join(self.simulation_dir, "env_status.json")
         if not os.path.exists(status_file):
@@ -280,7 +342,27 @@ class SimulationIPCClient:
         try:
             with open(status_file, 'r', encoding='utf-8') as f:
                 status = json.load(f)
-            return status.get("status") == "alive"
+            if status.get("status") != "alive":
+                return False
+            
+            # 检查 PID 是否仍在运行（使用标准库）
+            pid = status.get("pid")
+            if pid:
+                try:
+                    os.kill(int(pid), 0)  # 信号 0 不杀进程，仅检查存在性
+                except OSError:
+                    logger.warning(f"env_status 标记 alive 但 PID {pid} 已不存在")
+                    return False
+                except (ValueError, TypeError):
+                    pass
+            
+            # 检查文件修改时间，超过 5 分钟未更新视为僵尸
+            mtime = os.path.getmtime(status_file)
+            if time.time() - mtime > 300:
+                logger.warning(f"env_status.json 超过 5 分钟未更新，可能已僵死")
+                return False
+            
+            return True
         except (json.JSONDecodeError, OSError):
             return False
 
@@ -326,6 +408,7 @@ class SimulationIPCServer:
         with open(status_file, 'w', encoding='utf-8') as f:
             json.dump({
                 "status": status,
+                "pid": os.getpid(),
                 "timestamp": datetime.now().isoformat()
             }, f, ensure_ascii=False, indent=2)
     

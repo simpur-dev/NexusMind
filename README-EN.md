@@ -17,8 +17,8 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/666ghj/NexusMind)
 
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white)](http://discord.gg/ePf5aPaHnA)
-[![X](https://img.shields.io/badge/X-Follow-000000?style=flat-square&logo=x&logoColor=white)](https://x.com/mirofish_ai)
-[![Instagram](https://img.shields.io/badge/Instagram-Follow-E4405F?style=flat-square&logo=instagram&logoColor=white)](https://www.instagram.com/mirofish_ai/)
+[![X](https://img.shields.io/badge/X-Follow-000000?style=flat-square&logo=x&logoColor=white)](https://x.com/NexusMind_ai)
+[![Instagram](https://img.shields.io/badge/Instagram-Follow-E4405F?style=flat-square&logo=instagram&logoColor=white)](https://www.instagram.com/NexusMind_ai/)
 
 [English](./README-EN.md) | [中文文档](./README.md)
 
@@ -42,7 +42,7 @@ From serious predictions to playful simulations, we let every "what if" see its 
 
 ## 🌐 Live Demo
 
-Welcome to visit our online demo environment and experience a prediction simulation on trending public opinion events we've prepared for you: [mirofish-live-demo](https://666ghj.github.io/mirofish-demo/)
+Welcome to visit our online demo environment and experience a prediction simulation on trending public opinion events we've prepared for you: [NexusMind-live-demo](https://666ghj.github.io/mirofish-demo/)
 
 ## 📸 Screenshots
 
@@ -208,7 +208,7 @@ Reads `.env` from root directory by default, maps ports `3000 (frontend) / 5001 
 
 &nbsp;
 
-The NexusMind team is recruiting full-time/internship positions. If you're interested in multi-agent simulation and LLM applications, feel free to send your resume to: **mirofish@shanda.com**
+The NexusMind team is recruiting full-time/internship positions. If you're interested in multi-agent simulation and LLM applications, feel free to send your resume to: **nexusmind@shanda.com**
 
 ## 📄 Acknowledgments
 

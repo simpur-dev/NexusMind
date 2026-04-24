@@ -43,9 +43,17 @@ export const getReport = (reportId) => {
 }
 
 /**
+ * 获取已生成的章节列表
+ * @param {string} reportId
+ */
+export const getReportSections = (reportId) => {
+  return service.get(`/api/report/${reportId}/sections`)
+}
+
+/**
  * 与 Report Agent 对话
  * @param {Object} data - { simulation_id, message, chat_history? }
  */
 export const chatWithReport = (data) => {
-  return requestWithRetry(() => service.post('/api/report/chat', data), 3, 1000)
+  return requestWithRetry(() => service.post('/api/report/chat', data, { timeout: 60000 }), 2, 1000)
 }

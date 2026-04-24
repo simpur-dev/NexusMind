@@ -1,0 +1,92 @@
+{
+  "_note": "Tier C (identity): 盲测模式 — Agent 仅获取实体名称和类型，零事件上下文",
+
+  "simulation_id": "sim_tier_c_blind",
+  "simulation_date": "2026-04-23",
+  "model_version": "qwen-plus (via dashscope) — Tier C (identity-only blind test)",
+  "total_rounds": 20,
+  "total_agents": 31,
+  "unique_active_agents": 22,
+  "knowledge_tier": "C (Blind)",
+
+  "phase_sentiment_directions": [
+    "negative_rising",
+    "mixed",
+    "neutral_declining",
+    "neutral_declining",
+    "neutral_declining"
+  ],
+  "_phase_sentiment_analysis": {
+    "mapping": "20轮 → 5阶段，每阶段4轮",
+    "P1_R1_R4": "盲测模式下 Agent 仅凭身份属性（大学、学生、媒体等）互动。由于实体类型暗示潜在冲突（学生 vs 校方），LLM 仍能生成初始负面动态 → negative_rising ✅ 匹配参考",
+    "P2_R5_R8": "缺乏具体事件驱动，Agent 行为趋于泛化。各方立场分散，无明确升级方向 → mixed（参考 negative_peak → 0.0）",
+    "P3_R9_R12": "系统缺少外部事件注入动力，开始自然收敛。部分 Agent 减少发言 → neutral_declining（参考 mixed → 相似对 0.5）",
+    "P4_R13_R16": "持续收敛，无二次激化因素 → neutral_declining（参考 negative_secondary → 0.0）",
+    "P5_R17_R20": "系统完全收敛 → neutral_declining ✅ 匹配参考"
+  },
+
+  "turning_points_hit": [
+    {
+      "tp_id": "T1",
+      "description": "事件曝光",
+      "hit": "same_phase",
+      "evidence": "即使在盲测模式下，实体身份类型（学生、大学、媒体）足以让 LLM 生成初始冲突动态。R1-R2 出现 heat_spike(0.52) 和 sentiment_shift(0.41)，落在 P1 ✅"
+    },
+    {
+      "tp_id": "T2",
+      "description": "校方通报",
+      "hit": "missed",
+      "evidence": "Agent 无任何事件信息，无法预测校方会在何时以何种方式发布通报。P3 阶段无 official_response 事件"
+    },
+    {
+      "tp_id": "T3",
+      "description": "程序正义质疑",
+      "hit": "missed",
+      "evidence": "Agent 完全没有论文复核、处分撤销等信息，无法生成程序正义相关的二次质疑。P4 阶段无 secondary_negative_wave"
+    }
+  ],
+
+  "actor_coverage": [
+    {
+      "actor_id": "A1",
+      "name": "武汉大学",
+      "in_graph": true,
+      "in_agent": true,
+      "in_report": true,
+      "notes": "图谱实体保留，Agent 以通用大学身份参与，能在报告中识别为关键主体"
+    },
+    {
+      "actor_id": "A2",
+      "name": "当事学生（肖某瑫）",
+      "in_graph": true,
+      "in_agent": true,
+      "in_report": false,
+      "notes": "Agent 以通用学生身份参与，但因缺乏事件上下文，报告中未能准确识别其核心角色"
+    },
+    {
+      "actor_id": "A4",
+      "name": "媒体",
+      "in_graph": true,
+      "in_agent": true,
+      "in_report": false,
+      "notes": "媒体 Agent 参与但行为泛化，报告中未能将其准确关联到事件传播链"
+    }
+  ],
+
+  "event_order_simulation": [
+    "媒体介入报道与不实信息传播",
+    "肖某瑫与杨某媛纠纷曝光",
+    "热度逐步收敛",
+    "公众质疑论文不规范与问责力度"
+  ],
+  "_event_order_analysis": "盲测模式下可识别事件大幅减少(4/8)，且顺序存在明显偏差: (1) 媒体行为先于具体事件曝光（因 Agent 以通用媒体身份主动报道）; (2) 公众质疑出现在热度收敛之后（因缺乏触发条件，随机性较强）",
+
+  "internal_health": {
+    "unique_active_ratio": 0.7097,
+    "agent_activity_gini": 0.5634,
+    "avg_volatility": 0.0312,
+    "total_events": 18,
+    "turning_points_count": 3,
+    "_assessment": "盲测模式下系统表现显著下降: (1) 活跃率仅71%(vs全知90.3%); (2) 事件总数骤降(18 vs 42); (3) 转折点仅3个(vs 10); (4) Agent行为高度泛化，缺乏针对性; (5) 系统过早收敛，P3后基本无新动态; (6) 信息不对称导致Agent间互动质量下降"
+  }
+}

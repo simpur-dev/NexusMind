@@ -1,0 +1,173 @@
+﻿{
+  "case_id": "case_03_jiangxi_industry_vocational_college_food_safety",
+  "case_name": "江西工业职业技术学院“鼠头鸭脖”食品安全事件",
+  "case_type": "高校舆情 / 校园食品安全 / 官方回应失误与信任危机",
+  "source": "江西工业职业技术学院通报 2023-06-03, 江西省联合调查组通报 2023-06-17",
+
+  "phases": [
+    {
+      "phase_id": "P1",
+      "phase_name": "曝光期",
+      "description": "学生视频传播，食堂异物事件迅速获得高关注",
+      "sentiment_direction": "negative_rising",
+      "sentiment_label": "负面快速上升"
+    },
+    {
+      "phase_id": "P2",
+      "phase_name": "初次定性期",
+      "description": "学校与属地监管认定为鸭脖，公众质疑显著升级",
+      "sentiment_direction": "negative_peak",
+      "sentiment_label": "负面达到峰值"
+    },
+    {
+      "phase_id": "P3",
+      "phase_name": "全国发酵期",
+      "description": "媒体跟进、网络梗化传播，事件升级为全国性信任危机",
+      "sentiment_direction": "negative_sustained",
+      "sentiment_label": "负面高位持续"
+    },
+    {
+      "phase_id": "P4",
+      "phase_name": "联合调查反转期",
+      "description": "省级联合调查认定异物为鼠头并启动追责，舆论由愤怒转向复杂评价",
+      "sentiment_direction": "mixed",
+      "sentiment_label": "混合情绪，部分转正"
+    },
+    {
+      "phase_id": "P5",
+      "phase_name": "追责整改期",
+      "description": "处罚整改推进，讨论转向食品安全治理与回应机制反思",
+      "sentiment_direction": "neutral_declining",
+      "sentiment_label": "回落趋于中性"
+    }
+  ],
+
+  "sentiment_direction_sequence": [
+    "negative_rising",
+    "negative_peak",
+    "negative_sustained",
+    "mixed",
+    "neutral_declining"
+  ],
+
+  "turning_points_top3": [
+    {
+      "tp_id": "T1",
+      "phase": "P1",
+      "description": "学生发布食堂异物视频，事件迅速在社交媒体发酵",
+      "expected_simulation_signal": "negative sentiment spike, attention_level surge"
+    },
+    {
+      "tp_id": "T2",
+      "phase": "P2",
+      "description": "学校与属地监管将异物定性为鸭脖，引发更强烈的不信任和嘲讽",
+      "expected_simulation_signal": "trust_level sharp drop, polarization_level increase"
+    },
+    {
+      "tp_id": "T3",
+      "phase": "P4",
+      "description": "江西省联合调查组认定异物为鼠头并追责，事件进入纠偏与问责阶段",
+      "expected_simulation_signal": "stability_level increase, mixed sentiment appears"
+    }
+  ],
+
+  "event_order_reference": [
+    "学生视频曝光食堂异物",
+    "学校与属地监管回应为鸭脖",
+    "公众质疑升级并形成全国性传播",
+    "媒体持续跟进与梗化扩散",
+    "江西省联合调查组介入",
+    "联合调查认定异物为鼠头并追责",
+    "处罚整改推进与热度收敛"
+  ],
+
+  "key_actors": [
+    {
+      "actor_id": "A1",
+      "name": "江西工业职业技术学院",
+      "aliases": ["学校", "校方", "江西工职院", "江西工业职业技术学院官方"],
+      "type": "organization",
+      "role": "事件处置主体，初期回应直接影响信任走势",
+      "importance": "high",
+      "expected_in_graph": true,
+      "expected_in_agent": true,
+      "expected_in_report": true
+    },
+    {
+      "actor_id": "A2",
+      "name": "当事学生",
+      "aliases": ["学生", "视频发布者", "就餐学生"],
+      "type": "individual",
+      "role": "视频曝光者，是事件传播的第一触发点",
+      "importance": "high",
+      "expected_in_graph": true,
+      "expected_in_agent": true,
+      "expected_in_report": true
+    },
+    {
+      "actor_id": "A3",
+      "name": "属地市场监管部门",
+      "aliases": ["市场监管部门", "高新区市监局", "属地监管"],
+      "type": "regulator",
+      "role": "初次定性参与方，影响事件公信力判断",
+      "importance": "high",
+      "expected_in_graph": true,
+      "expected_in_agent": true,
+      "expected_in_report": true
+    },
+    {
+      "actor_id": "A4",
+      "name": "江西省联合调查组",
+      "aliases": ["联合调查组", "省级调查组", "江西省调查组"],
+      "type": "regulator",
+      "role": "权威纠偏主体，决定舆情反转节点",
+      "importance": "high",
+      "expected_in_graph": true,
+      "expected_in_agent": true,
+      "expected_in_report": true
+    },
+    {
+      "actor_id": "A5",
+      "name": "涉事后勤企业",
+      "aliases": ["食堂承包方", "涉事餐饮企业", "后勤企业"],
+      "type": "organization",
+      "role": "食品安全责任主体，承担后续处罚与整改责任",
+      "importance": "medium",
+      "expected_in_graph": true,
+      "expected_in_agent": true,
+      "expected_in_report": false
+    },
+    {
+      "actor_id": "A6",
+      "name": "媒体 / 网民",
+      "aliases": ["媒体", "记者", "网友", "网民"],
+      "type": "media",
+      "role": "推动事件全国发酵，并持续放大对官方回应的质疑",
+      "importance": "high",
+      "expected_in_graph": true,
+      "expected_in_agent": true,
+      "expected_in_report": true
+    }
+  ],
+
+  "total_key_actors": 6,
+  "high_importance_actors": ["江西工业职业技术学院", "当事学生", "属地市场监管部门", "江西省联合调查组", "媒体 / 网民"],
+
+  "ab_test_variables": {
+    "group_a": {
+      "label": "先承认不确定性并启动联合核查",
+      "description": "学校第一时间说明结论未明，立即封存样本、保留证据并启动联合核查"
+    },
+    "group_b": {
+      "label": "快速定性为鸭脖",
+      "description": "学校试图直接平息争议，快速将异物定性为鸭脖（真实路径）"
+    }
+  },
+
+  "scoring_notes": {
+    "TCS": "将 simulation 情绪曲线按 5 阶段压缩，逐阶段比较方向：完全一致=1, 大体接近=0.5, 明显不符=0",
+    "TPH": "检查 T1/T2/T3 是否在 simulation 的对应或相邻阶段出现：同阶段命中=1, 相邻阶段=0.5, 未命中=0",
+    "KAC": "检查 high_importance_actors 是否出现在图谱节点/Agent/报告中，按覆盖比例打分",
+    "EOA": "比较 event_order_reference 与 simulation 关键事件序列的顺序一致程度"
+  }
+}

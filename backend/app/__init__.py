@@ -76,17 +76,34 @@ def create_app(config_class=Config):
         return response
     
     # 注册蓝图
-    from .api import graph_bp, simulation_bp, report_bp
+    from .api import graph_bp, simulation_bp, report_bp, evaluation_bp, incident_bp, forecast_bp
     app.register_blueprint(graph_bp, url_prefix='/api/graph')
     app.register_blueprint(simulation_bp, url_prefix='/api/simulation')
     app.register_blueprint(report_bp, url_prefix='/api/report')
-    
+    app.register_blueprint(evaluation_bp, url_prefix='/api/evaluation')
+    app.register_blueprint(incident_bp, url_prefix='/api/incident')
+    app.register_blueprint(forecast_bp, url_prefix='/api/forecast')
+
     # 健康检查
     @app.route('/health')
     def health():
         return {'status': 'ok', 'service': 'NexusMind Backend'}
-    
+
+    # 启动时接管孤儿模拟子进程（Flask debug autoreload / 崩溃后自恢复）
+    # 仅在主进程执行，避免 Werkzeug reloader 的 stat 线程重复接管
+    if should_log_startup and not app.config.get('TESTING', False):
+        try:
+            from .services.simulation_runner import SimulationRunner
+            stats = SimulationRunner.reattach_running_simulations()
+            if stats["scanned"] > 0:
+                logger.info(
+                    f"reattach 扫描 {stats['scanned']} 个 sim：接管 "
+                    f"{stats['reattached']}，标记失败 {stats['marked_failed']}"
+                )
+        except Exception as e:
+            logger.warning(f"reattach 启动扫描失败：{e}")
+
     if should_log_startup:
         logger.info("NexusMind Backend 启动完成")
-    
+
     return app
