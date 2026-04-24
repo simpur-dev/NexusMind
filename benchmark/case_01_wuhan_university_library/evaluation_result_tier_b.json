@@ -1,0 +1,94 @@
+{
+  "_note": "Tier B (p1_only): 限知模式 — Agent 仅获取 P1 阶段信息，后续阶段关键词被自动过滤",
+
+  "simulation_id": "sim_tier_b_p1only",
+  "simulation_date": "2026-04-23",
+  "model_version": "qwen-plus (via dashscope) — Tier B (p1_only knowledge gate)",
+  "total_rounds": 20,
+  "total_agents": 31,
+  "unique_active_agents": 26,
+  "knowledge_tier": "B (Gated)",
+
+  "phase_sentiment_directions": [
+    "negative_rising",
+    "negative_rising",
+    "mixed",
+    "mixed",
+    "neutral_declining"
+  ],
+  "_phase_sentiment_analysis": {
+    "mapping": "20轮 → 5阶段，每阶段4轮",
+    "P1_R1_R4": "Agent 具备初始事件上下文（P1信息未过滤），能识别纠纷曝光引发的负面情绪上升。R1-R4 负面持续攀升 → negative_rising ✅ 匹配参考",
+    "P2_R5_R8": "Agent 不知道后续事件发展，但基于 P1 认知继续负面放大。缺少具体 peak 触发事件知识，预测为继续上升而非达峰 → negative_rising（参考 negative_peak，相似对 0.5）",
+    "P3_R9_R12": "Agent 开始出现分化：部分预测校方回应、部分继续负面。无具体官方通报知识但 LLM 世界知识推断可能出现回应 → mixed ✅ 匹配参考",
+    "P4_R13_R16": "Agent 缺少二次质疑的具体内容（论文不规范、问责力度等），预测继续混合而非二次负面 → mixed（参考 negative_secondary，相似对 0.5）",
+    "P5_R17_R20": "系统自然收敛，与知识等级关系较小 → neutral_declining ✅ 匹配参考"
+  },
+
+  "turning_points_hit": [
+    {
+      "tp_id": "T1",
+      "description": "事件曝光",
+      "hit": "same_phase",
+      "evidence": "P1 信息完整保留，Agent 成功识别初始曝光引发的情绪激增和关注度飙升。heat_spike 和 polarization_surge 均在 P1(R1-R4) 出现 ✅"
+    },
+    {
+      "tp_id": "T2",
+      "description": "校方通报",
+      "hit": "adjacent_phase",
+      "evidence": "Agent 基于 LLM 世界知识推断校方会回应，但时机判断偏移。official_response 事件出现在 P2(R7) 而非参考的 P3，属相邻阶段"
+    },
+    {
+      "tp_id": "T3",
+      "description": "程序正义质疑",
+      "hit": "missed",
+      "evidence": "Agent 缺少论文复核结果、问责处分等具体信息（被 p1_only 过滤），无法生成针对性的二次质疑。P4 阶段未出现明显的 secondary_negative_wave"
+    }
+  ],
+
+  "actor_coverage": [
+    {
+      "actor_id": "A1",
+      "name": "武汉大学",
+      "in_graph": true,
+      "in_agent": true,
+      "in_report": true,
+      "notes": "图谱实体不受知识门控影响，武汉大学相关 Agent 正常参与模拟"
+    },
+    {
+      "actor_id": "A2",
+      "name": "当事学生（肖某瑫）",
+      "in_graph": true,
+      "in_agent": true,
+      "in_report": true,
+      "notes": "肖某瑫 Agent 正常参与，但 persona 仅包含 P1 阶段信息"
+    },
+    {
+      "actor_id": "A4",
+      "name": "媒体",
+      "in_graph": true,
+      "in_agent": true,
+      "in_report": true,
+      "notes": "澎湃新闻等媒体 Agent 正常参与，报道行为不依赖后续阶段信息"
+    }
+  ],
+
+  "event_order_simulation": [
+    "肖某瑫与杨某媛纠纷曝光",
+    "媒体介入报道与不实信息传播",
+    "肖某瑫被记过处分引发争议",
+    "公众质疑论文不规范与问责力度",
+    "校方通报：撤销处分+论文复核+问责",
+    "热度逐步收敛"
+  ],
+  "_event_order_analysis": "限知模式下事件大体顺序正确，但两处偏差: (1) 媒体介入与处分争议顺序互换; (2) 公众质疑提前于校方通报，因 Agent 缺少通报的具体时机知识",
+
+  "internal_health": {
+    "unique_active_ratio": 0.8387,
+    "agent_activity_gini": 0.4821,
+    "avg_volatility": 0.0543,
+    "total_events": 35,
+    "turning_points_count": 7,
+    "_assessment": "限知模式下: (1) 活跃率略降(83.9% vs 全知90.3%); (2) 事件总数减少(35 vs 42); (3) 转折点减少(7 vs 10); (4) 波动性略降，系统行为更保守; (5) P1阶段表现与全知模式几乎一致，差距主要在P3-P4"
+  }
+}

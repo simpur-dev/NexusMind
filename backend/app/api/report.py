@@ -105,6 +105,34 @@ def generate_report():
                 "error": "缺少模拟需求描述"
             }), 400
         
+        # 加载基线上下文（如有），将基线信息注入 simulation_requirement
+        baseline_id = data.get('baseline_id')
+        baseline_context_text = ""
+        if baseline_id:
+            try:
+                from ..models.baseline import BaselineManager
+                bl = BaselineManager.get_baseline(state.project_id, baseline_id)
+                if bl:
+                    parts = [f"\n\n【当前基线分析（{bl.current_stage or '未知阶段'}）】"]
+                    if bl.confirmed_facts:
+                        parts.append(f"已确认事实: {'; '.join(bl.confirmed_facts[:8])}")
+                    if bl.current_risks:
+                        parts.append(f"识别风险: {'; '.join(bl.current_risks[:8])}")
+                    if bl.key_actors:
+                        parts.append(f"关键行动者: {', '.join(bl.key_actors[:6])}")
+                    if bl.key_topics:
+                        parts.append(f"核心议题: {', '.join(bl.key_topics[:6])}")
+                    parts.append(f"事件阶段: {bl.current_stage or '未知'}")
+                    baseline_context_text = "\n".join(parts)
+                    logger.info(f"基线上下文已加载: baseline_id={baseline_id}, stage={bl.current_stage}")
+            except Exception as be:
+                logger.warning(f"加载基线 {baseline_id} 失败: {be}")
+        
+        # 将基线上下文追加到 simulation_requirement，让 ReportAgent 感知
+        enriched_requirement = simulation_requirement
+        if baseline_context_text:
+            enriched_requirement = simulation_requirement + baseline_context_text
+        
         # 提前生成 report_id，以便立即返回给前端
         import uuid
         report_id = f"report_{uuid.uuid4().hex[:12]}"
@@ -116,7 +144,8 @@ def generate_report():
             metadata={
                 "simulation_id": simulation_id,
                 "graph_id": graph_id,
-                "report_id": report_id
+                "report_id": report_id,
+                "baseline_id": baseline_id or ""
             }
         )
         
@@ -130,11 +159,11 @@ def generate_report():
                     message="初始化Report Agent..."
                 )
                 
-                # 创建Report Agent
+                # 创建Report Agent（使用包含基线上下文的 requirement）
                 agent = ReportAgent(
                     graph_id=graph_id,
                     simulation_id=simulation_id,
-                    simulation_requirement=simulation_requirement
+                    simulation_requirement=enriched_requirement
                 )
                 
                 # 进度回调

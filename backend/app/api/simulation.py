@@ -1078,7 +1078,19 @@ def get_simulation_history():
         limit = request.args.get('limit', 20, type=int)
         
         manager = SimulationManager()
-        simulations = manager.list_simulations()[:limit]
+        all_simulations = manager.list_simulations()
+        # 同一项目可能有多个 simulation（每个 forecast 分支各一个），
+        # 推演记录页面只展示每个项目最有代表性的一个（优先已完成/运行中的）
+        _status_priority = {"completed": 0, "running": 1, "ready": 2, "preparing": 3, "created": 4, "failed": 5}
+        seen_projects = {}
+        for s in all_simulations:
+            pid = s.project_id
+            rank = _status_priority.get(s.status.value if hasattr(s.status, 'value') else s.status, 9)
+            if pid not in seen_projects or rank < seen_projects[pid][1]:
+                seen_projects[pid] = (s, rank)
+        simulations = [v[0] for v in seen_projects.values()]
+        simulations.sort(key=lambda s: s.created_at, reverse=True)
+        simulations = simulations[:limit]
         
         # 增强模拟数据，只从 Simulation 文件读取
         enriched_simulations = []
@@ -1100,6 +1112,18 @@ def get_simulation_history():
                 sim_dict["simulation_requirement"] = ""
                 sim_dict["total_simulation_hours"] = 0
                 recommended_rounds = 0
+
+            # Forecast 分支创建的 simulation 可能没有 config，用项目名+分支标签兜底
+            if not sim_dict["simulation_requirement"] and sim.run_id:
+                project_for_label = ProjectManager.get_project(sim.project_id)
+                label_parts = []
+                if project_for_label:
+                    label_parts.append(getattr(project_for_label, "name", "") or getattr(project_for_label, "project_name", ""))
+                from ..models.forecast_run import ForecastRunManager
+                fr = ForecastRunManager.get_run(sim.project_id, sim.run_id)
+                if fr and fr.branch_label:
+                    label_parts.append(fr.branch_label)
+                sim_dict["simulation_requirement"] = " - ".join(filter(None, label_parts)) or ""
             
             # 获取运行状态（从 run_state.json 读取用户设置的实际轮数）
             run_state = SimulationRunner.get_run_state(sim.simulation_id)
@@ -3581,22 +3605,22 @@ def interview_agent_offline():
             for a in agent_actions[-20:]:  # 最多20条
                 actions_text += f"- [{a['platform']}][{a['type']}] {a['content'][:200]}\n"
 
-        system_prompt = f"""你现在扮演以下角色，请完全以该角色的身份、性格和立场来回答问题。
+        system_prompt = f"""你是 {agent_name}，以下是你的全部信息。回答时只能基于这些信息。
 
-【角色名称】{agent_name}
-【职业】{profession}
-【MBTI】{mbti}
+【基本信息】{profession}，性格 {mbti}
 【简介】{bio}
 
-【详细人设】
+【你的背景】
 {persona}
 {phase_knowledge_text}
 {actions_text}
-【规则】
-1. 始终以第一人称回答，保持角色一致性
-2. 基于你的人设、立场和过往发言来回答
-3. 用自然对话的口吻，不要说你是AI或角色扮演
-4. 回答要有实质内容，体现你的个性和观点"""
+
+━━━ 回答规则（必须严格遵守）━━━
+• 你只能说上面【背景】和【历史发言】中有明确依据的内容。
+• 严禁编造任何不在上述资料中的内容，包括但不限于：人名、对话、文件、场景、物品、数字、日期、条款号。
+• 如果提问涉及你资料中没有提到的具体细节，直接说"这个我不太清楚"或"我没怎么关注这块"。
+• 回答要短，2-4句话为宜，像微信聊天一样简短自然。不要写长段叙事。
+• 用第一人称，不要说自己是AI。"""
 
         # 4. 调用LLM
         from ..utils.llm_client import LLMClient
@@ -3608,7 +3632,7 @@ def interview_agent_offline():
             messages.append(h)
         messages.append({"role": "user", "content": prompt})
 
-        response = llm.chat(messages=messages, temperature=0.7, max_tokens=2048)
+        response = llm.chat(messages=messages, temperature=0.4, max_tokens=512)
 
         # 5. 返回格式与 batch interview 一致
         result_key = f"reddit_{agent_id}"

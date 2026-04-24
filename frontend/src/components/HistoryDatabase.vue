@@ -98,6 +98,11 @@
             <span class="status-dot">●</span> {{ formatRounds(project) }}
           </span>
         </div>
+
+        <!-- 快捷入口：事件工作台 -->
+        <div v-if="project.project_id" class="card-workspace-link" @click.stop="quickGoWorkspace(project)">
+          <span class="workspace-icon">⌁</span> 事件工作台
+        </div>
         
         <!-- 底部装饰线 (hover时展开) -->
         <div class="card-bottom-line"></div>
@@ -198,6 +203,15 @@
                 <span class="btn-step">Step5</span>
                 <span class="btn-icon">💬</span>
                 <span class="btn-text">深度互动</span>
+              </button>
+              <button 
+                class="modal-btn btn-incident" 
+                @click="goToIncidentWorkspace"
+                :disabled="!selectedProject.project_id"
+              >
+                <span class="btn-step">OPS</span>
+                <span class="btn-icon">⌁</span>
+                <span class="btn-text">事件工作台</span>
               </button>
             </div>
           </div>
@@ -501,6 +515,27 @@ const goToStep5 = () => {
       query: { step: 5 }
     })
     closeModal()
+  }
+}
+
+// 导航到事件工作台（滚动预测决策支持）
+const goToIncidentWorkspace = () => {
+  if (selectedProject.value?.project_id) {
+    router.push({
+      name: 'IncidentWorkspace',
+      params: { projectId: selectedProject.value.project_id }
+    })
+    closeModal()
+  }
+}
+
+// 卡片上的快捷工作台入口
+const quickGoWorkspace = (project) => {
+  if (project.project_id) {
+    router.push({
+      name: 'IncidentWorkspace',
+      params: { projectId: project.project_id }
+    })
   }
 }
 
@@ -1411,6 +1446,33 @@ onUnmounted(() => {
 .modal-btn.btn-step3 .btn-icon { color: #8B5CF6; }
 .modal-btn.btn-report .btn-icon { color: #10B981; }
 .modal-btn.btn-step5 .btn-icon { color: #EC4899; }
+/* 卡片快捷工作台入口 */
+.card-workspace-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 0;
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #63b3ed;
+  background: rgba(99, 179, 237, 0.06);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  opacity: 0;
+}
+.project-card:hover .card-workspace-link { opacity: 1; }
+.card-workspace-link:hover {
+  background: rgba(99, 179, 237, 0.15);
+  color: #90cdf4;
+}
+.workspace-icon { font-size: 13px; }
+
+.modal-btn.btn-incident { border-color: rgba(99, 179, 237, 0.3); }
+.modal-btn.btn-incident .btn-icon { color: #63b3ed; }
+.modal-btn.btn-incident .btn-step { color: #63b3ed; }
 
 .modal-btn:hover:not(:disabled) .btn-text {
   color: #111827;

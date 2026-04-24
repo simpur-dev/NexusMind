@@ -3,6 +3,7 @@ import Home from '../views/Home.vue'
 import Process from '../views/Process.vue'
 import SimGraphPage from '../views/SimGraphPage.vue'
 import EvaluationView from '../views/EvaluationView.vue'
+import IncidentWorkspaceView from '../views/IncidentWorkspaceView.vue'
 
 const routes = [
   {
@@ -26,6 +27,12 @@ const routes = [
     path: '/evaluation/:simulationId',
     name: 'Evaluation',
     component: EvaluationView,
+    props: true
+  },
+  {
+    path: '/incident/:projectId',
+    name: 'IncidentWorkspace',
+    component: IncidentWorkspaceView,
     props: true
   }
 ]

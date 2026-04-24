@@ -1,18 +1,18 @@
 {
   "case_id": "case_01_wuhan_university_library",
   "case_name": "武汉大学肖某瑫与杨某媛纠纷事件",
-  "knowledge_tier": "A (Full)",
+  "knowledge_tier": "C (Blind)",
   "scores": {
-    "TCS": 100.0,
-    "TPH": 100.0,
-    "KAC": 100.0,
-    "EOA": 96.4,
-    "total": 99.3,
-    "grade": "A — 高度接近现实，可作为核心展示案例"
+    "TCS": 50.0,
+    "TPH": 33.3,
+    "KAC": 77.8,
+    "EOA": 66.7,
+    "total": 54.7,
+    "grade": "C — 偏差较大，适合消融实验分析"
   },
   "details": {
     "TCS": {
-      "score": 100.0,
+      "score": 50.0,
       "detail": "5 阶段对比",
       "matched": [
         {
@@ -24,20 +24,20 @@
         {
           "phase": 2,
           "ref": "negative_peak",
-          "sim": "negative_peak",
-          "score": 1.0
+          "sim": "mixed",
+          "score": 0.0
         },
         {
           "phase": 3,
           "ref": "mixed",
-          "sim": "mixed",
-          "score": 1.0
+          "sim": "neutral_declining",
+          "score": 0.5
         },
         {
           "phase": 4,
           "ref": "negative_secondary",
-          "sim": "negative_secondary",
-          "score": 1.0
+          "sim": "neutral_declining",
+          "score": 0.0
         },
         {
           "phase": 5,
@@ -48,7 +48,7 @@
       ]
     },
     "TPH": {
-      "score": 100.0,
+      "score": 33.3,
       "detail": "3 转折点",
       "matched": [
         {
@@ -60,19 +60,19 @@
         {
           "tp_id": "T2",
           "description": "校方通报：法院判决驳回杨某媛诉讼请求，校方撤销肖某瑫记过处分；公布论文复核结果（百余处不规范但无学术不端）；公布多名责任人问责处分",
-          "hit": "same_phase",
-          "score": 1.0
+          "hit": "missed",
+          "score": 0.0
         },
         {
           "tp_id": "T3",
           "description": "程序正义质疑：公众不满论文百余处不规范仍维持学位、导师仅暂停招生两年处罚过轻、不实信息澄清效果有限，引发二次争议",
-          "hit": "same_phase",
-          "score": 1.0
+          "hit": "missed",
+          "score": 0.0
         }
       ]
     },
     "KAC": {
-      "score": 100.0,
+      "score": 77.8,
       "detail": "3 高重要性主体",
       "matched": [
         {
@@ -81,51 +81,53 @@
           "hit_rate": 1.0,
           "detail": {
             "actor_id": "A1",
+            "name": "武汉大学",
             "in_graph": true,
             "in_agent": true,
-            "in_report": true
+            "in_report": true,
+            "notes": "图谱实体保留，Agent 以通用大学身份参与，能在报告中识别为关键主体"
           }
         },
         {
           "actor_id": "A2",
           "name": "当事学生（肖某瑫）",
-          "hit_rate": 1.0,
+          "hit_rate": 0.6666666666666666,
           "detail": {
             "actor_id": "A2",
+            "name": "当事学生（肖某瑫）",
             "in_graph": true,
             "in_agent": true,
-            "in_report": true
+            "in_report": false,
+            "notes": "Agent 以通用学生身份参与，但因缺乏事件上下文，报告中未能准确识别其核心角色"
           }
         },
         {
           "actor_id": "A4",
           "name": "媒体",
-          "hit_rate": 1.0,
+          "hit_rate": 0.6666666666666666,
           "detail": {
             "actor_id": "A4",
+            "name": "媒体",
             "in_graph": true,
             "in_agent": true,
-            "in_report": true
+            "in_report": false,
+            "notes": "媒体 Agent 参与但行为泛化，报告中未能将其准确关联到事件传播链"
           }
         }
       ]
     },
     "EOA": {
-      "score": 96.4,
-      "detail": "27/28 对顺序一致（8 共同事件）",
+      "score": 66.7,
+      "detail": "4/6 对顺序一致（4 共同事件）",
       "matched": {
         "common_events": [
           "肖某瑫与杨某媛纠纷曝光",
-          "肖某瑫被记过处分引发争议",
           "媒体介入报道与不实信息传播",
-          "法院二审判决驳回杨某媛诉讼请求",
-          "校方通报：撤销处分+论文复核+问责",
           "公众质疑论文不规范与问责力度",
-          "二次讨论与高校治理制度反思",
           "热度逐步收敛"
         ],
-        "concordant": 27,
-        "total_pairs": 28
+        "concordant": 4,
+        "total_pairs": 6
       }
     }
   }

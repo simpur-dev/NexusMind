@@ -21,6 +21,12 @@
             <polyline points="9 22 9 12 15 12 15 22"/>
           </svg>
         </button>
+        <button v-if="fromIncidentWorkspace" class="home-btn incident-back-btn" @click="goBackToWorkspace" title="返回事件工作台">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+          <span style="font-size:11px;margin-left:2px">事件工作台</span>
+        </button>
       </div>
       
       <!-- 中间步骤指示器 -->
@@ -428,6 +434,7 @@
                 v-else-if="currentStep === 4"
                 :reportId="currentReportId"
                 :simulationId="currentSimulationId"
+                :baselineId="route.query.baseline_id || ''"
                 :systemLogs="systemLogs"
                 @next-step="handleNextStep"
                 @add-log="addLog"
@@ -562,6 +569,13 @@ const entityTypes = computed(() => {
   
   return Object.values(typeMap)
 })
+
+// 是否从事件工作台跳转过来
+const fromIncidentWorkspace = computed(() => !!route.query.sim)
+
+const goBackToWorkspace = () => {
+  router.push(`/incident/${currentProjectId.value}`)
+}
 
 // 方法
 const goHome = () => {
@@ -842,18 +856,20 @@ const loadProject = async () => {
   try {
     loading.value = true
     const response = await getProject(currentProjectId.value)
-
+    
     if (response.success) {
       projectData.value = response.data
       updatePhaseByStatus(response.data.status)
 
       // URL 中指定的目标步骤（从历史回放按钮传入）
       const requestedStep = Number(route.query.step) || 0
+      // 事件工作台跳转时可通过 ?sim= 指定 simulation_id
+      const querySim = route.query.sim
 
       // 从项目数据恢复 Step 导航状态
       if (response.data.report_id) {
         // 报告已生成，恢复关联数据
-        currentSimulationId.value = response.data.simulation_id
+        currentSimulationId.value = querySim || response.data.simulation_id
         currentReportId.value = response.data.report_id
         maxReachedStep.value = 5
         if (response.data.graph_id) {
@@ -864,9 +880,9 @@ const loadProject = async () => {
         const targetStep = (requestedStep >= 1 && requestedStep <= maxReachedStep.value) ? requestedStep : 4
         currentStep.value = targetStep
         addLog(`从历史记录恢复项目，进入 Step ${targetStep} (${stepNames[targetStep - 1]})`)
-      } else if (response.data.simulation_id) {
-        // 模拟已创建，恢复关联数据
-        currentSimulationId.value = response.data.simulation_id
+      } else if (querySim || response.data.simulation_id) {
+        // 模拟已创建，恢复关联数据（querySim 来自事件工作台跳转）
+        currentSimulationId.value = querySim || response.data.simulation_id
         maxReachedStep.value = 5
         if (response.data.graph_id) {
           currentPhase.value = 2
@@ -875,7 +891,7 @@ const loadProject = async () => {
         // 优先使用 URL 指定的步骤，否则默认 Step 2
         const targetStep = (requestedStep >= 1 && requestedStep <= maxReachedStep.value) ? requestedStep : 2
         currentStep.value = targetStep
-        addLog(`从历史记录恢复项目，进入 Step ${targetStep} (${stepNames[targetStep - 1]})，模拟ID: ${response.data.simulation_id}`)
+        addLog(`从历史记录恢复项目，进入 Step ${targetStep} (${stepNames[targetStep - 1]})，模拟ID: ${currentSimulationId.value}`)
       } else if (response.data.status === 'graph_completed' && response.data.graph_id) {
         // 图谱构建完成，默认在 Step 1
         currentPhase.value = 2
@@ -1646,6 +1662,15 @@ onUnmounted(() => {
   background: rgba(115, 168, 185, 0.25);
   border-color: rgba(115, 168, 185, 0.5);
   transform: translateY(-1px);
+}
+
+.incident-back-btn {
+  width: auto; padding: 0 10px; gap: 2px; font-size: 11px;
+  background: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.3); color: #22c55e;
+}
+
+.incident-back-btn:hover {
+  background: rgba(34, 197, 94, 0.25); border-color: rgba(34, 197, 94, 0.5);
 }
 
 .nav-center {

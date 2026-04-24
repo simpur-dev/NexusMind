@@ -155,6 +155,9 @@ class SimulationIPCClient:
         response_file = os.path.join(self.responses_dir, f"{command_id}.json")
         start_time = time.time()
         
+        alive_check_interval = 15  # 每 15 秒检查一次进程存活
+        last_alive_check = start_time
+        
         while time.time() - start_time < timeout:
             if os.path.exists(response_file):
                 try:
@@ -173,6 +176,18 @@ class SimulationIPCClient:
                     return response
                 except (json.JSONDecodeError, KeyError) as e:
                     logger.warning(f"解析响应失败: {e}")
+            
+            # 定期检查模拟进程是否仍然存活，避免白等
+            now = time.time()
+            if now - last_alive_check >= alive_check_interval:
+                last_alive_check = now
+                if not self.check_env_alive():
+                    logger.warning(f"等待IPC响应期间检测到模拟进程已退出，提前终止: command_id={command_id}")
+                    try:
+                        os.remove(command_file)
+                    except OSError:
+                        pass
+                    raise TimeoutError(f"模拟进程已退出，无法完成命令 ({command_type.value})")
             
             time.sleep(poll_interval)
         
@@ -318,7 +333,7 @@ class SimulationIPCClient:
         """
         检查模拟环境是否存活
         
-        通过检查 env_status.json 文件来判断
+        通过检查 env_status.json 文件 + PID 存活性 + 文件新鲜度来判断
         """
         status_file = os.path.join(self.simulation_dir, "env_status.json")
         if not os.path.exists(status_file):
@@ -327,7 +342,27 @@ class SimulationIPCClient:
         try:
             with open(status_file, 'r', encoding='utf-8') as f:
                 status = json.load(f)
-            return status.get("status") == "alive"
+            if status.get("status") != "alive":
+                return False
+            
+            # 检查 PID 是否仍在运行（使用标准库）
+            pid = status.get("pid")
+            if pid:
+                try:
+                    os.kill(int(pid), 0)  # 信号 0 不杀进程，仅检查存在性
+                except OSError:
+                    logger.warning(f"env_status 标记 alive 但 PID {pid} 已不存在")
+                    return False
+                except (ValueError, TypeError):
+                    pass
+            
+            # 检查文件修改时间，超过 5 分钟未更新视为僵尸
+            mtime = os.path.getmtime(status_file)
+            if time.time() - mtime > 300:
+                logger.warning(f"env_status.json 超过 5 分钟未更新，可能已僵死")
+                return False
+            
+            return True
         except (json.JSONDecodeError, OSError):
             return False
 
@@ -373,6 +408,7 @@ class SimulationIPCServer:
         with open(status_file, 'w', encoding='utf-8') as f:
             json.dump({
                 "status": status,
+                "pid": os.getpid(),
                 "timestamp": datetime.now().isoformat()
             }, f, ensure_ascii=False, indent=2)
     

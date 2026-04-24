@@ -491,13 +491,14 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, h, reactive } from 'vue'
-import { getAgentLog, getConsoleLog, getReport, getReportSections } from '../api/report'
+import { generateReport, getAgentLog, getConsoleLog, getReport, getReportSections } from '../api/report'
 import html2pdf from 'html2pdf.js'
 import { marked } from 'marked'
 
 const props = defineProps({
   reportId: String,
   simulationId: String,
+  baselineId: String,
   systemLogs: Array
 })
 
@@ -2522,9 +2523,25 @@ const initReport = async (reportId) => {
 }
 
 // Lifecycle
-onMounted(() => {
+onMounted(async () => {
   if (props.reportId) {
     initReport(props.reportId)
+  } else if (props.simulationId && !props.reportId) {
+    // 从事件工作台跳转过来，没有 reportId，自动触发生成
+    addLog('从事件工作台进入，自动启动报告生成...')
+    try {
+      const payload = { simulation_id: props.simulationId, force_regenerate: true }
+      if (props.baselineId) payload.baseline_id = props.baselineId
+      const res = await generateReport(payload)
+      if (res?.success && res.data?.report_id) {
+        addLog(`报告生成任务已启动: ${res.data.report_id}`)
+        initReport(res.data.report_id)
+      } else {
+        addLog(`报告生成启动失败: ${res?.error || '未知错误'}`)
+      }
+    } catch (e) {
+      addLog(`报告生成启动异常: ${e.message}`)
+    }
   }
 })
 

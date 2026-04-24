@@ -1230,6 +1230,86 @@ class WorldStateEngine:
         history = self._state_history[-last_n:] if last_n else self._state_history
         return [(s.round_num, getattr(s, variable, 0.0)) for s in history]
     
+    # ============== 现实校准（Phase 2 新增） ==============
+    
+    def apply_reality_patch(self, patch: Dict[str, Any]) -> Optional[WorldStateSnapshot]:
+        """
+        应用现实校准补丁到当前世界状态。
+
+        patch 结构：
+            {
+                "state_overrides": { "trust_level": 0.4, ... },
+                "events_to_inject": [ {"event_type": "...", "description": "...", "severity": ...} ],
+                "new_facts": ["...", ...],
+            }
+        
+        Returns:
+            校准后的新状态快照（如果有状态变化），否则返回 None
+        """
+        prev = self.current_state
+        if not prev:
+            logger.warning("apply_reality_patch: 尚无状态历史，跳过")
+            return None
+        
+        now = datetime.now().isoformat()
+        overrides = patch.get("state_overrides", {})
+        events_to_inject = patch.get("events_to_inject", [])
+        
+        # 1. 注入事件
+        for evt_data in events_to_inject:
+            evt = WorldEvent(
+                event_id=self._gen_event_id(),
+                round_num=prev.round_num,
+                timestamp=now,
+                event_type=evt_data.get("event_type", "reality_update"),
+                description=evt_data.get("description", "现实校准事件"),
+                severity=evt_data.get("severity", 0.5),
+                affected_variables=evt_data.get("affected_variables", {}),
+            )
+            self._append_event(evt)
+            logger.info(f"reality_patch 注入事件: {evt.event_type} - {evt.description}")
+        
+        # 2. 覆盖状态变量
+        if overrides:
+            new_state = WorldStateSnapshot(
+                round_num=prev.round_num,
+                timestamp=now,
+                attention_level=self._clamp(overrides.get("attention_level", prev.attention_level)),
+                panic_level=self._clamp(overrides.get("panic_level", prev.panic_level)),
+                trust_level=self._clamp(overrides.get("trust_level", prev.trust_level)),
+                polarization_level=self._clamp(overrides.get("polarization_level", prev.polarization_level)),
+                risk_level=self._clamp(overrides.get("risk_level", prev.risk_level)),
+                stability_level=self._clamp(overrides.get("stability_level", prev.stability_level)),
+                total_posts=prev.total_posts,
+                total_comments=prev.total_comments,
+                total_reposts=prev.total_reposts,
+                total_likes=prev.total_likes,
+                active_agent_count=prev.active_agent_count,
+                top_keywords=prev.top_keywords,
+                sentiment_distribution=prev.sentiment_distribution,
+            )
+            self._append_state(new_state)
+            logger.info(f"reality_patch 覆盖状态变量: {list(overrides.keys())}")
+            return new_state
+        
+        return None
+    
+    def estimate_confidence_by_material_coverage(
+        self,
+        total_materials: int,
+        hours_since_event_start: float,
+    ) -> float:
+        """
+        根据材料覆盖度和时间窗口粗略估计当前预测置信度。
+
+        材料越多、轮次越多 → 置信度越高，但设置上限避免过度自信。
+        """
+        mat_factor = min(1.0, total_materials / 10.0)  # 10 条材料为满分
+        time_factor = min(1.0, hours_since_event_start / 168.0)  # 7 天为满分
+        round_factor = min(1.0, len(self._state_history) / 20.0)  # 20 轮为满分
+        raw = 0.4 * mat_factor + 0.3 * round_factor + 0.3 * time_factor
+        return round(min(0.95, raw), 3)  # 最高 0.95
+    
     # ============== 工具方法 ==============
     
     @staticmethod

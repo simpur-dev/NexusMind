@@ -78,6 +78,10 @@ class SimulationState:
     # "identity": Tier C 盲测模式
     knowledge_level: str = "full"
     
+    # 滚动预测关联（Phase 2 新增，向后兼容）
+    baseline_id: Optional[str] = None
+    run_id: Optional[str] = None
+    
     # 错误信息
     error: Optional[str] = None
     
@@ -101,6 +105,8 @@ class SimulationState:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "knowledge_level": self.knowledge_level,
+            "baseline_id": self.baseline_id,
+            "run_id": self.run_id,
             "error": self.error,
         }
     
@@ -115,6 +121,8 @@ class SimulationState:
             "profiles_count": self.profiles_count,
             "entity_types": self.entity_types,
             "config_generated": self.config_generated,
+            "baseline_id": self.baseline_id,
+            "run_id": self.run_id,
             "error": self.error,
         }
 
@@ -199,6 +207,8 @@ class SimulationManager:
             created_at=data.get("created_at", datetime.now().isoformat()),
             updated_at=data.get("updated_at", datetime.now().isoformat()),
             knowledge_level=data.get("knowledge_level", "full"),
+            baseline_id=data.get("baseline_id"),
+            run_id=data.get("run_id"),
             error=data.get("error"),
         )
         
@@ -212,6 +222,8 @@ class SimulationManager:
         enable_twitter: bool = True,
         enable_reddit: bool = True,
         knowledge_level: str = "full",
+        baseline_id: Optional[str] = None,
+        run_id: Optional[str] = None,
     ) -> SimulationState:
         """
         创建新的模拟（同一项目复用已有模拟，避免重复生成Agent人设）
@@ -222,15 +234,19 @@ class SimulationManager:
             enable_twitter: 是否启用Twitter模拟
             enable_reddit: 是否启用Reddit模拟
             knowledge_level: 信息泄漏控制等级 ("full"/"p1_only"/"identity")
+            baseline_id: 关联的基线快照ID（滚动预测时使用）
+            run_id: 关联的预测分支ID（滚动预测时使用）
             
         Returns:
             SimulationState
         """
-        # 检查该项目是否已有 *相同 knowledge_level* 的模拟，如果有则复用
-        existing = self._find_simulation_by_project(project_id, knowledge_level=knowledge_level)
-        if existing:
-            logger.info(f"复用已有模拟: {existing.simulation_id}, project={project_id}, level={knowledge_level}")
-            return existing
+        # 当有 run_id 时，每个预测分支必须独立模拟，不复用
+        if not run_id:
+            # 检查该项目是否已有 *相同 knowledge_level* 的模拟，如果有则复用
+            existing = self._find_simulation_by_project(project_id, knowledge_level=knowledge_level)
+            if existing:
+                logger.info(f"复用已有模拟: {existing.simulation_id}, project={project_id}, level={knowledge_level}")
+                return existing
         
         import uuid
         simulation_id = f"sim_{uuid.uuid4().hex[:12]}"
@@ -242,11 +258,13 @@ class SimulationManager:
             enable_twitter=enable_twitter,
             enable_reddit=enable_reddit,
             knowledge_level=knowledge_level,
+            baseline_id=baseline_id,
+            run_id=run_id,
             status=SimulationStatus.CREATED,
         )
         
         self._save_simulation_state(state)
-        logger.info(f"创建模拟: {simulation_id}, project={project_id}, graph={graph_id}")
+        logger.info(f"创建模拟: {simulation_id}, project={project_id}, graph={graph_id}, run={run_id}")
         
         return state
     

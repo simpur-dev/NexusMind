@@ -55,5 +55,5 @@ export const getReportSections = (reportId) => {
  * @param {Object} data - { simulation_id, message, chat_history? }
  */
 export const chatWithReport = (data) => {
-  return requestWithRetry(() => service.post('/api/report/chat', data), 3, 1000)
+  return requestWithRetry(() => service.post('/api/report/chat', data, { timeout: 60000 }), 2, 1000)
 }

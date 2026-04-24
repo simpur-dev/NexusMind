@@ -840,12 +840,13 @@ class SimulationInsightService:
             lines.append("\n**代表性 Agent 最终状态**")
             for ag in agents_data[:8]:
                 fs = ag.get("final_state", {})
+                goals_str = "、".join(fs.get("active_goals", []))
                 lines.append(
                     f"  - {ag.get('entity_name', '?')}({ag.get('entity_type', '?')}/{ag.get('stance', '?')}): "
                     f"情绪 {fs.get('emotional_arousal', 0):.2f}, "
                     f"信任 {fs.get('trust_in_authority', 0):.2f}, "
                     f"策略={fs.get('strategy', '?')}, "
-                    f"目标={'\u3001'.join(fs.get('active_goals', []))}"
+                    f"目标={goals_str}"
                 )
 
         result = {
@@ -960,3 +961,414 @@ class SimulationInsightService:
             else:
                 trends[v] = 0.0
         return trends
+
+    # ════════════════ 10. 结构化决策简报（Phase 3 新增） ════════════════
+
+    def get_structured_decision_brief(self, baseline_context: Optional[Dict] = None) -> Dict[str, Any]:
+        """
+        升级版决策简报，对应蓝图 §5.6.3 DecisionBrief 结构。
+
+        Args:
+            baseline_context: 可选的基线快照 dict，包含 confirmed_facts, key_actors,
+                              current_risks, current_stage 等。传入后将用于增强简报内容。
+
+        输出字段：
+        - current_diagnosis
+        - top_risks
+        - top_opportunities
+        - recommended_actions（来自 InterventionLibrary）
+        - action_alternatives
+        - supporting_evidence
+        - monitoring_signals
+        - no_action_risk
+        - forecast_paths
+        """
+        # 复用已有能力
+        base_brief = self.get_decision_support_brief()
+        if "error" in base_brief:
+            return base_brief
+
+        scorecard = self.get_reputation_scorecard()
+        scores = scorecard.get("scores", {})
+        current_state = scorecard.get("current_state", {})
+        trends = self._compute_recent_trends()
+
+        # 引入干预动作库
+        from .intervention_library import InterventionLibrary
+        lib = InterventionLibrary()
+
+        # 基线阶段（如有）
+        bl_stage = baseline_context.get("current_stage", "") if baseline_context else ""
+
+        # 推荐 Top-3 动作（传入阶段以差异化排序）
+        recommended = lib.recommend_actions(current_state, max_results=3, stage=bl_stage)
+
+        # 替代方案 = 推荐排名 4~6
+        alternatives = lib.recommend_actions(current_state, max_results=6, stage=bl_stage)[3:]
+
+        # 基线风险列表（用于不作为风险 + 监测信号）
+        bl_risks = baseline_context.get("current_risks", []) if baseline_context else []
+
+        # 不作为风险评估
+        no_action_risk = self._assess_no_action_risk(current_state, trends, baseline_risks=bl_risks, stage=bl_stage)
+
+        # 预测路径摘要（基于当前趋势外推）
+        forecast_paths = self._extrapolate_forecast_paths(current_state, trends, stage=bl_stage)
+
+        # 监测信号
+        monitoring_signals = self._derive_monitoring_signals(current_state, trends, baseline_risks=bl_risks, stage=bl_stage)
+
+        # 支持证据
+        evidence = []
+        for r in base_brief.get("risks", []):
+            evidence.append({
+                "claim": r["title"],
+                "evidence_type": "world_state",
+                "detail": r["explanation"],
+            })
+
+        # ── 基线增强：基线数据实质性改变简报内容 ──
+        baseline_summary = None
+        top_risks = list(base_brief.get("risks", []))
+
+        if baseline_context:
+            bl_facts = baseline_context.get("confirmed_facts", [])
+            bl_risks = baseline_context.get("current_risks", [])
+            bl_actors = baseline_context.get("key_actors", [])
+            bl_stage = baseline_context.get("current_stage", "")
+            bl_topics = baseline_context.get("key_topics", [])
+
+            # 1) 将基线风险合并到 top_risks（真正显示出来）
+            existing_titles = {r.get("title", "") for r in top_risks}
+            for br in bl_risks:
+                if br and br not in existing_titles:
+                    top_risks.append({
+                        "title": br,
+                        "severity": "medium",
+                        "explanation": f"基线分析识别的风险（阶段：{bl_stage or '未知'}）",
+                        "source": "baseline",
+                    })
+                    evidence.append({
+                        "claim": br,
+                        "evidence_type": "baseline",
+                        "detail": f"基线识别的风险: {br}",
+                    })
+
+            # 2) 根据基线阶段调整世界状态权重，让推荐动作差异化
+            stage_state_modifier = self._get_stage_state_modifier(bl_stage)
+            if stage_state_modifier:
+                modified_state = {k: max(0, min(1, v + stage_state_modifier.get(k, 0)))
+                                  for k, v in current_state.items()}
+                # 用调整后的状态重新计算推荐动作
+                recommended = lib.recommend_actions(modified_state, max_results=3, stage=bl_stage)
+                alternatives = lib.recommend_actions(modified_state, max_results=6, stage=bl_stage)[3:]
+                no_action_risk = self._assess_no_action_risk(modified_state, trends, baseline_risks=bl_risks, stage=bl_stage)
+                forecast_paths = self._extrapolate_forecast_paths(modified_state, trends, stage=bl_stage)
+                monitoring_signals = self._derive_monitoring_signals(modified_state, trends, baseline_risks=bl_risks, stage=bl_stage)
+                # 用修正后的状态替换展示数据，让态势图反映基线阶段
+                current_state = modified_state
+
+            # 3) 将基线事实添加到证据中
+            for fact in bl_facts[:5]:
+                evidence.append({
+                    "claim": fact,
+                    "evidence_type": "baseline_fact",
+                    "detail": f"基线已确认事实",
+                })
+
+            baseline_summary = {
+                "stage": bl_stage,
+                "confirmed_facts": bl_facts[:10],
+                "key_actors": bl_actors[:10],
+                "key_topics": bl_topics[:10],
+                "identified_risks": bl_risks[:5],
+                "baseline_id": baseline_context.get("baseline_id"),
+            }
+
+        result = {
+            "current_diagnosis": {
+                "overall_status": scorecard.get("overall_status", "未知"),
+                "scores": scores,
+                "current_state": current_state,
+                "trends": trends,
+            },
+            "top_risks": top_risks,
+            "top_opportunities": base_brief.get("opportunities", []),
+            "recommended_actions": recommended,
+            "action_alternatives": alternatives,
+            "supporting_evidence": evidence,
+            "monitoring_signals": monitoring_signals,
+            "no_action_risk": no_action_risk,
+            "forecast_paths": forecast_paths,
+            "phased_recommendations": base_brief.get("recommendations", {}),
+        }
+        if baseline_summary:
+            result["baseline_context"] = baseline_summary
+        return result
+
+    @staticmethod
+    def _get_stage_state_modifier(stage: str) -> Optional[Dict[str, float]]:
+        """
+        根据事件阶段返回世界状态修正量。
+        不同阶段的关注重点不同，修正量会改变推荐动作的优先级排序。
+        """
+        if not stage:
+            return None
+        stage_lower = stage.strip().lower()
+        modifiers = {
+            "爆发期": {"attention_level": 0.15, "panic_level": 0.12, "trust_level": -0.1, "risk_level": 0.1},
+            "发酵期": {"polarization_level": 0.12, "attention_level": 0.08, "stability_level": -0.1, "panic_level": 0.05},
+            "平台期": {"attention_level": -0.05, "stability_level": 0.05, "polarization_level": 0.05},
+            "消退期": {"attention_level": -0.1, "panic_level": -0.08, "stability_level": 0.1, "trust_level": 0.05},
+            "二次爆发": {"attention_level": 0.2, "panic_level": 0.15, "trust_level": -0.15, "risk_level": 0.15},
+        }
+        for key, mod in modifiers.items():
+            if key in stage_lower:
+                return mod
+        return None
+
+    def _assess_no_action_risk(
+        self, state: Dict[str, float], trends: Dict[str, float],
+        baseline_risks: Optional[List[str]] = None, stage: str = ""
+    ) -> Dict[str, Any]:
+        """评估"不采取任何行动"的风险，综合世界状态 + 基线风险"""
+        risk_score = 0.0
+        reasons = []
+
+        # 基于世界状态的风险因子
+        panic = state.get("panic_level", 0)
+        trust = state.get("trust_level", 1)
+        attention = state.get("attention_level", 0)
+        polarization = state.get("polarization_level", 0)
+        risk_level = state.get("risk_level", 0)
+
+        if panic > 0.15:
+            risk_score += min(0.3, panic * 0.4)
+            reasons.append(f"恐慌水平 {panic:.0%}，不干预可能继续攀升")
+        if trust < 0.5:
+            risk_score += min(0.25, (0.5 - trust) * 0.5)
+            reasons.append(f"信任度仅 {trust:.0%}，低于安全线")
+        if attention > 0.15:
+            risk_score += min(0.2, attention * 0.3)
+            reasons.append(f"关注度 {attention:.0%}，信息真空易被谣言填充")
+        if polarization > 0.2:
+            risk_score += min(0.15, polarization * 0.3)
+            reasons.append(f"极化度 {polarization:.0%}，不干预可能固化对立")
+        if risk_level > 0.2:
+            risk_score += min(0.15, risk_level * 0.3)
+            reasons.append(f"风险等级 {risk_level:.0%}")
+
+        # 基于基线阶段的额外风险
+        stage_risk_boost = {
+            "爆发期": (0.25, "事件处于爆发期，不回应将严重损害公信力"),
+            "发酵期": (0.15, "事件正在发酵，延迟行动将扩大负面影响范围"),
+            "二次爆发": (0.3, "事件二次爆发，紧迫性极高"),
+        }
+        if stage:
+            for key, (boost, reason) in stage_risk_boost.items():
+                if key in stage:
+                    risk_score += boost
+                    reasons.append(reason)
+                    break
+
+        # 基于基线识别的风险数量
+        if baseline_risks:
+            n = len(baseline_risks)
+            risk_score += min(0.2, n * 0.05)
+            if n >= 3:
+                reasons.append(f"基线已识别 {n} 项风险，不作为将放任风险累积")
+
+        risk_score = min(1.0, risk_score)
+        severity = "low" if risk_score < 0.2 else ("medium" if risk_score < 0.5 else "high")
+
+        return {
+            "risk_score": round(risk_score, 3),
+            "risk_percent": f"{int(risk_score * 100)}%",
+            "severity": severity,
+            "reasons": reasons,
+            "recommendation": "强烈建议立即采取行动" if severity == "high" else (
+                "建议在 24h 内采取行动" if severity == "medium" else "可观望，但需持续监测"
+            ),
+        }
+
+    def _extrapolate_forecast_paths(
+        self, state: Dict[str, float], trends: Dict[str, float],
+        stage: str = ""
+    ) -> List[Dict[str, Any]]:
+        """基于当前趋势 + 阶段特征外推 3 种路径"""
+        CN = {"attention_level": "关注度", "panic_level": "恐慌度", "trust_level": "信任度",
+              "polarization_level": "极化度", "risk_level": "风险等级", "stability_level": "稳定性"}
+        BAD = {"panic_level", "polarization_level", "risk_level", "attention_level"}
+        GOOD = {"trust_level", "stability_level"}
+
+        def _risk_cn(score):
+            if score > 0.6: return "高"
+            if score > 0.3: return "中"
+            return "低"
+
+        def _key_changes(projected):
+            """找出与当前状态差异最大的 2-3 个维度"""
+            diffs = []
+            for v in STATE_VARS:
+                d = projected.get(v, 0.5) - state.get(v, 0.5)
+                if abs(d) > 0.02:
+                    direction = "↑" if d > 0 else "↓"
+                    good = (v in BAD and d < 0) or (v in GOOD and d > 0)
+                    diffs.append((abs(d), CN.get(v, v), direction, f"{abs(d)*100:.0f}%", good))
+            diffs.sort(reverse=True)
+            return diffs[:3]
+
+        def _prob_label(p):
+            if p >= 0.6: return "较大"
+            if p >= 0.35: return "中等"
+            return "较小"
+
+        paths = []
+
+        # ── 路径 A：自然演化（不干预） ──
+        natural = {}
+        for v in STATE_VARS:
+            natural[v] = round(max(0, min(1, state.get(v, 0.5) + trends.get(v, 0) * 10)), 3)
+        nat_risk = natural.get("risk_level", 0.5)
+        nat_changes = _key_changes(natural)
+        nat_prob = 0.5 if not stage else (0.3 if "爆发" in stage else 0.45)
+        paths.append({
+            "path_id": "natural",
+            "label": "自然演化（不干预）",
+            "risk_level": _risk_cn(nat_risk),
+            "probability": _prob_label(nat_prob),
+            "description": "不采取任何措施，事态按当前趋势自然发展",
+            "key_changes": [f"{c[1]} {c[2]}{c[3]}" for c in nat_changes],
+            "outcome": "风险持续累积，可能错过最佳干预窗口" if nat_risk > 0.4 else "态势相对平稳，但仍需密切监测",
+            "projected_state_10_rounds": natural,
+        })
+
+        # ── 路径 B：积极干预 ──
+        active = {}
+        for v in STATE_VARS:
+            if v in BAD:
+                active[v] = round(max(0, state.get(v, 0.5) - 0.15), 3)
+            else:
+                active[v] = round(min(1, state.get(v, 0.5) + 0.12), 3)
+        act_risk = active.get("risk_level", 0.3)
+        act_changes = _key_changes(active)
+        act_prob = 0.35 if not stage else (0.5 if "爆发" in stage else 0.35)
+        paths.append({
+            "path_id": "active_intervention",
+            "label": "积极干预",
+            "risk_level": _risk_cn(act_risk),
+            "probability": _prob_label(act_prob),
+            "description": "迅速采取公开回应、第三方调查等组合措施",
+            "key_changes": [f"{c[1]} {c[2]}{c[3]}" for c in act_changes],
+            "outcome": "有望在短期内控制态势，恢复公众信任" if act_risk < 0.3 else "可降低风险但需持续跟进",
+            "projected_state_10_rounds": active,
+        })
+
+        # ── 路径 C：保守应对 ──
+        conservative = {}
+        for v in STATE_VARS:
+            if v in BAD:
+                conservative[v] = round(max(0, state.get(v, 0.5) - 0.05), 3)
+            else:
+                conservative[v] = round(min(1, state.get(v, 0.5) + 0.04), 3)
+        con_risk = conservative.get("risk_level", 0.4)
+        con_changes = _key_changes(conservative)
+        con_prob = 0.3 if not stage else (0.2 if "爆发" in stage else 0.35)
+        paths.append({
+            "path_id": "conservative",
+            "label": "保守应对",
+            "risk_level": _risk_cn(con_risk),
+            "probability": _prob_label(con_prob),
+            "description": "采取最小限度回应，观察事态变化后再决策",
+            "key_changes": [f"{c[1]} {c[2]}{c[3]}" for c in con_changes],
+            "outcome": "短期风险可控但恢复缓慢，可能丧失主动权" if con_risk > 0.25 else "风险较低，适合观望阶段",
+            "projected_state_10_rounds": conservative,
+        })
+
+        return paths
+
+    def _derive_monitoring_signals(
+        self, state: Dict[str, float], trends: Dict[str, float],
+        baseline_risks: Optional[List[str]] = None, stage: str = ""
+    ) -> List[Dict[str, Any]]:
+        """根据当前状态 + 基线信息派生关键监测信号"""
+        signals = []
+
+        if state.get("trust_level", 1) < 0.5:
+            signals.append({
+                "signal": "信任度低于安全线",
+                "current_value": state.get("trust_level", 0),
+                "threshold": 0.5,
+                "direction": "below",
+                "priority": "high",
+            })
+        if trends.get("panic_level", 0) > 0.03:
+            signals.append({
+                "signal": "恐慌水平持续上升",
+                "trend_per_round": trends.get("panic_level", 0),
+                "priority": "high",
+            })
+        if state.get("polarization_level", 0) > 0.2:
+            signals.append({
+                "signal": "极化趋势需关注",
+                "current_value": state.get("polarization_level", 0),
+                "threshold": 0.2,
+                "direction": "above",
+                "priority": "medium",
+            })
+        if trends.get("attention_level", 0) > 0.05:
+            signals.append({
+                "signal": "关注度快速上升（可能二次爆发）",
+                "trend_per_round": trends.get("attention_level", 0),
+                "priority": "high",
+            })
+        if state.get("stability_level", 1) < 0.8:
+            signals.append({
+                "signal": f"稳定性 {state.get('stability_level', 0):.0%}，需持续关注",
+                "current_value": state.get("stability_level", 0),
+                "threshold": 0.8,
+                "direction": "below",
+                "priority": "medium",
+            })
+        if state.get("risk_level", 0) > 0.2:
+            signals.append({
+                "signal": f"风险等级 {state.get('risk_level', 0):.0%}",
+                "current_value": state.get("risk_level", 0),
+                "threshold": 0.2,
+                "direction": "above",
+                "priority": "medium",
+            })
+
+        # 基线阶段相关的监测信号
+        stage_signals = {
+            "爆发期": [
+                {"signal": "事件处于爆发期，需密切监测舆情扩散速度", "priority": "high"},
+                {"signal": "关注官方回应时效（黄金6小时）", "priority": "high"},
+            ],
+            "发酵期": [
+                {"signal": "监测二次传播渠道和意见领袖动态", "priority": "high"},
+                {"signal": "关注极化趋势和对立阵营形成", "priority": "medium"},
+            ],
+            "平台期": [
+                {"signal": "关注公众疲劳度和注意力转移", "priority": "medium"},
+            ],
+            "消退期": [
+                {"signal": "关注长尾效应和制度改进落实", "priority": "low"},
+            ],
+        }
+        if stage:
+            for key, sigs in stage_signals.items():
+                if key in stage:
+                    signals.extend(sigs)
+                    break
+
+        # 基线风险转为监测信号
+        if baseline_risks:
+            for br in baseline_risks[:3]:
+                signals.append({
+                    "signal": f"基线风险: {br[:30]}",
+                    "priority": "medium",
+                    "source": "baseline",
+                })
+
+        return signals

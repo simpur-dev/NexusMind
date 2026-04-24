@@ -216,7 +216,7 @@ export const getEnvStatus = (data) => {
  * @param {Object} data - { simulation_id, interviews: [{ agent_id, prompt }] }
  */
 export const interviewAgents = (data) => {
-  return requestWithRetry(() => service.post('/api/simulation/interview/batch', data), 3, 1000)
+  return requestWithRetry(() => service.post('/api/simulation/interview/batch', data, { timeout: 60000 }), 2, 1000)
 }
 
 /**
@@ -224,7 +224,7 @@ export const interviewAgents = (data) => {
  * @param {Object} data - { simulation_id, agent_id, prompt, chat_history? }
  */
 export const interviewAgentOffline = (data) => {
-  return requestWithRetry(() => service.post('/api/simulation/interview/offline', data), 2, 1000)
+  return requestWithRetry(() => service.post('/api/simulation/interview/offline', data, { timeout: 60000 }), 2, 1000)
 }
 
 /**

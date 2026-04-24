@@ -1,18 +1,18 @@
 {
   "case_id": "case_01_wuhan_university_library",
   "case_name": "武汉大学肖某瑫与杨某媛纠纷事件",
-  "knowledge_tier": "A (Full)",
+  "knowledge_tier": "B (Gated)",
   "scores": {
-    "TCS": 100.0,
-    "TPH": 100.0,
+    "TCS": 80.0,
+    "TPH": 50.0,
     "KAC": 100.0,
-    "EOA": 96.4,
-    "total": 99.3,
-    "grade": "A — 高度接近现实，可作为核心展示案例"
+    "EOA": 86.7,
+    "total": 77.8,
+    "grade": "B — 具备参考价值，可作为补充案例"
   },
   "details": {
     "TCS": {
-      "score": 100.0,
+      "score": 80.0,
       "detail": "5 阶段对比",
       "matched": [
         {
@@ -24,8 +24,8 @@
         {
           "phase": 2,
           "ref": "negative_peak",
-          "sim": "negative_peak",
-          "score": 1.0
+          "sim": "negative_rising",
+          "score": 0.5
         },
         {
           "phase": 3,
@@ -36,8 +36,8 @@
         {
           "phase": 4,
           "ref": "negative_secondary",
-          "sim": "negative_secondary",
-          "score": 1.0
+          "sim": "mixed",
+          "score": 0.5
         },
         {
           "phase": 5,
@@ -48,7 +48,7 @@
       ]
     },
     "TPH": {
-      "score": 100.0,
+      "score": 50.0,
       "detail": "3 转折点",
       "matched": [
         {
@@ -60,14 +60,14 @@
         {
           "tp_id": "T2",
           "description": "校方通报：法院判决驳回杨某媛诉讼请求，校方撤销肖某瑫记过处分；公布论文复核结果（百余处不规范但无学术不端）；公布多名责任人问责处分",
-          "hit": "same_phase",
-          "score": 1.0
+          "hit": "adjacent_phase",
+          "score": 0.5
         },
         {
           "tp_id": "T3",
           "description": "程序正义质疑：公众不满论文百余处不规范仍维持学位、导师仅暂停招生两年处罚过轻、不实信息澄清效果有限，引发二次争议",
-          "hit": "same_phase",
-          "score": 1.0
+          "hit": "missed",
+          "score": 0.0
         }
       ]
     },
@@ -81,9 +81,11 @@
           "hit_rate": 1.0,
           "detail": {
             "actor_id": "A1",
+            "name": "武汉大学",
             "in_graph": true,
             "in_agent": true,
-            "in_report": true
+            "in_report": true,
+            "notes": "图谱实体不受知识门控影响，武汉大学相关 Agent 正常参与模拟"
           }
         },
         {
@@ -92,9 +94,11 @@
           "hit_rate": 1.0,
           "detail": {
             "actor_id": "A2",
+            "name": "当事学生（肖某瑫）",
             "in_graph": true,
             "in_agent": true,
-            "in_report": true
+            "in_report": true,
+            "notes": "肖某瑫 Agent 正常参与，但 persona 仅包含 P1 阶段信息"
           }
         },
         {
@@ -103,29 +107,29 @@
           "hit_rate": 1.0,
           "detail": {
             "actor_id": "A4",
+            "name": "媒体",
             "in_graph": true,
             "in_agent": true,
-            "in_report": true
+            "in_report": true,
+            "notes": "澎湃新闻等媒体 Agent 正常参与，报道行为不依赖后续阶段信息"
           }
         }
       ]
     },
     "EOA": {
-      "score": 96.4,
-      "detail": "27/28 对顺序一致（8 共同事件）",
+      "score": 86.7,
+      "detail": "13/15 对顺序一致（6 共同事件）",
       "matched": {
         "common_events": [
           "肖某瑫与杨某媛纠纷曝光",
           "肖某瑫被记过处分引发争议",
           "媒体介入报道与不实信息传播",
-          "法院二审判决驳回杨某媛诉讼请求",
           "校方通报：撤销处分+论文复核+问责",
           "公众质疑论文不规范与问责力度",
-          "二次讨论与高校治理制度反思",
           "热度逐步收敛"
         ],
-        "concordant": 27,
-        "total_pairs": 28
+        "concordant": 13,
+        "total_pairs": 15
       }
     }
   }

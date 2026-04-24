@@ -448,6 +448,14 @@ const isSending = ref(false)
 const chatMessages = ref(null)
 const chatInputRef = ref(null)
 
+const scrollToBottom = () => {
+  nextTick(() => {
+    if (chatMessages.value) {
+      chatMessages.value.scrollTop = chatMessages.value.scrollHeight
+    }
+  })
+}
+
 // --- sessionStorage 持久化 ---
 const CHAT_CACHE_VERSION = 2 // 递增此值可强制清除旧缓存
 const storageKey = computed(() => `nexusmind_step5_chat_${props.simulationId || 'default'}`)
@@ -754,7 +762,11 @@ const renderMarkdown = (content) => {
 
 // Chat Methods
 const sendMessage = async () => {
-  if (!chatInput.value.trim() || isSending.value) return
+  console.log('[Chat] sendMessage called, isSending:', isSending.value, 'chatTarget:', chatTarget.value, 'simId:', props.simulationId)
+  if (!chatInput.value.trim() || isSending.value) {
+    console.warn('[Chat] blocked: empty input or isSending=true')
+    return
+  }
   
   const message = chatInput.value.trim()
   chatInput.value = ''
@@ -771,15 +783,23 @@ const sendMessage = async () => {
   
   try {
     if (chatTarget.value === 'report_agent') {
+      console.log('[Chat] calling sendToReportAgent')
       await sendToReportAgent(message)
     } else {
+      console.log('[Chat] calling sendToAgent')
       await sendToAgent(message)
     }
   } catch (err) {
-    addLog(`发送失败: ${err.message}`)
+    const errMsg = err?.message || String(err) || '未知错误'
+    const isTimeout = errMsg.includes('timeout') || errMsg.includes('ECONNABORTED')
+    const isNetwork = errMsg === 'Network Error' || errMsg.includes('ECONNREFUSED')
+    let userMsg = `抱歉，发生了错误: ${errMsg}`
+    if (isTimeout) userMsg = '请求超时，后端可能正在处理其他任务。请稍后重试。'
+    else if (isNetwork) userMsg = '无法连接后端服务，请确认后端已启动。'
+    addLog(`发送失败: ${errMsg}`)
     chatHistory.value.push({
       role: 'assistant',
-      content: `抱歉，发生了错误: ${err.message}`,
+      content: userMsg,
       timestamp: new Date().toISOString()
     })
   } finally {
@@ -792,6 +812,7 @@ const sendMessage = async () => {
 
 const sendToReportAgent = async (message) => {
   addLog(`向 Report Agent 发送: ${message.substring(0, 50)}...`)
+  console.log('[Chat] sendToReportAgent, simulationId:', props.simulationId)
   
   // Build chat history for API
   const historyForApi = chatHistory.value
@@ -802,11 +823,13 @@ const sendToReportAgent = async (message) => {
       content: msg.content
     }))
   
+  console.log('[Chat] calling chatWithReport API...')
   const res = await chatWithReport({
     simulation_id: props.simulationId,
     message: message,
     chat_history: historyForApi
   })
+  console.log('[Chat] chatWithReport response:', res)
   
   if (res.success && res.data) {
     chatHistory.value.push({
@@ -848,12 +871,20 @@ const sendToAgent = async (message) => {
 
   addLog(`向 ${selectedAgent.value.username} 发送: ${message.substring(0, 50)}...`)
   
-  // Build prompt with chat history
+  // Build clean chat history: only keep paired user→assistant turns
+  const pairedHistory = []
+  const allMsgs = chatHistory.value.filter(m => m.content !== message)
+  for (let i = 0; i < allMsgs.length; i++) {
+    if (allMsgs[i].role === 'user' && allMsgs[i + 1]?.role === 'assistant') {
+      pairedHistory.push(allMsgs[i], allMsgs[i + 1])
+      i++ // skip assistant
+    }
+  }
+  const recentPairs = pairedHistory.slice(-6)
+
   let prompt = message
-  if (chatHistory.value.length > 1) {
-    const historyContext = chatHistory.value
-      .filter(msg => msg.content !== message)
-      .slice(-6)
+  if (recentPairs.length > 0) {
+    const historyContext = recentPairs
       .map(msg => `${msg.role === 'user' ? '提问者' : '你'}：${msg.content}`)
       .join('\n')
     prompt = `以下是我们之前的对话：\n${historyContext}\n\n现在我的新问题是：${message}`
@@ -872,10 +903,7 @@ const sendToAgent = async (message) => {
   if (useOffline) {
     // 离线模式：用存储的人设+记忆，LLM模拟Agent回答
     addLog(`[离线模式] 模拟环境未运行，使用本地数据模拟对话`)
-    const chatHistoryForApi = chatHistory.value
-      .filter(msg => msg.content !== message)
-      .slice(-6)
-      .map(msg => ({ role: msg.role, content: msg.content }))
+    const chatHistoryForApi = recentPairs.map(msg => ({ role: msg.role, content: msg.content }))
     res = await interviewAgentOffline({
       simulation_id: props.simulationId,
       agent_id: selectedAgentIndex.value,

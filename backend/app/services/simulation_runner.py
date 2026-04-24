@@ -1203,10 +1203,16 @@ class SimulationRunner:
             ]
             
             # 原子写入：先写临时文件再重命名，避免子进程读到半截数据
+            # Windows 下 os.replace 可能因文件锁定失败，加重试
             tmp_file = ws_file + ".tmp"
             with open(tmp_file, 'w', encoding='utf-8') as f:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
-            os.replace(tmp_file, ws_file)
+            for _attempt in range(5):
+                try:
+                    os.replace(tmp_file, ws_file)
+                    break
+                except OSError:
+                    time.sleep(0.1 * (_attempt + 1))
             
         except Exception as e:
             logger.warning(f"写入世界状态共享文件失败: {e}")
