@@ -31,6 +31,13 @@
 > 你只需：上传种子材料（数据分析报告或者有趣的小说故事），并用自然语言描述预测需求</br>
 > NexusMind 将返回：一份详尽的预测报告，以及一个可深度交互的高保真数字世界
 
+### 核心亮点
+
+- **Benchmark 验证**：武汉大学舆情案例综合评分 **99.3/100（A 级）**，三级信息门控对照实验证明知识图谱信息溢价达 44.6 分
+- **滚动预测**：支持随现实进展持续追加材料、滚动更新基线、多分支干预方案对比推演
+- **世界模型闭环**：论文级六维状态引擎 + 因果图谱 + Agent 认知架构，模拟过程中实时感知与反馈
+- **决策辅助**：内置高校舆情干预动作模板库，自动生成态势评分卡与决策支持简报
+
 ### 我们的愿景
 
 NexusMind 致力于打造映射现实的群体智能镜像，通过捕捉个体互动引发的群体涌现，突破传统预测的局限：
@@ -91,7 +98,9 @@ NexusMind 致力于打造映射现实的群体智能镜像，通过捕捉个体�
 | **后端** | Flask 3.x + Graphiti + Neo4j（知识图谱与向量存储） |
 | **模拟引擎** | [OASIS](https://github.com/camel-ai/oasis) 多智能体仿真框架（camel-oasis 0.2.5） |
 | **世界模型** | 六维状态引擎 + 因果图谱引擎 + Agent 认知架构（AgentBrain） |
+| **决策辅助** | 滚动预测工作台 + 干预动作模板库 + 态势评分卡 + 决策简报 |
 | **报告引擎** | ReACT 多轮推理 + 11 种工具（图谱检索 / Agent 采访 / 世界模型洞察） |
+| **Benchmark** | 四维评分体系 + 三级信息门控对照实验（Full / Gated / Blind） |
 | **LLM** | 兼容 OpenAI SDK 格式的任意大模型 API |
 
 ## 🧠 核心能力
@@ -130,6 +139,16 @@ ReportAgent 通过 ReACT（Reasoning + Acting）多轮推理，自主调用 **11
 | 决策支持 | DecisionSupportBrief | 风险/机会/建议简报 |
 | 证据检索 | SimulationEvidenceSearch | 模拟行为日志检索 |
 
+### 滚动预测与决策辅助
+
+NexusMind 支持事件全生命周期的**滚动预测工作流**——从首次录入到持续追踪，真正实现「态势研判 → 推演预测 → 处置决策」闭环：
+
+- **材料管理**：支持向已有项目持续追加种子材料（文件/网络/人工），每批材料可追溯来源与时间
+- **事实基线版本管理**：每次追加材料后可生成新的基线快照（确认事实/待核实信息/关键主体/当前风险），支持版本对比
+- **预测分支**：基于同一基线创建多个预测分支（基准预测 / 干预方案 A / 干预方案 B），独立推演并行比较
+- **干预动作模板库**：内置高校舆情场景预置模板（初步回应、调查通报、舆情引导、纪律处分、制度改革等），每个模板包含预期效果、副作用、前置条件及对六维状态的影响向量
+- **事件工作台**（`/incident/:projectId`）：三栏式专业界面——材料时间线 | 基线版本 | 预测分支，面向事件处置人员的一站式操作台
+
 ### 量化评估框架
 
 - **情感演化时序**：逐轮追踪正面/负面/中立情感分布
@@ -148,20 +167,35 @@ ReportAgent 通过 ReACT（Reasoning + Acting）多轮推理，自主调用 **11
 | **KAC** | Key Actor Coverage | 20% | 关键主体是否被系统覆盖 |
 | **EOA** | Event Order Accuracy | 20% | 事件顺序是否与现实一致 |
 
-**已完成案例**：武汉大学舆情事件 — 综合评分 **88.8/100（A 级）**
+#### 三级信息门控对照实验（Case 01 武汉大学舆情事件）
+
+通过控制 Agent 可获取的知识量，验证知识图谱对模拟质量的关键作用：
+
+| 指标 | Tier A 全知模式 | Tier B 限知模式 | Tier C 盲测模式 |
+|------|:-:|:-:|:-:|
+| **TCS** 趋势一致性 | **100.0** | 80.0 | 50.0 |
+| **TPH** 转折命中率 | **100.0** | 50.0 | 33.3 |
+| **KAC** 主体覆盖率 | **100.0** | 100.0 | 77.8 |
+| **EOA** 事件顺序 | **96.4** | 86.7 | 66.7 |
+| **总分** | **99.3 (A级)** | 77.8 (B级) | 54.7 (C级) |
+
+> **信息溢价 = Tier A − Tier C = 44.6 分**，充分证明知识图谱驱动的信息注入是模拟准确性的核心驱动力。
 
 ## 🔄 工作流程
 
 ```
 种子材料 ──→ 知识图谱 ──→ Agent 世界 ──→ 推演模拟 ──→ 报告 / 评估
  (文件/网络)    (Graphiti)   (OASIS)      (世界模型)    (ReACT Agent)
+      ▲                                                      │
+      └──────────── 追加材料 · 滚动更新 · 分支对比 ◀───────────┘
 ```
 
 1. **图谱构建**：上传种子材料（PDF / Markdown / TXT）或输入网络搜索关键词（Tavily API 自动抓取）→ LLM 自动生成本体（Prescribed Ontology） → Graphiti + Neo4j 构建知识图谱 → 伪实体清洗 → 实体类型标注
-2. **环境搭建**：从图谱中读取并过滤实体 → LLM 智能生成 Agent 人设（含认知先验编译）→ 自动配置模拟参数（平台类型、轮次、时间线、事件序列等）
+2. **环境搭建**：从图谱中读取并过滤实体 → LLM 智能生成 Agent 人设（含认知先验编译 + 三级知识门控）→ 自动配置模拟参数（平台类型、轮次、时间线、事件序列等）
 3. **推演模拟**：Twitter / Reddit 双平台并行模拟 → Agent 自主交互与涌现 → 世界模型六维状态实时追踪 → 因果图谱自动构建 → 支持上帝模式动态事件注入 → 模拟图谱实时写回 Neo4j
-4. **报告生成**：ReportAgent 通过 ReACT 多轮推理，调用 11 种工具（图谱检索 + Agent 采访 + 世界模型洞察），并行生成结构化分析报告
-5. **深度互动**：与模拟世界中的任意 Agent 对话 → 与 ReportAgent 追问交流 → 查看量化评估仪表盘
+4. **报告生成**：ReportAgent 通过 ReACT 多轮推理，调用 11 种工具（图谱检索 + Agent 采访 + 世界模型洞察），并行生成结构化分析报告 + 决策支持简报
+5. **深度互动**：与模拟世界中的任意 Agent 对话 → 与 ReportAgent 追问交流 → 查看量化评估仪表盘 + Benchmark 评测报告
+6. **滚动预测**（可选）：追加新材料 → 重建事实基线 → 创建干预分支 → 多方案对比推演 → 迭代优化决策
 
 ## 📁 项目结构
 
@@ -181,28 +215,38 @@ NexusMind/
 │       │   │   ├── CausalGraphView     # 因果图谱 D3 力导向图
 │       │   │   ├── AgentActionCard     # Agent 行为卡片
 │       │   │   └── SimGraphView        # 模拟图谱可视化
-│       │   └── WorldStatePanel   # Step3 世界模型侧边栏
+│       │   ├── WorldStatePanel   # Step3 世界模型侧边栏
+│       │   ├── GraphPanel        # 知识图谱面板
+│       │   └── HistoryDatabase   # 历史项目数据库
 │       ├── views/                # 页面视图
 │       │   ├── Home              # 首页
 │       │   ├── Process           # 五步流程主页
-│       │   ├── EvaluationView    # 量化评估仪表盘
+│       │   ├── EvaluationView    # 量化评估 + Benchmark 评测报告
+│       │   ├── IncidentWorkspaceView  # 🆕 事件工作台（滚动预测）
 │       │   └── SimGraphPage      # 模拟图谱全屏页
 │       └── api/                  # API 调用层
+│           ├── simulation.js     # 模拟 API
+│           ├── report.js         # 报告 API
+│           ├── evaluation.js     # 评估 + Benchmark API
+│           ├── forecast.js       # 🆕 预测分支 API
+│           └── incident.js       # 🆕 事件工作台 API
 ├── backend/                      # 后端（Flask 3.x）
 │   ├── app/
 │   │   ├── api/                  # REST API
 │   │   │   ├── graph.py          # 图谱 API
 │   │   │   ├── simulation.py     # 模拟 API（含世界模型 & IPC）
 │   │   │   ├── report.py         # 报告 API
-│   │   │   └── evaluation.py     # 评估 API
-│   │   ├── services/             # 核心业务逻辑
+│   │   │   ├── evaluation.py     # 评估 API + Benchmark 端点
+│   │   │   ├── forecast.py       # 🆕 预测分支 API
+│   │   │   └── incident.py       # 🆕 滚动预测工作台 API
+│   │   ├── services/             # 核心业务逻辑（22 个模块）
 │   │   │   ├── graph_builder.py              # 知识图谱构建
 │   │   │   ├── ontology_generator.py         # LLM 本体生成
 │   │   │   ├── entity_reader.py              # 实体读取与过滤
 │   │   │   ├── entity_cleaner.py             # 伪实体清洗
 │   │   │   ├── entity_type_annotator.py      # 实体类型标注
 │   │   │   ├── vector_store.py               # 向量 RAG 存储（Neo4j 向量索引）
-│   │   │   ├── oasis_profile_generator.py    # Agent 人设生成
+│   │   │   ├── oasis_profile_generator.py    # Agent 人设生成（含三级知识门控）
 │   │   │   ├── simulation_config_generator.py # 模拟参数配置
 │   │   │   ├── simulation_manager.py         # 模拟管理器
 │   │   │   ├── simulation_runner.py          # 模拟运行器
@@ -213,7 +257,8 @@ NexusMind/
 │   │   │   ├── graph_memory_updater.py       # 模拟图谱实时写回
 │   │   │   ├── graph_tools.py                # 图谱检索工具
 │   │   │   ├── report_agent.py               # ReACT 报告生成
-│   │   │   ├── simulation_insight_service.py # 模拟洞察聚合
+│   │   │   ├── simulation_insight_service.py # 模拟洞察聚合 + 决策简报
+│   │   │   ├── intervention_library.py       # 🆕 干预动作模板库
 │   │   │   ├── evaluation.py                 # 量化评估框架
 │   │   │   └── web_scraper.py                # 网络搜索（Tavily）
 │   │   ├── utils/                # 工具库
@@ -222,14 +267,23 @@ NexusMind/
 │   │   │   ├── file_parser.py    # 文件解析（PDF/MD/TXT）
 │   │   │   └── retry.py          # 重试机制
 │   │   └── models/               # 数据模型
+│   │       ├── project.py        # 项目管理
+│   │       ├── material.py       # 🆕 种子材料管理（持续追加）
+│   │       ├── baseline.py       # 🆕 事实基线版本管理
+│   │       ├── forecast_run.py   # 🆕 预测分支管理
+│   │       └── task.py           # 异步任务管理
 │   ├── scripts/                  # 模拟子进程脚本
 │   │   └── run_parallel_simulation.py  # OASIS 并行模拟（含世界模型注入）
-│   └── tests/                    # 测试套件（48+ 单元测试）
+│   └── tests/                    # 测试套件（500+ 测试用例）
 ├── benchmark/                    # Benchmark 验证框架
 │   ├── scoring.py                # 四维评分脚本
-│   ├── case_01_wuhan_university_library/   # 武大舆情（88.8/100 A级）
-│   ├── case_02_tesla_shanghai_autoshow/    # 特斯拉上海车展
-│   └── case_03_lijiaqi_huaxizi/           # 李佳琦花西子
+│   ├── analyze_sim.py            # 模拟数据分析
+│   ├── check_leakage.py          # 知识门控泄漏检测
+│   ├── case_01_wuhan_university_library/                          # 武大舆情（99.3/100 A级 + 三级对照）
+│   ├── case_02_huazhong_agricultural_university_academic_misconduct/  # 华中农大学术不端
+│   └── case_03_jiangxi_industry_vocational_college_food_safety/       # 江西工职院食品安全
+├── tests/                        # 集成测试
+│   └── incident_phased_test/     # 事件工作台分阶段测试
 └── docker-compose.yml            # Docker 一键部署
 ```
 
