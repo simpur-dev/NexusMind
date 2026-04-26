@@ -119,8 +119,9 @@ const truncate = (s, n) => {
 
 <style scoped>
 .causal-view {
-  background: #0f0f14;
-  border: 1px solid #2a2a33;
+  background: linear-gradient(180deg, rgba(59,130,246,0.12) 0%, rgba(30,41,59,0.85) 100%),
+              linear-gradient(135deg, #1e293b 0%, #0f172a 50%, #1e293b 100%);
+  border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: 12px;
   padding: 16px 20px;
 }
@@ -155,8 +156,8 @@ const truncate = (s, n) => {
 }
 
 .edge-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid #2a2a33;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(59, 130, 246, 0.15);
   border-left: 3px solid #3b82f6;
   border-radius: 8px;
   padding: 10px 12px;
@@ -174,7 +175,7 @@ const truncate = (s, n) => {
   margin-bottom: 6px;
 }
 .node {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(51, 65, 85, 0.5);
   padding: 6px 8px;
   border-radius: 6px;
   color: #e5e7eb;

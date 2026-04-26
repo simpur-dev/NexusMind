@@ -1613,7 +1613,7 @@ onUnmounted(() => {
   justify-content: space-between;
   padding: 0 24px;
   height: 56px;
-  background: #E6F2F7;
+  background: linear-gradient(90deg, #e6f4f3 0%, #eef7fb 30%, #eff3fc 60%, #f3f0f9 100%);
   backdrop-filter: blur(20px);
   color: #3A5A6A;
   z-index: 100;
@@ -2652,7 +2652,7 @@ onUnmounted(() => {
 }
 
 .right-panel .panel-header.dark-header {
-  background: #E6F2F7;
+  background: linear-gradient(90deg, #e6f4f3 0%, #eef7fb 30%, #eff3fc 60%, #f3f0f9 100%);
   backdrop-filter: blur(20px);
   color: #3A5A6A;
   border-bottom: 1px solid rgba(115, 168, 185, 0.2);
@@ -2857,7 +2857,10 @@ onUnmounted(() => {
   flex-direction: column;
   flex: 1;
   overflow: hidden;
-  background: #F8FAFC;
+  background:
+    radial-gradient(circle at top right, rgba(96, 165, 250, 0.14), transparent 28%),
+    radial-gradient(circle at bottom left, rgba(191, 219, 254, 0.4), transparent 34%),
+    linear-gradient(180deg, #f8fbff 0%, #f3f7fc 100%);
 }
 
 .workbench-wrapper .scroll-container {
@@ -2867,7 +2870,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   scrollbar-width: thin;
-  scrollbar-color: #73a8b9 #e6f2f7;
+  scrollbar-color: #93c5fd #e0effe;
 }
 
 .workbench-wrapper .scroll-container::-webkit-scrollbar {
@@ -2875,18 +2878,18 @@ onUnmounted(() => {
 }
 
 .workbench-wrapper .scroll-container::-webkit-scrollbar-track {
-  background: #e6f2f7;
+  background: #e0effe;
   border-radius: 999px;
 }
 
 .workbench-wrapper .scroll-container::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #8ebdcb, #73a8b9);
-  border: 2px solid #e6f2f7;
+  background: linear-gradient(180deg, #93c5fd, #60a5fa);
+  border: 2px solid #e0effe;
   border-radius: 999px;
 }
 
 .workbench-wrapper .scroll-container::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #73a8b9, #5c9eaf);
+  background: linear-gradient(180deg, #60a5fa, #3b82f6);
 }
 
 /* ── Step 内容区 ── */
@@ -2906,7 +2909,7 @@ onUnmounted(() => {
   overflow-y: auto;
   min-height: 0;
   scrollbar-width: thin;
-  scrollbar-color: #73a8b9 #e6f2f7;
+  scrollbar-color: #93c5fd #e0effe;
 }
 
 .step-area-inner::-webkit-scrollbar {
@@ -2914,18 +2917,18 @@ onUnmounted(() => {
 }
 
 .step-area-inner::-webkit-scrollbar-track {
-  background: #e6f2f7;
+  background: #e0effe;
   border-radius: 999px;
 }
 
 .step-area-inner::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #8ebdcb, #73a8b9);
-  border: 2px solid #e6f2f7;
+  background: linear-gradient(180deg, #93c5fd, #60a5fa);
+  border: 2px solid #e0effe;
   border-radius: 999px;
 }
 
 .step-area-inner::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #73a8b9, #5c9eaf);
+  background: linear-gradient(180deg, #60a5fa, #3b82f6);
 }
 
 /* Step 3-5 全屏时：内容占满，隐藏内部终端 */

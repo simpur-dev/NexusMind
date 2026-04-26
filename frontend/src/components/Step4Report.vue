@@ -30,9 +30,9 @@
 
       <div class="step4-workspace">
         <!-- Main Split Layout -->
-        <div class="main-split-layout">
+        <div class="main-split-layout" ref="splitLayout">
       <!-- LEFT PANEL: Report Style -->
-      <div class="left-panel report-style content-card" ref="leftPanel">
+      <div class="left-panel report-style content-card" ref="leftPanel" :style="{ width: splitRatio + '%' }">
         <div v-if="reportOutline" class="report-content-wrapper">
           <!-- Report Header -->
           <div class="report-header-block">
@@ -132,8 +132,16 @@
         </div>
       </div>
 
+      <!-- Resizable Divider -->
+      <div
+        class="split-divider"
+        @mousedown="startDrag"
+        :class="{ 'is-dragging': isDragging }"
+        title="拖动调整宽度"
+      ></div>
+
       <!-- RIGHT PANEL: Workflow Timeline -->
-      <div class="right-panel content-card" ref="rightPanel">
+      <div class="right-panel content-card" ref="rightPanel" :style="{ width: (100 - splitRatio) + '%' }">
         <div class="panel-header" :class="`panel-header--${activeStep.status}`" v-if="!isComplete">
           <span class="header-dot" v-if="activeStep.status === 'active'"></span>
           <span class="header-index mono">{{ activeStep.noLabel }}</span>
@@ -471,19 +479,6 @@
         </div>
       </div>
         </div>
-
-        <!-- Bottom Console Logs -->
-        <!-- <div class="console-logs">
-      <div class="log-header">
-        <span class="log-title">控制台输出</span>
-        <span class="log-id">{{ reportId || '无报告' }}</span>
-      </div>
-      <div class="log-content" ref="logContent">
-        <div class="log-line" v-for="(log, idx) in consoleLogs" :key="idx">
-          <span class="log-msg" :class="getLogLevelClass(log)">{{ log }}</span>
-        </div>
-      </div>
-        </div> -->
       </div>
     </div>
   </div>
@@ -526,6 +521,34 @@ const isComplete = ref(false)
 const startTime = ref(null)
 const leftPanel = ref(null)
 const rightPanel = ref(null)
+const splitLayout = ref(null)
+const splitRatio = ref(65)
+const isDragging = ref(false)
+
+// Resizable split drag handlers
+const startDrag = (e) => {
+  isDragging.value = true
+  document.addEventListener('mousemove', onDrag)
+  document.addEventListener('mouseup', stopDrag)
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+}
+
+const onDrag = (e) => {
+  if (!isDragging.value || !splitLayout.value) return
+  const rect = splitLayout.value.getBoundingClientRect()
+  const offsetX = e.clientX - rect.left
+  const ratio = (offsetX / rect.width) * 100
+  splitRatio.value = Math.max(25, Math.min(80, ratio))
+}
+
+const stopDrag = () => {
+  isDragging.value = false
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', stopDrag)
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+}
 const isExportingPdf = ref(false)
 const logContent = ref(null)
 const showRawResult = reactive({})
@@ -2547,6 +2570,8 @@ onMounted(async () => {
 
 onUnmounted(() => {
   stopPolling()
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mouseup', stopDrag)
 })
 
 watch(() => props.reportId, (newId, oldId) => {
@@ -2584,22 +2609,27 @@ watch(() => props.reportId, (newId, oldId) => {
 .step4-shell {
   flex: 1;
   display: flex;
+  flex-direction: row;
   min-height: 0;
   gap: 0;
+  overflow: hidden;
 }
 
 .step4-sidebar {
   width: 272px;
   flex-shrink: 0;
+  flex-grow: 0;
   padding: 28px 22px 24px;
-  background: rgba(255, 255, 255, 0.72);
+  background:
+    radial-gradient(circle at top right, rgba(96, 165, 250, 0.14), transparent 28%),
+    radial-gradient(circle at bottom left, rgba(191, 219, 254, 0.4), transparent 34%),
+    linear-gradient(180deg, #f8fbff 0%, #f3f7fc 100%);
   border-right: 1px solid var(--nm-card-border);
   backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
   gap: 16px;
   overflow-y: auto;
-
 }
 
 .sidebar-brand {
@@ -2742,19 +2772,86 @@ watch(() => props.reportId, (newId, oldId) => {
 .step4-workspace {
   flex: 1;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 /* Main Split Layout */
 .main-split-layout {
   flex: 1;
   display: flex;
+  flex-direction: row;
   overflow: hidden;
-  gap: 16px;
-  padding: 16px 16px 0;
+  gap: 0;
+  padding: 16px 16px 0 0;
   min-height: 0;
+  position: relative;
+}
+
+/* Resizable Split Divider */
+.split-divider {
+  width: 12px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.split-divider::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px;
+  height: 48px;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    rgba(148, 163, 184, 0.3) 15%,
+    rgba(148, 163, 184, 0.5) 50%,
+    rgba(148, 163, 184, 0.3) 85%,
+    transparent 100%
+  );
+  border-radius: 2px;
+  transition: all 0.2s ease;
+}
+
+.split-divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px;
+  height: 32px;
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 2px;
+  transition: all 0.2s ease;
+  opacity: 0;
+}
+
+.split-divider:hover::before,
+.split-divider.is-dragging::before {
+  background: linear-gradient(180deg,
+    transparent 0%,
+    rgba(59, 130, 246, 0.4) 15%,
+    rgba(59, 130, 246, 0.6) 50%,
+    rgba(59, 130, 246, 0.4) 85%,
+    transparent 100%
+  );
+  height: 64px;
+}
+
+.split-divider:hover::after,
+.split-divider.is-dragging::after {
+  opacity: 1;
+  background: rgba(59, 130, 246, 0.5);
+  height: 48px;
 }
 
 .content-card {
@@ -2762,6 +2859,10 @@ watch(() => props.reportId, (newId, oldId) => {
   border: 1px solid var(--nm-card-border);
   background: #fff;
   box-shadow: 0 8px 32px rgba(0, 60, 80, 0.06);
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Panel Headers */
@@ -2863,15 +2964,15 @@ watch(() => props.reportId, (newId, oldId) => {
 
 /* Left Panel - Report Style */
 .left-panel.report-style {
-  width: 45%;
-  min-width: 450px;
+  flex: 0 0 auto;
   background: #FFFFFF;
   border-right: none;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   padding: 28px 40px 48px 40px;
-
+  min-width: 0;
 }
 
 .left-panel::-webkit-scrollbar {
@@ -3326,10 +3427,11 @@ watch(() => props.reportId, (newId, oldId) => {
 
 /* Right Panel */
 .right-panel {
-  flex: 1;
+  flex: 0 0 auto;
   background:
     linear-gradient(160deg, #ffffff 0%, #f9fcfe 40%, #f2f8fa 100%);
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
 

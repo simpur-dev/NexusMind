@@ -149,8 +149,9 @@ const handleInject = async () => {
 
 <style scoped>
 .events-block {
-  background: #0f0f14;
-  border: 1px solid #2a2a33;
+  background: linear-gradient(180deg, rgba(59,130,246,0.12) 0%, rgba(30,41,59,0.85) 100%),
+              linear-gradient(135deg, #1e293b 0%, #0f172a 50%, #1e293b 100%);
+  border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: 12px;
   padding: 16px 20px;
   display: flex;
