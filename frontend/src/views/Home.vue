@@ -7,14 +7,140 @@
         </div>
         <div class="brand-copy">
           <div class="brand-name">NexusMind</div>
+          <div class="brand-badge">群体智能引擎</div>
         </div>
       </div>
       <div class="nav-links">
+        <button class="auth-btn login-btn" @click="showAuthModal = true; authMode = 'login'">
+          登录
+        </button>
         <a href="https://github.com/simpur-dev/NexusMind" target="_blank" class="github-link github-link-ghost">
-          访问我们的 GitHub 主页 <span class="arrow">↗</span>
+          访问 GitHub <span class="arrow">↗</span>
         </a>
       </div>
     </nav>
+
+    <!-- 登录/注册弹窗 -->
+    <Teleport to="body">
+      <Transition name="modal-fade">
+        <div v-if="showAuthModal" class="modal-overlay" @click.self="showAuthModal = false">
+          <div class="auth-modal">
+            <button class="modal-close" @click="showAuthModal = false">×</button>
+
+            <!-- 标题区域 -->
+            <div class="modal-header">
+              <div class="modal-brand">
+                <img src="../assets/logo/NexusMind Logo.png" alt="Logo" class="modal-logo" />
+              </div>
+              <h2 class="modal-title">{{ authMode === 'login' ? '欢迎回来' : '创建账户' }}</h2>
+              <p class="modal-subtitle">
+                {{ authMode === 'login' ? '登录以继续使用 NexusMind' : '注册账户开始体验群体智能' }}
+              </p>
+            </div>
+
+            <!-- 表单 -->
+            <form @submit.prevent="handleAuth" class="auth-form">
+              <template v-if="authMode === 'register'">
+                <div class="form-group">
+                  <label class="form-label">用户名</label>
+                  <input
+                    v-model="authForm.username"
+                    type="text"
+                    class="form-input"
+                    placeholder="请输入用户名"
+                    required
+                  />
+                </div>
+              </template>
+
+              <div class="form-group">
+                <label class="form-label">邮箱</label>
+                <input
+                  v-model="authForm.email"
+                  type="email"
+                  class="form-input"
+                  placeholder="请输入邮箱"
+                  required
+                />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">密码</label>
+                <div class="password-wrapper">
+                  <input
+                    v-model="authForm.password"
+                    :type="showPassword ? 'text' : 'password'"
+                    class="form-input"
+                    placeholder="请输入密码"
+                    required
+                  />
+                  <button type="button" class="password-toggle" @click="showPassword = !showPassword">
+                    {{ showPassword ? '隐藏' : '显示' }}
+                  </button>
+                </div>
+              </div>
+
+              <template v-if="authMode === 'register'">
+                <div class="form-group">
+                  <label class="form-label">确认密码</label>
+                  <input
+                    v-model="authForm.confirmPassword"
+                    type="password"
+                    class="form-input"
+                    placeholder="请再次输入密码"
+                    required
+                  />
+                </div>
+              </template>
+
+              <div v-if="authMode === 'login'" class="form-options">
+                <label class="remember-me">
+                  <input type="checkbox" v-model="authForm.remember" />
+                  <span>记住我</span>
+                </label>
+                <a href="#" class="forgot-link">忘记密码？</a>
+              </div>
+
+              <button type="submit" class="submit-btn">
+                {{ authMode === 'login' ? '登 录' : '注 册' }}
+              </button>
+            </form>
+
+            <!-- 社交登录 - 仅登录时显示 -->
+            <template v-if="authMode === 'login'">
+              <div class="divider">
+                <span>或</span>
+              </div>
+              <div class="social-login">
+                <button type="button" class="social-btn">
+                  <svg class="social-icon" viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="currentColor" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.342-3.369-1.342-.454-1.155-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
+                  </svg>
+                  GitHub
+                </button>
+                <button type="button" class="social-btn">
+                  <svg class="social-icon" viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                  Google
+                </button>
+              </div>
+            </template>
+
+            <!-- 切换模式 -->
+            <div class="mode-switch">
+              <span>{{ authMode === 'login' ? '还没有账户？' : '已有账户？' }}</span>
+              <button type="button" class="switch-btn" @click="authMode = authMode === 'login' ? 'register' : 'login'">
+                {{ authMode === 'login' ? '立即注册' : '立即登录' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <div class="main-content">
       <section class="hero-section">
@@ -361,6 +487,24 @@ const router = useRouter()
 
 const isMounted = ref(false)
 
+// 登录/注册弹窗状态
+const showAuthModal = ref(false)
+const authMode = ref('login') // 'login' | 'register'
+const showPassword = ref(false)
+const authForm = ref({
+  username: '',
+  email: '',
+  password: '',
+  confirmPassword: '',
+  remember: false
+})
+
+const handleAuth = () => {
+  // 前端仅作演示，无实际提交
+  console.log('Auth submitted:', { mode: authMode.value, form: authForm.value })
+  alert(authMode.value === 'login' ? '登录功能演示（无后端）' : '注册功能演示（无后端）')
+}
+
 onMounted(() => {
   // 延迟一点触发动画，确保页面渲染完成
   setTimeout(() => {
@@ -487,6 +631,10 @@ const startSimulation = () => {
   --text-primary: #3A5A6A;
   --text-secondary: rgba(58, 90, 106, 0.78);
   --text-muted: rgba(58, 90, 106, 0.52);
+  /* 青色变量（与主题一致） */
+  --blue-primary: #3A5A6A;
+  --blue-accent: #73A8B9;
+  --blue-light: #8EBDCB;
 
   /* ================= 容器基础设置 ================= */
   min-height: 100vh;
@@ -496,25 +644,23 @@ const startSimulation = () => {
   color: var(--text-primary);
   
   /* ================= 核心：高亮科技感背景 ================= */
-  /* 1. 极深的基底色，用来反衬高光 */
-  background-color: #F0F5F7;
+  background-color: #f8fbff;
   
   background-image: 
     /* 层级1：全息坐标网格 (细锐的青色线，构建空间秩序感) */
-    linear-gradient(rgba(115, 168, 185, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(115, 168, 185, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(147, 197, 253, 0.15) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(147, 197, 253, 0.15) 1px, transparent 1px),
     
     /* 层级2：高亮核心光源 (大幅提升透明度，制造“发光”错觉) */
-    radial-gradient(ellipse 50% 35% at 20% 75%, rgba(89, 158, 175, 0.1) 0%, transparent 50%),
-    /* 右上科技蓝副光源 */
-    radial-gradient(ellipse 50% 40% at 85% 20%, rgba(6, 182, 212, 0.1) 0%, transparent 60%),
-    radial-gradient(ellipse 40% 50% at 70% 70%, rgba(115, 168, 185, 0.14) 0%, transparent 55%),
-    linear-gradient(135deg, rgba(240, 245, 247, 0.9) 0%, rgba(218, 235, 240, 0.6) 50%, rgba(200, 225, 232, 0.8) 100%);
+    radial-gradient(ellipse 50% 40% at 20% 80%, rgba(96, 165, 250, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 35% at 85% 15%, rgba(59, 130, 246, 0.1) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 50% at 60% 60%, rgba(147, 197, 253, 0.15) 0%, transparent 50%),
+    linear-gradient(180deg, #f8fbff 0%, #f3f7fc 50%, #eef4fc 100%);
 
   /* 定义网格大小(40px)和光晕铺满 */
-  background-size: 
-    40px 40px, 40px 40px, /* 网格尺寸 */
-    100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+  background-size:
+    40px 40px, 40px 40px,
+    100% 100%, 100% 100%, 100% 100%, 100% 100%;
     
   /* 保证页面滚动时，背景光影和网格锁定不动，质感拉满 */
   background-attachment: fixed;
@@ -544,21 +690,21 @@ const startSimulation = () => {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(rgba(115, 168, 185, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(115, 168, 185, 0.04) 1px, transparent 1px);
+    linear-gradient(rgba(147, 197, 253, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(147, 197, 253, 0.08) 1px, transparent 1px);
   background-size: 88px 88px;
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.3), transparent 82%);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.2), transparent 82%);
   z-index: 0;
 }
 
 :global(html) {
   scrollbar-width: thin;
-  scrollbar-color: #73a8b9 #e6f2f7;
+  scrollbar-color: #93c5fd #e0effe;
 }
 
 :global(body) {
   scrollbar-width: thin;
-  scrollbar-color: #73a8b9 #e6f2f7;
+  scrollbar-color: #93c5fd #e0effe;
 }
 
 :global(html::-webkit-scrollbar),
@@ -568,21 +714,21 @@ const startSimulation = () => {
 
 :global(html::-webkit-scrollbar-track),
 :global(body::-webkit-scrollbar-track) {
-  background: #e6f2f7;
-  border-left: 1px solid rgba(115, 168, 185, 0.12);
+  background: #e0effe;
+  border-left: 1px solid rgba(147, 197, 253, 0.2);
 }
 
 :global(html::-webkit-scrollbar-thumb),
 :global(body::-webkit-scrollbar-thumb) {
-  background: linear-gradient(180deg, #8ebdcb, #73a8b9);
-  border: 2px solid #e6f2f7;
+  background: linear-gradient(180deg, #93c5fd, #60a5fa);
+  border: 2px solid #e0effe;
   border-radius: 999px;
-  box-shadow: inset 0 0 0 1px rgba(248, 250, 252, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
 }
 
 :global(html::-webkit-scrollbar-thumb:hover),
 :global(body::-webkit-scrollbar-thumb:hover) {
-  background: linear-gradient(180deg, #73a8b9, #5c9eaf);
+  background: linear-gradient(180deg, #60a5fa, #3b82f6);
 }
 
 .navbar {
@@ -606,11 +752,11 @@ const startSimulation = () => {
   height: 42px;
   border-radius: 50%;
   overflow: hidden;
-  border: 1.5px solid rgba(115, 168, 185, 0.4);
+  border: 1.5px solid rgba(147, 197, 253, 0.5);
   box-shadow:
-    0 0 0 1px rgba(115, 168, 185, 0.12),
-    0 0 20px rgba(115, 168, 185, 0.25);
-  background: rgba(230, 242, 247, 0.8);
+    0 0 0 1px rgba(96, 165, 250, 0.15),
+    0 0 20px rgba(96, 165, 250, 0.3);
+  background: rgba(227, 242, 255, 0.8);
 }
 
 .brand-mark-image {
@@ -625,7 +771,29 @@ const startSimulation = () => {
   font-weight: 800;
   letter-spacing: 1px;
   font-size: 1.2rem;
-  color: var(--teal-primary);
+  color: var(--blue-primary);
+}
+
+.brand-badge {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.nav-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.nav-tag {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--blue-accent);
+  background: rgba(96, 165, 250, 0.1);
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(96, 165, 250, 0.2);
 }
 
 .nav-links {
@@ -648,11 +816,11 @@ const startSimulation = () => {
 .github-link-ghost,
 .github-link-solid {
   padding: 13px 18px;
-  border: 1px solid rgba(115, 168, 185, 0.4);
-  background: rgba(230, 242, 247, 0.7);
+  border: 1px solid rgba(147, 197, 253, 0.5);
+  background: rgba(227, 242, 255, 0.7);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.6),
-    0 0 16px rgba(115, 168, 185, 0.15);
+    0 0 16px rgba(96, 165, 250, 0.15);
   clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
 }
 
@@ -668,11 +836,11 @@ const startSimulation = () => {
 
 .github-link:hover {
   transform: translateY(-2px);
-  border-color: rgba(115, 168, 185, 0.7);
+  border-color: rgba(96, 165, 250, 0.7);
   box-shadow:
-    inset 0 0 0 1px rgba(115, 168, 185, 0.12),
-    0 0 22px rgba(115, 168, 185, 0.25);
-  color: var(--teal-secondary);
+    inset 0 0 0 1px rgba(96, 165, 250, 0.15),
+    0 0 22px rgba(96, 165, 250, 0.25);
+  color: var(--blue-accent);
 }
 
 .arrow {
@@ -709,13 +877,13 @@ const startSimulation = () => {
   position: relative;
   padding: 34px 38px 24px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), transparent 12%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.65), rgba(230, 242, 247, 0.7));
-  border: 1px solid rgba(115, 168, 185, 0.42);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.8), transparent 12%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.75), rgba(227, 242, 255, 0.7));
+  border: 1px solid rgba(147, 197, 253, 0.5);
   clip-path: polygon(0 18px, 18px 0, calc(100% - 24px) 0, 100% 24px, 100% calc(100% - 24px), calc(100% - 24px) 100%, 18px 100%, 0 calc(100% - 18px));
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.8),
-    0 0 34px rgba(115, 168, 185, 0.16);
+    0 0 34px rgba(96, 165, 250, 0.15);
   overflow: hidden;
 }
 
@@ -728,7 +896,7 @@ const startSimulation = () => {
 
 .hero-panel::before {
   inset: 12px;
-  border: 1px solid rgba(115, 168, 185, 0.2);
+  border: 1px solid rgba(147, 197, 253, 0.25);
   clip-path: polygon(0 10px, 10px 0, calc(100% - 12px) 0, 100% 12px, 100% calc(100% - 12px), calc(100% - 12px) 100%, 12px 100%, 0 calc(100% - 10px));
 }
 
@@ -737,7 +905,7 @@ const startSimulation = () => {
   top: 90px;
   width: 340px;
   height: 340px;
-  background: radial-gradient(circle, rgba(115, 168, 185, 0.2), transparent 70%);
+  background: radial-gradient(circle, rgba(96, 165, 250, 0.25), transparent 70%);
   filter: blur(6px);
 }
 
@@ -791,8 +959,8 @@ const startSimulation = () => {
   font-weight: 700;
   margin: 0 0 30px 0;
   letter-spacing: -3px;
-  color: var(--teal-deep);
-  text-shadow: 0 0 18px rgba(115, 168, 185, 0.18);
+  color: var(--blue-primary);
+  text-shadow: 0 0 18px rgba(96, 165, 250, 0.2);
 }
 
 .gradient-text {
@@ -815,12 +983,12 @@ const startSimulation = () => {
   gap: 16px;
   align-items: center;
   padding: 20px 22px;
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid rgba(115, 168, 185, 0.4);
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(147, 197, 253, 0.5);
   border-radius: 8px;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.7),
-    0 0 18px rgba(115, 168, 185, 0.12);
+    0 0 18px rgba(96, 165, 250, 0.1);
 }
 
 .feature-card p {
@@ -836,9 +1004,9 @@ const startSimulation = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(115, 168, 185, 0.4);
+  border: 1px solid rgba(147, 197, 253, 0.5);
   background: rgba(255, 255, 255, 0.6);
-  box-shadow: inset 0 0 12px rgba(115, 168, 185, 0.08);
+  box-shadow: inset 0 0 12px rgba(96, 165, 250, 0.08);
 }
 
 .feature-glyph {
@@ -853,14 +1021,14 @@ const startSimulation = () => {
 }
 
 .highlight-code {
-  background: rgba(115, 168, 185, 0.12);
+  background: rgba(96, 165, 250, 0.12);
   padding: 3px 8px;
   border-radius: 4px;
   font-family: var(--font-mono);
   font-size: 0.9em;
-  color: var(--teal-secondary);
+  color: var(--blue-primary);
   font-weight: 600;
-  border: 1px solid rgba(115, 168, 185, 0.18);
+  border: 1px solid rgba(96, 165, 250, 0.2);
 }
 
 .hero-cta-banner {
@@ -871,13 +1039,13 @@ const startSimulation = () => {
   font-size: 1.15rem;
   font-weight: 600;
   letter-spacing: 0.4px;
-  color: var(--teal-deep);
+  color: var(--blue-primary);
   background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(115, 168, 185, 0.5);
+  border: 1px solid rgba(147, 197, 253, 0.5);
   border-radius: 8px;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.7),
-    0 0 22px rgba(115, 168, 185, 0.16);
+    0 0 22px rgba(96, 165, 250, 0.15);
 }
 
 .hero-footer {
@@ -921,15 +1089,15 @@ const startSimulation = () => {
   position: relative;
   min-height: 560px;
   padding: 22px 18px 96px;
-  border: 1px solid rgba(115, 168, 185, 0.2);
+  border: 1px solid rgba(147, 197, 253, 0.3);
   border-radius: 24px;
   background:
-    rgba(255, 255, 255, 0.55),
-    radial-gradient(circle at 50% 42%, rgba(115, 168, 185, 0.12), transparent 32%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(230, 242, 247, 0.4));
+    rgba(255, 255, 255, 0.6),
+    radial-gradient(circle at 50% 42%, rgba(96, 165, 250, 0.12), transparent 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.65), rgba(227, 242, 255, 0.4));
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.8),
-    inset 0 -30px 60px rgba(200, 225, 232, 0.3);
+    inset 0 -30px 60px rgba(200, 220, 255, 0.3);
   overflow: hidden;
 }
 
@@ -1004,8 +1172,8 @@ const startSimulation = () => {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: rgba(115, 168, 185, 0.62);
-  box-shadow: 0 0 10px rgba(115, 168, 185, 0.28);
+  background: rgba(96, 165, 250, 0.7);
+  box-shadow: 0 0 10px rgba(96, 165, 250, 0.35);
 }
 
 .hex-cluster {
@@ -1022,8 +1190,8 @@ const startSimulation = () => {
   width: 58px;
   height: 66px;
   clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0 50%);
-  background: linear-gradient(180deg, rgba(115, 168, 185, 0.12), rgba(115, 168, 185, 0.04));
-  border: 1px solid rgba(115, 168, 185, 0.25);
+  background: linear-gradient(180deg, rgba(96, 165, 250, 0.12), rgba(96, 165, 250, 0.04));
+  border: 1px solid rgba(96, 165, 250, 0.25);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
 }
 
@@ -1039,8 +1207,8 @@ const startSimulation = () => {
   border-radius: 999px;
   filter: blur(0.2px);
   box-shadow:
-    0 0 20px rgba(115, 168, 185, 0.3),
-    0 0 36px rgba(115, 168, 185, 0.14);
+    0 0 20px rgba(96, 165, 250, 0.35),
+    0 0 36px rgba(96, 165, 250, 0.18);
 }
 
 .data-ribbon-one {
@@ -1048,7 +1216,7 @@ const startSimulation = () => {
   left: 30px;
   width: 88%;
   transform: rotate(8deg);
-  background: linear-gradient(90deg, rgba(115, 168, 185, 0), rgba(115, 168, 185, 0.74) 36%, rgba(115, 168, 185, 0.2) 70%, rgba(115, 168, 185, 0));
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0), rgba(96, 165, 250, 0.8) 36%, rgba(96, 165, 250, 0.25) 70%, rgba(96, 165, 250, 0));
 }
 
 .data-ribbon-two {
@@ -1056,7 +1224,7 @@ const startSimulation = () => {
   left: -6px;
   width: 92%;
   transform: rotate(-9deg);
-  background: linear-gradient(90deg, rgba(115, 168, 185, 0), rgba(115, 168, 185, 0.48) 28%, rgba(115, 168, 185, 0.92) 56%, rgba(115, 168, 185, 0));
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0), rgba(96, 165, 250, 0.5) 28%, rgba(96, 165, 250, 0.95) 56%, rgba(96, 165, 250, 0));
 }
 
 .visual-text {
@@ -1184,15 +1352,15 @@ const startSimulation = () => {
   position: relative;
   height: 116px;
   background:
-    radial-gradient(circle at center, rgba(115, 168, 185, 0.18), transparent 62%),
+    radial-gradient(circle at center, rgba(96, 165, 250, 0.2), transparent 62%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.1)),
     linear-gradient(135deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.2));
-  border: 1px solid rgba(115, 168, 185, 0.2);
+  border: 1px solid rgba(96, 165, 250, 0.25);
   border-radius: 10px;
   overflow: hidden;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.7),
-    inset 0 -16px 28px rgba(200, 225, 232, 0.3);
+    inset 0 -16px 28px rgba(200, 220, 255, 0.3);
 }
 
 .network-line,
@@ -1203,11 +1371,11 @@ const startSimulation = () => {
 .network-line {
   height: 2px;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(115, 168, 185, 0.1), rgba(115, 168, 185, 0.82), rgba(115, 168, 185, 0.1));
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0.1), rgba(96, 165, 250, 0.85), rgba(96, 165, 250, 0.1));
   transform-origin: left center;
   box-shadow:
-    0 0 10px rgba(115, 168, 185, 0.12),
-    0 0 18px rgba(115, 168, 185, 0.08);
+    0 0 10px rgba(96, 165, 250, 0.15),
+    0 0 18px rgba(96, 165, 250, 0.1);
 }
 
 .line-1 { left: 32px; top: 82px; width: 118px; transform: rotate(-26deg); }
@@ -1221,12 +1389,12 @@ const startSimulation = () => {
   height: 14px;
   border-radius: 50%;
   background:
-    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.98), rgba(115, 168, 185, 0.88) 18%, rgba(115, 168, 185, 0.92) 42%, rgba(58, 90, 106, 0.96) 72%, rgba(58, 90, 106, 0.98) 100%);
-  border: 1px solid rgba(115, 168, 185, 0.3);
+    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.98), rgba(96, 165, 250, 0.9) 18%, rgba(96, 165, 250, 0.95) 42%, rgba(59, 130, 246, 0.98) 72%, rgba(30, 64, 175, 0.98) 100%);
+  border: 1px solid rgba(96, 165, 250, 0.35);
   box-shadow:
-    inset -2px -3px 6px rgba(200, 225, 232, 0.5),
+    inset -2px -3px 6px rgba(200, 220, 255, 0.5),
     inset 2px 2px 5px rgba(255, 255, 255, 0.3),
-    0 0 14px rgba(115, 168, 185, 0.42);
+    0 0 14px rgba(96, 165, 250, 0.5);
 }
 
 .network-node::before {
@@ -1249,12 +1417,12 @@ const startSimulation = () => {
 
 .network-node-core {
   background:
-    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 1), rgba(230, 242, 247, 0.95) 22%, rgba(115, 168, 185, 0.98) 44%, rgba(92, 158, 175, 0.95) 70%, rgba(58, 90, 106, 0.98) 100%);
+    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 1), rgba(227, 242, 255, 0.95) 22%, rgba(96, 165, 250, 0.98) 44%, rgba(59, 130, 246, 0.95) 70%, rgba(30, 64, 175, 0.98) 100%);
   box-shadow:
-    inset -2px -3px 6px rgba(200, 225, 232, 0.5),
+    inset -2px -3px 6px rgba(200, 220, 255, 0.5),
     inset 2px 2px 6px rgba(255, 255, 255, 0.3),
-    0 0 18px rgba(115, 168, 185, 0.7),
-    0 0 32px rgba(115, 168, 185, 0.28);
+    0 0 18px rgba(96, 165, 250, 0.75),
+    0 0 32px rgba(96, 165, 250, 0.35);
 }
 
 .network-node-hub {
@@ -1279,23 +1447,23 @@ const startSimulation = () => {
   width: 100%;
   margin-top: 0;
   padding: 14px 18px;
-  border: 1px solid rgba(115, 168, 185, 0.24);
+  border: 1px solid rgba(147, 197, 253, 0.3);
   border-radius: 18px;
   background:
     rgba(255, 255, 255, 0.6),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.5), rgba(230, 242, 247, 0.5));
+    linear-gradient(90deg, rgba(255, 255, 255, 0.5), rgba(227, 242, 255, 0.5));
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   cursor: pointer;
-  color: var(--teal-deep);
+  color: var(--blue-primary);
   font-family: var(--font-mono);
   font-size: 0.95rem;
   letter-spacing: 0.4px;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.7),
-    0 0 22px rgba(115, 168, 185, 0.12);
+    0 0 22px rgba(96, 165, 250, 0.12);
   transition: color 0.25s ease, transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
@@ -1315,7 +1483,7 @@ const startSimulation = () => {
 
 .scroll-label {
   font-size: 0.96rem;
-  color: var(--teal-deep);
+  color: var(--blue-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1330,31 +1498,31 @@ const startSimulation = () => {
   align-items: center;
   justify-content: center;
   background: rgba(255, 255, 255, 0.65);
-  border: 1px solid rgba(115, 168, 185, 0.28);
+  border: 1px solid rgba(147, 197, 253, 0.35);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.7),
-    0 0 18px rgba(115, 168, 185, 0.12);
+    0 0 18px rgba(96, 165, 250, 0.15);
 }
 
 .scroll-down-btn:hover {
-  color: var(--teal-secondary);
+  color: var(--blue-accent);
   transform: translateY(2px);
-  border-color: rgba(115, 168, 185, 0.5);
+  border-color: rgba(96, 165, 250, 0.5);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.6),
-    0 0 28px rgba(115, 168, 185, 0.18);
+    inset 0 0 0 1px rgba(96, 165, 250, 0.1),
+    0 0 28px rgba(96, 165, 250, 0.2);
 }
 
 .scroll-arrow {
   font-size: 1.7rem;
   line-height: 1;
-  text-shadow: 0 0 18px rgba(115, 168, 185, 0.36);
+  text-shadow: 0 0 18px rgba(96, 165, 250, 0.4);
 }
 
 .dashboard-section {
   display: flex;
   gap: 60px;
-  border-top: 1px solid rgba(115, 168, 185, 0.2);
+  border-top: 1px solid rgba(147, 197, 253, 0.25);
   padding-top: 52px;
   align-items: flex-start;
 }
@@ -1404,8 +1572,8 @@ const startSimulation = () => {
 }
 
 .metric-card {
-  border: 1px solid rgba(115, 168, 185, 0.25);
-  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(147, 197, 253, 0.3);
+  background: rgba(255, 255, 255, 0.6);
   padding: 20px 30px;
   min-width: 150px;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
@@ -1425,8 +1593,8 @@ const startSimulation = () => {
 }
 
 .steps-container {
-  border: 1px solid rgba(115, 168, 185, 0.25);
-  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(147, 197, 253, 0.3);
+  background: rgba(255, 255, 255, 0.6);
   padding: 30px;
   position: relative;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
@@ -1487,12 +1655,12 @@ const startSimulation = () => {
 }
 
 .console-box {
-  border: 1px solid rgba(115, 168, 185, 0.3);
-  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(147, 197, 253, 0.35);
+  background: rgba(255, 255, 255, 0.6);
   padding: 8px;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.7),
-    0 0 22px rgba(115, 168, 185, 0.12);
+    0 0 22px rgba(96, 165, 250, 0.1);
 }
 
 .console-section {
@@ -1630,9 +1798,9 @@ const startSimulation = () => {
 }
 
 .source-tab.active {
-  background: rgba(115, 168, 185, 0.15);
-  color: var(--teal-deep);
-  box-shadow: inset 0 -2px 0 var(--teal-primary);
+  background: rgba(96, 165, 250, 0.15);
+  color: var(--blue-primary);
+  box-shadow: inset 0 -2px 0 var(--blue-accent);
 }
 
 .source-tab:not(.active):hover {
@@ -1781,9 +1949,9 @@ const startSimulation = () => {
 
 .start-engine-btn {
   width: 100%;
-  background: linear-gradient(90deg, rgba(115, 168, 185, 0.2), rgba(92, 158, 175, 0.15));
-  color: var(--teal-deep);
-  border: 1px solid rgba(115, 168, 185, 0.4);
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0.2), rgba(59, 130, 246, 0.15));
+  color: var(--blue-primary);
+  border: 1px solid rgba(96, 165, 250, 0.5);
   padding: 20px;
   font-family: var(--font-mono);
   font-weight: 700;
@@ -1799,17 +1967,16 @@ const startSimulation = () => {
 }
 
 .start-engine-btn:not(:disabled) {
-  /* perf: 将 box-shadow 动画由 infinite 调为 hover 触发，同时提升合成层 */
   will-change: box-shadow;
 }
 
 .start-engine-btn:not(:disabled):hover {
-  animation: pulse-border 2s infinite;
+  animation: pulse-border-blue 2s infinite;
 }
 
 .start-engine-btn:hover:not(:disabled) {
-  background: linear-gradient(90deg, rgba(115, 168, 185, 0.3), rgba(92, 158, 175, 0.25));
-  border-color: rgba(115, 168, 185, 0.7);
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0.3), rgba(59, 130, 246, 0.25));
+  border-color: rgba(96, 165, 250, 0.7);
   transform: translateY(-2px);
 }
 
@@ -1818,17 +1985,17 @@ const startSimulation = () => {
 }
 
 .start-engine-btn:disabled {
-  background: rgba(200, 225, 232, 0.5);
-  color: rgba(58, 90, 106, 0.5);
+  background: rgba(227, 242, 255, 0.5);
+  color: rgba(59, 130, 246, 0.5);
   cursor: not-allowed;
   transform: none;
-  border: 1px solid rgba(115, 168, 185, 0.12);
+  border: 1px solid rgba(147, 197, 253, 0.2);
 }
 
-@keyframes pulse-border {
-  0% { box-shadow: 0 0 0 0 rgba(115, 168, 185, 0.2); }
-  70% { box-shadow: 0 0 0 8px rgba(115, 168, 185, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(115, 168, 185, 0); }
+@keyframes pulse-border-blue {
+  0% { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.3); }
+  70% { box-shadow: 0 0 0 8px rgba(96, 165, 250, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0); }
 }
 
 @media (max-width: 1180px) {
@@ -2031,5 +2198,322 @@ const startSimulation = () => {
     opacity: 1;
     transform: translateX(0);
   }
+}
+
+/* ========== 登录/注册弹窗样式 ========== */
+.auth-btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.login-btn {
+  background: rgba(96, 165, 250, 0.15);
+  color: var(--blue-primary);
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  margin: 0 8px;
+}
+
+.login-btn:hover {
+  background: rgba(96, 165, 250, 0.25);
+  border-color: rgba(96, 165, 250, 0.6);
+  transform: translateY(-1px);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+}
+
+.auth-modal {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(248, 251, 255, 0.98));
+  border: 1px solid rgba(147, 197, 253, 0.5);
+  border-radius: 20px;
+  padding: 32px;
+  width: 100%;
+  max-width: 440px;
+  position: relative;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.8),
+    0 25px 50px rgba(59, 130, 246, 0.15),
+    0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+.modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: rgba(147, 197, 253, 0.2);
+  border-radius: 8px;
+  font-size: 1.2rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+  background: rgba(96, 165, 250, 0.2);
+  color: var(--teal-primary);
+}
+
+.modal-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.modal-brand {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.modal-logo {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid rgba(147, 197, 253, 0.5);
+  box-shadow: 0 0 20px rgba(96, 165, 250, 0.2);
+}
+
+.modal-title {
+  font-family: var(--font-sans);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 8px 0;
+}
+
+.modal-subtitle {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.form-input {
+  padding: 14px 16px;
+  border: 1px solid rgba(147, 197, 253, 0.4);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.8);
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--blue-accent);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
+}
+
+.form-input::placeholder {
+  color: var(--text-muted);
+}
+
+.password-wrapper {
+  position: relative;
+}
+
+.password-wrapper .form-input {
+  padding-right: 60px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--blue-accent);
+  font-size: 0.8rem;
+  cursor: pointer;
+  font-family: var(--font-mono);
+}
+
+.password-toggle:hover {
+  color: var(--blue-primary);
+}
+
+.form-options {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.remember-me {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.remember-me input {
+  accent-color: var(--blue-accent);
+}
+
+.forgot-link {
+  color: var(--blue-accent);
+  text-decoration: none;
+}
+
+.forgot-link:hover {
+  color: var(--blue-primary);
+  text-decoration: underline;
+}
+
+.submit-btn {
+  width: 100%;
+  padding: 16px;
+  background: linear-gradient(135deg, #2563EB, #1D4ED8);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  letter-spacing: 1px;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+}
+
+.submit-btn:hover {
+  background: linear-gradient(135deg, #1D4ED8, #1E40AF);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.5);
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 16px 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(147, 197, 253, 0.4);
+}
+
+.social-login {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.social-btn {
+  width: 100%;
+  padding: 14px 20px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(147, 197, 253, 0.4);
+  border-radius: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  transition: all 0.2s ease;
+}
+
+.social-btn:hover {
+  background: rgba(147, 197, 253, 0.1);
+  border-color: rgba(96, 165, 250, 0.5);
+  transform: translateY(-1px);
+}
+
+.social-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.mode-switch {
+  text-align: center;
+  margin-top: 16px;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.switch-btn {
+  background: none;
+  border: none;
+  color: var(--blue-accent);
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: 6px;
+  font-family: var(--font-mono);
+}
+
+.switch-btn:hover {
+  color: var(--blue-primary);
+  text-decoration: underline;
+}
+
+/* 弹窗动画 */
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
+
+.modal-fade-enter-active .auth-modal,
+.modal-fade-leave-active .auth-modal {
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.modal-fade-enter-from .auth-modal,
+.modal-fade-leave-to .auth-modal {
+  transform: scale(0.95) translateY(20px);
+  opacity: 0;
 }
 </style>
