@@ -2785,7 +2785,7 @@ watch(() => props.reportId, (newId, oldId) => {
   flex-direction: row;
   overflow: hidden;
   gap: 0;
-  padding: 16px 16px 0 0;
+  padding: 0 16px 0 0;
   min-height: 0;
   position: relative;
 }
@@ -2971,7 +2971,7 @@ watch(() => props.reportId, (newId, oldId) => {
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  padding: 28px 40px 48px 40px;
+  padding: 0 40px 48px 40px;
   min-width: 0;
 }
 
@@ -3479,7 +3479,7 @@ watch(() => props.reportId, (newId, oldId) => {
 
 /* Workflow Overview */
 .workflow-overview {
-  padding: 16px 20px 0 20px;
+  padding: 0 20px 0 20px;
 }
 
 .workflow-metrics {

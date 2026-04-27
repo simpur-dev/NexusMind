@@ -2910,6 +2910,7 @@ onUnmounted(() => {
   min-height: 0;
   scrollbar-width: thin;
   scrollbar-color: #93c5fd #e0effe;
+  align-items: stretch;
 }
 
 .step-area-inner::-webkit-scrollbar {
