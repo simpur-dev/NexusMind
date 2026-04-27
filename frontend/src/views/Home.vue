@@ -18,7 +18,7 @@
 
     <div class="main-content">
       <section class="hero-section">
-        <div class="hero-left">
+        <div class="hero-left" :class="{ 'slide-in-left': isMounted }">
           <div class="hero-panel">
             <div class="hero-panel-top">
               <div class="tag-row">
@@ -70,7 +70,7 @@
           </div>
         </div>
 
-        <div class="hero-right">
+        <div class="hero-right" :class="{ 'slide-in-right': isMounted }">
           <div class="hero-actions">
 
           </div>
@@ -148,7 +148,7 @@
       </div>
 
       <section class="dashboard-section">
-        <div class="left-panel">
+        <div class="left-panel" :class="{ 'slide-in-left': isMounted }">
           <div class="panel-header">
             <span class="status-dot">●</span> 系统状态
           </div>
@@ -213,7 +213,7 @@
           </div>
         </div>
 
-        <div class="right-panel">
+        <div class="right-panel" :class="{ 'slide-in-right': isMounted }">
           <div class="console-box">
             <div class="console-section">
               <div class="console-header">
@@ -353,11 +353,20 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import HistoryDatabase from '../components/HistoryDatabase.vue'
 
 const router = useRouter()
+
+const isMounted = ref(false)
+
+onMounted(() => {
+  // 延迟一点触发动画，确保页面渲染完成
+  setTimeout(() => {
+    isMounted.value = true
+  }, 50)
+})
 
 const formData = ref({
   simulationRequirement: ''
@@ -1970,6 +1979,57 @@ const startSimulation = () => {
   .metrics-row,
   .console-header {
     flex-direction: column;
+  }
+}
+
+/* ========== 入场动画 ========== */
+.hero-left,
+.hero-right,
+.left-panel,
+.right-panel {
+  opacity: 0;
+}
+
+/* Hero 区域动画 */
+.hero-left.slide-in-left {
+  animation: slideInLeft 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.hero-right.slide-in-right {
+  animation: slideInRight 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 0.15s;
+}
+
+/* Dashboard 区域动画 - 延迟执行，等 Hero 完成后 */
+.left-panel.slide-in-left {
+  animation: slideInLeft 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 0.5s;
+}
+
+.right-panel.slide-in-right {
+  animation: slideInRight 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 0.65s;
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-80px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(80px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
   }
 }
 </style>

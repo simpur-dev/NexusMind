@@ -1291,13 +1291,14 @@ function stateColor(key, val) {
   z-index: 100;
 }
 .modal-box {
-  background: var(--color-white);
+  background: #FFFFFF;
   border-radius: 16px;
   padding: 24px;
   max-width: 420px;
   width: 90%;
   border: 1px solid var(--teal-100);
   box-shadow: 0 20px 40px rgba(20, 184, 166, 0.15);
+  opacity: 1;
 }
 .modal-box h3 { font-size: 16px; color: var(--color-black); margin-bottom: 12px; }
 .modal-box p { font-size: 13px; color: var(--color-muted); line-height: 1.6; margin-bottom: 8px; }
