@@ -140,6 +140,18 @@
               <span class="stat-label">SCHEMA类型</span>
             </div>
           </div>
+          <!-- 数据为空时显示重建按钮 -->
+          <button
+            v-if="currentPhase >= 1 && graphStats.nodes === 0 && !rebuildingGraph"
+            class="action-btn rebuild-btn"
+            @click="$emit('rebuild-graph')"
+          >
+            ↻ 重新构建图谱
+          </button>
+          <div v-if="rebuildingGraph" class="rebuild-hint">
+            <span class="spinner-sm"></span>
+            <span>正在重新构建图谱...</span>
+          </div>
         </div>
       </div>
 
@@ -238,10 +250,11 @@ const props = defineProps({
   ontologyProgress: Object,
   buildProgress: Object,
   graphData: Object,
-  systemLogs: { type: Array, default: () => [] }
+  systemLogs: { type: Array, default: () => [] },
+  rebuildingGraph: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['next-step', 'simulation-created'])
+const emit = defineEmits(['next-step', 'simulation-created', 'rebuild-graph'])
 
 const selectedOntologyItem = ref(null)
 const logContent = ref(null)
@@ -751,6 +764,30 @@ watch(() => props.systemLogs.length, () => {
 .action-btn-workspace:hover:not(:disabled) {
   background: linear-gradient(135deg, rgba(99, 179, 237, 0.25) 0%, rgba(59, 130, 246, 0.18) 100%);
   box-shadow: 0 8px 20px rgba(99, 179, 237, 0.15);
+}
+
+.rebuild-btn {
+  margin-top: 12px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(234, 88, 12, 0.1) 100%);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  box-shadow: none;
+}
+.rebuild-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.25) 0%, rgba(234, 88, 12, 0.18) 100%);
+  box-shadow: 0 8px 20px rgba(245, 158, 11, 0.15);
+}
+.rebuild-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: #d97706;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(254, 243, 199, 0.6);
+  border: 1px solid rgba(245, 158, 11, 0.14);
 }
 
 .progress-section {

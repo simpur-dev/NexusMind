@@ -373,29 +373,34 @@ class SimulationConfigGenerator:
         if scheduled_count > 0:
             reasoning_parts.append(f"定时事件分配: {scheduled_count} 个分阶段事件已分配发布者")
         
-        # ========== 最后一步: 生成平台配置 ==========
-        report_progress(total_steps, "生成平台配置...")
+        # ========== 最后一步: 生成平台配置（LLM推理） ==========
+        report_progress(total_steps, "LLM推理生成平台配置...")
         twitter_config = None
         reddit_config = None
         
+        platform_result = self._generate_platform_config(context, enable_twitter, enable_reddit)
+        reasoning_parts.append(f"平台配置: {platform_result.get('reasoning', '成功')}")
+        
         if enable_twitter:
+            tw = platform_result.get("twitter", {})
             twitter_config = PlatformConfig(
                 platform="twitter",
-                recency_weight=0.4,
-                popularity_weight=0.3,
-                relevance_weight=0.3,
-                viral_threshold=10,
-                echo_chamber_strength=0.5
+                recency_weight=self._clamp(tw.get("recency_weight", 0.4), 0.05, 0.9),
+                popularity_weight=self._clamp(tw.get("popularity_weight", 0.3), 0.05, 0.9),
+                relevance_weight=self._clamp(tw.get("relevance_weight", 0.3), 0.05, 0.9),
+                viral_threshold=max(1, min(100, int(tw.get("viral_threshold", 10)))),
+                echo_chamber_strength=self._clamp(tw.get("echo_chamber_strength", 0.5), 0.0, 1.0),
             )
         
         if enable_reddit:
+            rd = platform_result.get("reddit", {})
             reddit_config = PlatformConfig(
                 platform="reddit",
-                recency_weight=0.3,
-                popularity_weight=0.4,
-                relevance_weight=0.3,
-                viral_threshold=15,
-                echo_chamber_strength=0.6
+                recency_weight=self._clamp(rd.get("recency_weight", 0.3), 0.05, 0.9),
+                popularity_weight=self._clamp(rd.get("popularity_weight", 0.4), 0.05, 0.9),
+                relevance_weight=self._clamp(rd.get("relevance_weight", 0.3), 0.05, 0.9),
+                viral_threshold=max(1, min(100, int(rd.get("viral_threshold", 15)))),
+                echo_chamber_strength=self._clamp(rd.get("echo_chamber_strength", 0.6), 0.0, 1.0),
             )
         
         # 构建最终参数
@@ -681,6 +686,92 @@ class SimulationConfigGenerator:
             work_activity_multiplier=0.7,
             peak_activity_multiplier=1.5
         )
+    
+    @staticmethod
+    def _clamp(value: float, low: float, high: float) -> float:
+        """将数值限制在指定范围内"""
+        return max(low, min(high, float(value)))
+    
+    def _generate_platform_config(
+        self,
+        context: str,
+        enable_twitter: bool,
+        enable_reddit: bool
+    ) -> Dict[str, Any]:
+        """使用LLM推理生成平台推荐算法配置"""
+        context_truncated = context[:self.TIME_CONFIG_CONTEXT_LENGTH]
+        
+        platforms_desc = []
+        if enable_twitter:
+            platforms_desc.append("twitter（广场/信息流平台，类似微博）")
+        if enable_reddit:
+            platforms_desc.append("reddit（话题/社区平台，类似知乎/贴吧）")
+        
+        prompt = f"""基于以下模拟需求，为社交平台推荐算法生成配置参数。
+
+{context_truncated}
+
+## 需要配置的平台
+{chr(10).join(f"- {p}" for p in platforms_desc)}
+
+## 任务
+请根据事件性质、传播特点和参与群体，推理生成每个平台的推荐算法参数。
+
+### 参数说明
+- **recency_weight** (0.05-0.9): 时效性权重。突发热点事件应更高（让最新内容优先展示），慢热话题可降低
+- **popularity_weight** (0.05-0.9): 热度权重。容易引发群体共鸣的事件应提高（让热门帖子更多曝光），理性讨论型可降低
+- **relevance_weight** (0.05-0.9): 相关性权重。专业性强的话题应提高（让相关内容聚合），泛化话题可降低
+- **viral_threshold** (1-100): 病毒传播阈值（帖子获得多少互动后触发扩散推荐）。情绪化事件应降低（更容易传播），理性讨论应提高
+- **echo_chamber_strength** (0.0-1.0): 回音室效应强度。观点极化严重的事件应提高（模拟观点聚集），需要多元声音的场景应降低
+
+注意：
+- 三个权重(recency + popularity + relevance)无需严格加和为1，系统会自动归一化
+- twitter（广场型）通常更注重时效性和病毒传播，阈值更低
+- reddit（社区型）通常更注重热度和深度讨论，回音室效应更强
+- 请根据**具体事件特征**调整，不要使用通用默认值
+
+### 返回JSON格式（不要markdown）
+{{
+    "twitter": {{
+        "recency_weight": 0.45,
+        "popularity_weight": 0.30,
+        "relevance_weight": 0.25,
+        "viral_threshold": 8,
+        "echo_chamber_strength": 0.4
+    }},
+    "reddit": {{
+        "recency_weight": 0.25,
+        "popularity_weight": 0.40,
+        "relevance_weight": 0.35,
+        "viral_threshold": 18,
+        "echo_chamber_strength": 0.65
+    }},
+    "reasoning": "简要说明为什么这样配置（结合事件特点）"
+}}"""
+
+        system_prompt = "你是社交媒体推荐算法和舆情传播专家。根据具体事件特征推理生成平台参数，返回纯JSON。"
+        
+        try:
+            return self._call_llm_with_retry(prompt, system_prompt)
+        except Exception as e:
+            logger.warning(f"平台配置LLM生成失败: {e}, 使用默认配置")
+            return {
+                "twitter": {
+                    "recency_weight": 0.4,
+                    "popularity_weight": 0.3,
+                    "relevance_weight": 0.3,
+                    "viral_threshold": 10,
+                    "echo_chamber_strength": 0.5
+                },
+                "reddit": {
+                    "recency_weight": 0.3,
+                    "popularity_weight": 0.4,
+                    "relevance_weight": 0.3,
+                    "viral_threshold": 15,
+                    "echo_chamber_strength": 0.6
+                },
+                "reasoning": "LLM推理失败，使用默认配置"
+            }
     
     def _generate_event_config(
         self, 

@@ -19,7 +19,7 @@
         <button class="ws-action-btn ws-secondary" @click="showExportReport = true">
           <span class="btn-icon">&#128202;</span> 导出报告
         </button>
-        <button class="ws-action-btn ws-primary" @click="onAppendMaterial">
+        <button class="ws-action-btn ws-primary" @click="showAppendDialog = true">
           <span class="btn-icon">+</span> 追加材料
         </button>
       </div>
@@ -35,18 +35,26 @@
             <span class="overview-icon">&#128203;</span>
             <span class="overview-title">项目概览</span>
           </div>
+          <div class="overview-name" v-if="projectName">{{ projectName }}</div>
+          <div class="overview-stage" v-if="activeBaseline?.current_stage">
+            <span class="stage-dot"></span>
+            当前阶段：{{ activeBaseline.current_stage }}
+          </div>
           <div class="overview-stats">
             <div class="stat-item">
+              <span class="stat-icon">&#128193;</span>
               <span class="stat-num">{{ materials.length }}</span>
               <span class="stat-label">材料</span>
             </div>
             <div class="stat-divider"></div>
             <div class="stat-item">
+              <span class="stat-icon">&#128200;</span>
               <span class="stat-num">{{ baselines.length }}</span>
               <span class="stat-label">基线</span>
             </div>
             <div class="stat-divider"></div>
             <div class="stat-item">
+              <span class="stat-icon">&#128440;</span>
               <span class="stat-num">{{ forecastRuns.length }}</span>
               <span class="stat-label">分支</span>
             </div>
@@ -65,7 +73,7 @@
           <div v-else-if="materials.length === 0" class="panel-empty">
             <div class="empty-illustration">&#128444;</div>
             <p>尚未追加材料</p>
-            <button class="empty-action" @click="onAppendMaterial">+ 添加材料</button>
+            <button class="empty-action" @click="showAppendDialog = true">+ 添加材料</button>
           </div>
           <ul class="material-list" v-else>
             <li v-for="m in materials" :key="m.material_id" class="material-item"
@@ -82,15 +90,16 @@
         <div class="panel-section">
           <h2 class="panel-title">
             <span class="title-icon">&#128200;</span> 基线版本
-            <button class="panel-title-action" @click="onRebuildBaseline" :disabled="materials.length === 0 || graphRebuilding">
-              {{ graphRebuilding ? '构建中...' : '重建' }}
+            <button class="panel-title-action" @click="onRebuildBaseline" :disabled="materials.length === 0 || baselineRebuilding || graphRebuilding">
+              {{ (baselineRebuilding || graphRebuilding) ? '构建中...' : '重建' }}
             </button>
           </h2>
-          <div v-if="graphRebuilding" class="panel-loading">
+          <div v-if="baselineRebuilding || graphRebuilding" class="panel-loading">
             <div class="loading-spinner"></div>
-            <span>{{ graphRebuildMsg }}</span>
+            <span>{{ baselineRebuilding ? baselineRebuildMsg : graphRebuildMsg }}</span>
+            <div class="rebuild-elapsed" v-if="rebuildElapsed">已用时 {{ rebuildElapsed }}</div>
             <div class="mini-progress">
-              <div class="mini-progress-fill" :style="{ width: graphRebuildProgress + '%' }"></div>
+              <div class="mini-progress-fill" :style="{ width: (baselineRebuilding ? baselineRebuildProgress : graphRebuildProgress) + '%' }"></div>
             </div>
           </div>
           <div v-else-if="baselines.length === 0" class="panel-empty-small">
@@ -110,6 +119,30 @@
 
           <!-- 基线详情 -->
           <div class="baseline-detail" v-if="activeBaseline">
+            <div class="bd-section bd-graph-stats">
+              <div class="bd-label">
+                关联图谱
+                <button
+                  class="bd-rebuild-btn bd-view-graph-btn"
+                  @click="goToStep(1)"
+                  title="前往图谱构建页查看"
+                >&#128065; 查看</button>
+                <button
+                  v-if="!baselineGraphRebuilding"
+                  class="bd-rebuild-btn"
+                  @click="onRebuildBaselineGraph"
+                  title="为当前基线重建独立图谱"
+                >↻ 重建图谱</button>
+                <span v-else class="bd-rebuild-hint">构建中...</span>
+              </div>
+              <div class="bd-tags" v-if="baselineGraphStats">
+                <span class="bd-tag">{{ baselineGraphStats.nodes }} 节点</span>
+                <span class="bd-tag">{{ baselineGraphStats.edges }} 关系</span>
+              </div>
+              <div v-if="baselineGraphRebuilding" class="mini-progress" style="margin-top:4px">
+                <div class="mini-progress-fill" :style="{ width: baselineGraphRebuildProgress + '%' }"></div>
+              </div>
+            </div>
             <div class="bd-section" v-if="activeBaseline.confirmed_facts?.length">
               <div class="bd-label">已确认事实</div>
               <ul class="bd-list"><li v-for="(f, i) in activeBaseline.confirmed_facts.slice(0, 5)" :key="i">{{ f }}</li></ul>
@@ -151,6 +184,50 @@
           </div>
         </div>
 
+        <!-- 事件因果图 -->
+        <div class="panel-section causal-graph-section">
+          <h2 class="panel-title">
+            <span class="title-icon">&#128279;</span> 事件因果图
+          </h2>
+          <div v-if="causalGraphLoading" class="panel-loading">
+            <div class="loading-spinner"></div>
+            <span>正在生成事件因果图...</span>
+          </div>
+          <div v-else-if="causalGraph.events.length === 0" class="panel-empty-small">
+            <div class="empty-illustration">&#128302;</div>
+            <p>重建基线后自动生成</p>
+          </div>
+          <div v-else class="causal-timeline">
+            <div class="causal-summary" v-if="causalGraph.summary">{{ causalGraph.summary }}</div>
+            <div class="causal-events">
+              <div
+                v-for="(evt, idx) in causalGraph.events"
+                :key="evt.id"
+                class="causal-node"
+                :class="[evt.type, { 'has-edge': getOutEdges(evt.id).length > 0 }]"
+              >
+                <div class="causal-node-dot" :class="evt.type"></div>
+                <div class="causal-node-connector" v-if="idx < causalGraph.events.length - 1"></div>
+                <div class="causal-node-content">
+                  <div class="causal-node-header">
+                    <span class="causal-time">{{ evt.time }}</span>
+                    <span class="causal-type-badge" :class="evt.type">{{ eventTypeCN[evt.type] || evt.type }}</span>
+                    <span class="causal-stage-badge" v-if="evt.stage">{{ evt.stage }}</span>
+                  </div>
+                  <div class="causal-node-title">{{ evt.title }}</div>
+                  <div class="causal-node-actor">{{ evt.actor }}</div>
+                  <div class="causal-node-desc" v-if="evt.description">{{ evt.description }}</div>
+                  <div class="causal-edges" v-if="getOutEdges(evt.id).length > 0">
+                    <span v-for="e in getOutEdges(evt.id)" :key="e.target" class="causal-edge-tag" :class="e.relation">
+                      {{ e.label }} &#8594; {{ getEventTitle(e.target) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 预测分支管理 -->
         <div class="panel-section">
           <h2 class="panel-title">
@@ -168,14 +245,16 @@
             <li v-for="r in forecastRuns" :key="r.run_id" class="run-item"
                 :class="{ active: activeRunId === r.run_id }"
                 @click="onSelectRun(r.run_id)">
-              <span class="run-type-badge" :class="r.branch_type">{{ r.branch_type }}</span>
+              <span class="run-type-badge" :class="r.branch_type">{{ branchTypeCN[r.branch_type] || r.branch_type }}</span>
               <span class="run-label">{{ r.branch_label || r.run_id.slice(-8) }}</span>
               <span class="run-status" :class="r.status">{{ statusCN[r.status] || r.status }}</span>
               <span class="run-actions" v-if="activeRunId === r.run_id" @click.stop>
-                <button v-if="r.status === 'created'" class="run-action-btn"
-                  @click="onPrepareRun(r.run_id)" :disabled="runActionLoading">
-                  {{ runActionLoading ? '准备中...' : '准备' }}
-                </button>
+                <span v-if="r.status === 'created'" class="run-start-group">
+                  <input type="number" v-model.number="startRounds" min="1" max="100" class="rounds-input" placeholder="轮" />
+                  <button class="run-action-btn" @click="onPrepareAndStart(r.run_id)" :disabled="runActionLoading">
+                    {{ runActionLoading ? '准备中...' : '准备并启动' }}
+                  </button>
+                </span>
                 <button v-else-if="r.status === 'preparing'" class="run-action-btn run-view-btn"
                   @click="goToProcess(r, 2)">查看进度</button>
                 <span v-else-if="['prepared','ready'].includes(r.status)" class="run-start-group">
@@ -188,6 +267,7 @@
                   @click="goToProcess(r, 3)">查看推演</button>
                 <button v-if="r.status === 'completed'" class="run-action-btn run-view-btn"
                   @click="goToProcess(r, 3)">查看结果</button>
+                <button class="run-action-btn run-delete-btn" @click="onDeleteRun(r.run_id)" title="删除分支">✕</button>
               </span>
             </li>
           </ul>
@@ -228,6 +308,42 @@
           <div class="quick-action-card" @click="showExportReport = true">
             <span class="qa-icon">&#128209;</span>
             <span class="qa-label">生成报告</span>
+          </div>
+        </div>
+
+        <!-- 主链路步骤跳转 -->
+        <div class="step-nav-bar">
+          <div class="step-nav-header">
+            <span class="step-nav-title">构建流程</span>
+            <span class="step-nav-branch" v-if="activeRun">
+              {{ activeRun.branch_label || activeRun.run_id.slice(-8) }}
+              <span class="step-nav-branch-status" :class="activeRun.status">{{ statusCN[activeRun.status] || activeRun.status }}</span>
+            </span>
+            <span class="step-nav-branch step-nav-branch-none" v-else>请选择分支</span>
+          </div>
+          <div class="step-nav-btns">
+            <button class="step-nav-btn" :class="stepState(1)" @click="goToStep(1)">
+              <span class="step-nav-num">01</span><span class="step-nav-name">图谱构建</span>
+              <span class="step-nav-check" v-if="stepState(1) === 'done'">&#10003;</span>
+            </button>
+            <button class="step-nav-btn" :class="stepState(2)" @click="goToStep(2)">
+              <span class="step-nav-num">02</span><span class="step-nav-name">环境搭建</span>
+              <span class="step-nav-check" v-if="stepState(2) === 'done'">&#10003;</span>
+              <span class="step-nav-spinner" v-if="stepState(2) === 'active' && activeRun?.status === 'preparing'"></span>
+            </button>
+            <button class="step-nav-btn" :class="stepState(3)" @click="goToStep(3)">
+              <span class="step-nav-num">03</span><span class="step-nav-name">世界模型推演</span>
+              <span class="step-nav-check" v-if="stepState(3) === 'done'">&#10003;</span>
+              <span class="step-nav-spinner" v-if="stepState(3) === 'active' && activeRun?.status === 'running'"></span>
+            </button>
+            <button class="step-nav-btn" :class="stepState(4)" @click="goToStep(4)">
+              <span class="step-nav-num">04</span><span class="step-nav-name">报告生成</span>
+              <span class="step-nav-check" v-if="stepState(4) === 'done'">&#10003;</span>
+            </button>
+            <button class="step-nav-btn" :class="stepState(5)" @click="goToStep(5)">
+              <span class="step-nav-num">05</span><span class="step-nav-name">深度互动</span>
+              <span class="step-nav-check" v-if="stepState(5) === 'done'">&#10003;</span>
+            </button>
           </div>
         </div>
       </section>
@@ -323,13 +439,87 @@
         </div>
       </div>
     </div>
+
+    <!-- ========== 追加材料对话框 ========== -->
+    <div class="modal-overlay" v-if="showAppendDialog" @click.self="closeAppendDialog">
+      <div class="modal-box append-material-modal">
+        <h3>+ 追加材料</h3>
+
+        <!-- 文件上传区 -->
+        <div class="append-section">
+          <div class="append-section-header">&#128193; 文件上传</div>
+          <div class="file-drop-zone" @click="triggerFileInput" @dragover.prevent @drop.prevent="onFileDrop">
+            <div class="drop-icon">&#128196;</div>
+            <p>点击选择或拖拽文件到此处</p>
+            <p class="drop-hint">支持 PDF、MD、TXT 格式，可多选</p>
+          </div>
+          <div v-if="appendFileNames.length" class="file-list-preview">
+            <div v-for="(name, i) in appendFileNames" :key="i" class="file-preview-item">
+              &#128196; {{ name }}
+              <span class="file-remove" @click.stop="removeFile(i)" title="移除">&times;</span>
+            </div>
+          </div>
+          <button
+            v-if="appendFiles.length"
+            class="ws-action-btn ws-primary append-upload-btn"
+            @click="onUploadFiles"
+            :disabled="appendUploading"
+          >{{ appendUploading ? '上传中...' : '&#10003; 上传文件' }}</button>
+          <div v-if="appendFileUploaded" class="append-done-hint">&#10003; 已上传 {{ appendFileUploaded }} 个文件</div>
+        </div>
+
+        <!-- 分割线 -->
+        <div class="append-divider"><span>也可以</span></div>
+
+        <!-- 网络抓取区 -->
+        <div class="append-section">
+          <div class="append-section-header">&#127760; 网络抓取</div>
+          <p class="section-desc">输入关键词自动搜索互联网舆情信息并导入</p>
+          <div class="web-search-form">
+            <input
+              class="web-search-input"
+              v-model="webSearchQuery"
+              placeholder="搜索关键词，如：华中农大 研究生 举报导师"
+              @keydown.enter="onWebSearch"
+              :disabled="webSearchLoading"
+            />
+            <button
+              class="ws-action-btn ws-primary web-search-btn"
+              @click="onWebSearch"
+              :disabled="webSearchLoading || !webSearchQuery.trim()"
+            >
+              <span v-if="webSearchLoading" class="btn-spinner"></span>
+              <span v-else>&#128269;</span>
+              {{ webSearchLoading ? '搜索中...' : '搜索导入' }}
+            </button>
+          </div>
+          <p class="web-search-error" v-if="webSearchError">{{ webSearchError }}</p>
+          <div class="web-search-result" v-if="webSearchResults">
+            <div class="web-search-success">
+              <span class="success-icon">&#10003;</span>
+              已导入 <strong>{{ webSearchResults.added }}</strong> 条网络材料
+            </div>
+            <ul class="web-search-sources" v-if="webSearchResults.sources?.length">
+              <li v-for="(s, i) in webSearchResults.sources" :key="i" class="web-source-item">
+                <a :href="s.url" target="_blank" rel="noopener" class="web-source-link">{{ s.title }}</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 底部关闭 -->
+        <div class="modal-actions">
+          <button class="ws-action-btn ws-secondary" @click="closeAppendDialog">完成</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { listMaterials, listBaselines, rebuildBaseline, appendMaterialFiles, deleteBaseline } from '../api/incident'
+import { listMaterials, listBaselines, rebuildBaseline, appendMaterialFiles, appendMaterialFromWeb, deleteBaseline, getCausalGraph } from '../api/incident'
 import { createForecastRun, getForecastRunStatus, getDecisionBrief, prepareForecastRun, startForecastRun } from '../api/forecast'
 
 const router = useRouter()
@@ -351,9 +541,47 @@ const monitoringSignals = ref([])
 const forecastPaths = ref([])
 const showExportReport = ref(false)
 const projectHasText = ref(false)
+const showAppendDialog = ref(false)
+const appendFiles = ref([])
+const appendFileNames = ref([])
+const appendUploading = ref(false)
+const appendFileUploaded = ref(0)
+const webSearchQuery = ref('')
+const webSearchLoading = ref(false)
+const webSearchError = ref('')
+const webSearchResults = ref(null)
 const isBootstrapping = ref(false)
 const runActionLoading = ref(false)
 const activeBaseline = ref(null)
+const baselineGraphStats = ref(null) // { nodes, edges } for active baseline's graph
+const projectGraphId = ref('') // project-level graph_id (fallback for old baselines)
+const baselineGraphRebuilding = ref(false)
+const baselineGraphRebuildProgress = ref(0)
+
+// 事件因果图
+const causalGraph = ref({ events: [], edges: [], summary: '' })
+const causalGraphLoading = ref(false)
+const eventTypeCN = {
+  trigger: '触发', response: '回应', escalation: '升级',
+  mitigation: '缓和', turning_point: '转折', outcome: '结果'
+}
+function getOutEdges(evtId) {
+  return (causalGraph.value.edges || []).filter(e => e.source === evtId)
+}
+function getEventTitle(evtId) {
+  const evt = (causalGraph.value.events || []).find(e => e.id === evtId)
+  return evt ? evt.title : evtId
+}
+async function loadCausalGraph() {
+  try {
+    causalGraphLoading.value = true
+    const res = await getCausalGraph(projectId.value, currentBaselineId.value)
+    if (res?.success && res.data) {
+      causalGraph.value = res.data
+    }
+  } catch (e) { console.warn('loadCausalGraph', e) }
+  finally { causalGraphLoading.value = false }
+}
 
 const stateVarCN = {
   attention_level: '关注度',
@@ -364,6 +592,13 @@ const stateVarCN = {
   stability_level: '稳定性',
 }
 
+const branchTypeCN = {
+  base: '基准',
+  recalibrated: '校准',
+  intervention_a: '干预A',
+  intervention_b: '干预B',
+  intervention_c: '干预C',
+}
 const statusCN = {
   created: '已创建',
   preparing: '准备中',
@@ -373,14 +608,40 @@ const statusCN = {
   superseded: '已替代',
 }
 
+// 当前选中分支的构建进度（映射 status → 当前活跃步骤）
+const activeRun = computed(() => forecastRuns.value.find(r => r.run_id === activeRunId.value) || null)
+const activeRunStep = computed(() => {
+  if (!activeRun.value) return 0
+  const s = activeRun.value.status
+  if (s === 'created') return 1          // 图谱已构建，待环境搭建
+  if (s === 'preparing') return 2         // 环境搭建中
+  if (['prepared', 'ready'].includes(s)) return 2 // 环境搭建完成
+  if (s === 'running') return 3           // 推演中
+  if (s === 'completed') return 5         // 全部完成
+  return 0
+})
+function stepState(stepNum) {
+  if (!activeRun.value) return stepNum <= 1 ? '' : 'disabled'
+  const cur = activeRunStep.value
+  if (cur >= 5 && stepNum <= 5) return 'done'       // 全流程完成
+  if (stepNum < cur) return 'done'
+  if (stepNum === cur) return 'active'
+  return 'pending'
+}
+
 // ── 初始化 ──
 onMounted(async () => {
   await loadProjectInfo()
   await Promise.all([loadMaterials(), loadBaselines(), loadForecastRuns()])
+  if (currentBaselineId.value) {
+    loadCausalGraph()
+    loadBaselineGraphStats()
+  }
   if (materials.value.length === 0 && projectHasText.value) {
     await autoImportProjectText()
   }
 })
+onBeforeUnmount(() => { _stopElapsedTimer() })
 
 async function loadProjectInfo() {
   try {
@@ -393,6 +654,7 @@ async function loadProjectInfo() {
       currentBaselineId.value = d.current_baseline?.baseline_id || ''
       activeRunId.value = d.active_run_id || ''
       projectHasText.value = (d.project?.total_text_length || 0) > 0
+      projectGraphId.value = d.project?.graph_id || ''
     }
   } catch (e) {
     console.warn('loadProjectInfo', e)
@@ -448,60 +710,175 @@ async function autoImportProjectText() {
 }
 
 // ── 操作 ──
-function onAppendMaterial() {
+function triggerFileInput() {
   const input = document.createElement('input')
   input.type = 'file'
   input.multiple = true
   input.accept = '.pdf,.md,.txt'
-  input.onchange = async (e) => {
+  input.onchange = (e) => {
     const files = e.target.files
     if (!files.length) return
-    const formData = new FormData()
-    for (const f of files) formData.append('files', f)
-    try {
-      await appendMaterialFiles(projectId.value, formData)
-      await loadMaterials()
-    } catch (err) { console.error('appendMaterials', err) }
+    appendFiles.value = Array.from(files)
+    appendFileNames.value = Array.from(files).map(f => f.name)
   }
   input.click()
 }
 
+function onFileDrop(e) {
+  const files = e.dataTransfer.files
+  if (!files.length) return
+  appendFiles.value = Array.from(files).filter(f => /\.(pdf|md|txt)$/i.test(f.name))
+  appendFileNames.value = appendFiles.value.map(f => f.name)
+}
+
+function removeFile(index) {
+  appendFiles.value.splice(index, 1)
+  appendFileNames.value.splice(index, 1)
+}
+
+async function onUploadFiles() {
+  if (!appendFiles.value.length || appendUploading.value) return
+  appendUploading.value = true
+  try {
+    const formData = new FormData()
+    for (const f of appendFiles.value) formData.append('files', f)
+    await appendMaterialFiles(projectId.value, formData)
+    await loadMaterials()
+    appendFileUploaded.value += appendFiles.value.length
+    appendFiles.value = []
+    appendFileNames.value = []
+  } catch (err) { console.error('onUploadFiles', err) } finally {
+    appendUploading.value = false
+  }
+}
+
+async function onWebSearch() {
+  if (!webSearchQuery.value.trim() || webSearchLoading.value) return
+  webSearchLoading.value = true
+  webSearchError.value = ''
+  webSearchResults.value = null
+  try {
+    const res = await appendMaterialFromWeb(projectId.value, { query: webSearchQuery.value.trim(), max_results: 8 })
+    if (res?.success) {
+      webSearchResults.value = {
+        added: res.data?.added_material_ids?.length || 0,
+        sources: res.data?.sources || [],
+      }
+      await loadMaterials()
+    } else {
+      webSearchError.value = res?.error || '搜索失败，请重试'
+    }
+  } catch (err) {
+    webSearchError.value = err?.message || '网络请求失败'
+    console.error('onWebSearch', err)
+  } finally {
+    webSearchLoading.value = false
+  }
+}
+
+function closeAppendDialog() {
+  showAppendDialog.value = false
+  appendFiles.value = []
+  appendFileNames.value = []
+  appendFileUploaded.value = 0
+  webSearchQuery.value = ''
+  webSearchError.value = ''
+  webSearchResults.value = null
+}
+
+const baselineRebuilding = ref(false)
+const baselineRebuildProgress = ref(0)
+const baselineRebuildMsg = ref('')
 const graphRebuilding = ref(false)
 const graphRebuildProgress = ref(0)
 const graphRebuildMsg = ref('')
+const rebuildElapsed = ref('')
+let _rebuildTimer = null
+
+function _startElapsedTimer() {
+  const t0 = Date.now()
+  rebuildElapsed.value = '0 秒'
+  _rebuildTimer = setInterval(() => {
+    const sec = Math.floor((Date.now() - t0) / 1000)
+    if (sec < 60) rebuildElapsed.value = `${sec} 秒`
+    else rebuildElapsed.value = `${Math.floor(sec / 60)} 分 ${sec % 60} 秒`
+  }, 1000)
+}
+function _stopElapsedTimer() {
+  if (_rebuildTimer) { clearInterval(_rebuildTimer); _rebuildTimer = null }
+  rebuildElapsed.value = ''
+}
 
 async function onRebuildBaseline() {
+  // 防止重复触发
+  if (baselineRebuilding.value || graphRebuilding.value) return
   try {
+    // Phase 1: LLM 基线分析（同步等待）
+    baselineRebuilding.value = true
+    baselineRebuildProgress.value = 10
+    baselineRebuildMsg.value = '正在分析材料并提取事实基线（LLM 推理中）...'
+    _startElapsedTimer()
+
     const materialIds = materials.value.map(m => m.material_id)
+
+    // 模拟中间进度：每 8 秒推进一点，让用户知道还在工作
+    const fakeProgress = setInterval(() => {
+      if (baselineRebuildProgress.value < 80) {
+        baselineRebuildProgress.value += 5
+      }
+      // 更新阶段提示
+      if (baselineRebuildProgress.value >= 30 && baselineRebuildProgress.value < 55) {
+        baselineRebuildMsg.value = '正在提取事件因果关系...'
+      } else if (baselineRebuildProgress.value >= 55) {
+        baselineRebuildMsg.value = '正在整合分析结果...'
+      }
+    }, 8000)
+
     const res = await rebuildBaseline(projectId.value, { material_ids: materialIds })
+    clearInterval(fakeProgress)
+
     if (res?.success && res.data?.baseline_id) {
       currentBaselineId.value = res.data.baseline_id
     }
+    baselineRebuildProgress.value = 90
+    baselineRebuildMsg.value = '基线已生成，正在刷新数据...'
     await loadBaselines()
     await loadProjectInfo()
+    await loadCausalGraph()
+    baselineRebuilding.value = false
+    baselineRebuildProgress.value = 0
 
+    // Phase 2: 异步图谱重建
     const taskId = res?.data?.graph_task_id
     if (taskId) {
       graphRebuilding.value = true
       graphRebuildProgress.value = 0
-      graphRebuildMsg.value = '正在重建图谱...'
+      graphRebuildMsg.value = '正在重建知识图谱...'
       const { getTaskStatus } = await import('../api/graph')
       const poll = setInterval(async () => {
         try {
           const tr = await getTaskStatus(taskId)
           if (tr?.success) {
             graphRebuildProgress.value = tr.data?.progress || 0
-            graphRebuildMsg.value = tr.data?.message || '构建中...'
+            graphRebuildMsg.value = tr.data?.message || '图谱构建中...'
             if (tr.data?.status === 'completed' || tr.data?.status === 'failed') {
               clearInterval(poll)
               graphRebuilding.value = false
+              _stopElapsedTimer()
               await loadProjectInfo()
             }
           }
         } catch { /* ignore */ }
       }, 3000)
+    } else {
+      _stopElapsedTimer()
     }
-  } catch (e) { console.error('rebuildBaseline', e) }
+  } catch (e) {
+    console.error('rebuildBaseline', e)
+    baselineRebuilding.value = false
+    graphRebuilding.value = false
+    _stopElapsedTimer()
+  }
 }
 
 async function onDeleteBaseline(baselineId) {
@@ -515,13 +892,31 @@ async function onDeleteBaseline(baselineId) {
   } catch (e) { console.error('deleteBaseline', e) }
 }
 
+async function onDeleteRun(runId) {
+  if (!confirm('确定删除此预测分支？')) return
+  try {
+    const { deleteForecastRun } = await import('../api/incident')
+    const res = await deleteForecastRun(projectId.value, runId)
+    if (res?.success) {
+      if (activeRunId.value === runId) activeRunId.value = ''
+      await loadForecastRuns()
+      await loadProjectInfo()
+    }
+  } catch (e) { console.error('deleteRun', e) }
+}
+
 async function onCreateRun() {
   try {
     const res = await createForecastRun({
       project_id: projectId.value,
       baseline_id: currentBaselineId.value,
       branch_type: 'base',
-      branch_label: `预测 v${forecastRuns.value.length + 1}`,
+      branch_label: (() => {
+        const blIdx = baselines.value.findIndex(b => b.baseline_id === currentBaselineId.value) + 1
+        const stage = activeBaseline.value?.current_stage
+        const ver = `v${blIdx || (baselines.value.length)}`
+        return stage ? `预测 基线${ver}-${stage}` : `预测 基线${ver}`
+      })(),
     })
     if (res?.success) {
       activeRunId.value = res.data?.run?.run_id || activeRunId.value
@@ -548,6 +943,30 @@ async function onPrepareRun(runId) {
 }
 
 const startRounds = ref(10)
+
+async function onPrepareAndStart(runId) {
+  runActionLoading.value = true
+  try {
+    const res = await prepareForecastRun(runId)
+    if (!res?.success) return
+    await loadForecastRuns()
+    // 等待 prepare 完成
+    const finalStatus = await pollRunStatus(runId, ['preparing', 'created'], 300)
+    await loadForecastRuns()
+    // prepare 完成后自动启动
+    if (['prepared', 'ready'].includes(finalStatus)) {
+      const rounds = startRounds.value || 10
+      const startRes = await startForecastRun(runId, { max_rounds: rounds, enable_graph_memory_update: false })
+      if (startRes?.success) {
+        await loadForecastRuns()
+        pollRunStatus(runId, ['running'], 1800)
+          .then(() => loadForecastRuns())
+          .catch(() => {})
+      }
+    }
+  } catch (e) { console.error('prepareAndStart', e) }
+  finally { runActionLoading.value = false }
+}
 
 async function onStartRun(runId) {
   runActionLoading.value = true
@@ -576,9 +995,65 @@ async function pollRunStatus(runId, waitStatuses, maxSec = 120) {
   }
 }
 
+async function loadBaselineGraphStats() {
+  baselineGraphStats.value = null
+  const graphId = activeBaseline.value?.graph_id
+  if (!graphId) {
+    baselineGraphStats.value = { nodes: 0, edges: 0 }
+    return
+  }
+  try {
+    const { getGraphData } = await import('../api/graph')
+    const res = await getGraphData(graphId)
+    const nodes = res?.data?.node_count || res?.data?.nodes?.length || 0
+    const edges = res?.data?.edge_count || res?.data?.edges?.length || 0
+    baselineGraphStats.value = { nodes, edges }
+  } catch (e) { console.warn('loadBaselineGraphStats', e) }
+}
+
+async function onRebuildBaselineGraph() {
+  if (!activeBaseline.value || baselineGraphRebuilding.value) return
+  baselineGraphRebuilding.value = true
+  baselineGraphRebuildProgress.value = 0
+  try {
+    const { rebuildBaselineGraph } = await import('../api/incident')
+    const res = await rebuildBaselineGraph(projectId.value, activeBaseline.value.baseline_id)
+    if (!res?.success || !res.data?.task_id) {
+      alert(res?.error || '启动图谱重建失败')
+      baselineGraphRebuilding.value = false
+      return
+    }
+    const taskId = res.data.task_id
+    const { getTaskStatus } = await import('../api/graph')
+    const poll = setInterval(async () => {
+      try {
+        const tr = await getTaskStatus(taskId)
+        if (tr?.success) {
+          baselineGraphRebuildProgress.value = tr.data?.progress || 0
+          if (tr.data?.status === 'completed' || tr.data?.status === 'failed') {
+            clearInterval(poll)
+            baselineGraphRebuilding.value = false
+            baselineGraphRebuildProgress.value = 0
+            await loadBaselines()
+            // refresh activeBaseline to get updated graph_id
+            const updated = baselines.value.find(b => b.baseline_id === activeBaseline.value?.baseline_id)
+            if (updated) activeBaseline.value = updated
+            await loadBaselineGraphStats()
+          }
+        }
+      } catch { /* ignore */ }
+    }, 3000)
+  } catch (e) {
+    console.error('onRebuildBaselineGraph', e)
+    baselineGraphRebuilding.value = false
+  }
+}
+
 function onSwitchBaseline(b) {
   currentBaselineId.value = b.baseline_id
   activeBaseline.value = b
+  loadCausalGraph()
+  loadBaselineGraphStats()
   if (recommendedActions.value.length > 0 && activeRunId.value) {
     onGetDecisionBrief()
   }
@@ -586,9 +1061,8 @@ function onSwitchBaseline(b) {
 
 async function onGetDecisionBrief() {
   if (!activeRunId.value) return
-  const activeRun = forecastRuns.value.find(r => r.run_id === activeRunId.value)
-  if (activeRun && !['running', 'completed'].includes(activeRun.status)) {
-    alert(`当前分支状态为"${statusCN[activeRun.status] || activeRun.status}"，需先完成"准备→启动"流程后才能获取决策简报。`)
+  if (activeRun.value && !['running', 'completed'].includes(activeRun.value.status)) {
+    alert(`当前分支状态为"${statusCN[activeRun.value.status] || activeRun.value.status}"，需先完成"准备→启动"流程后才能获取决策简报。`)
     return
   }
   try {
@@ -625,11 +1099,32 @@ async function onRecalibrate() {
 function goToProcess(run, step) {
   router.push({
     path: `/process/${projectId.value}`,
-    query: { step: String(step), sim: run.simulation_id || '' }
+    query: {
+      step: String(step),
+      sim: run.simulation_id || '',
+      baseline_id: run.baseline_id || '',
+      branch_label: run.branch_label || '',
+      branch_type: run.branch_type || '',
+    }
   })
 }
 function goToProcessView() {
   router.push({ path: `/process/${projectId.value}`, query: { step: '3' } })
+}
+function goToStep(step) {
+  const run = activeRun.value
+  if (!run && step > 1) return // 未选分支时仅允许步骤1
+  const query = { step: String(step) }
+  if (run) {
+    if (run.simulation_id) query.sim = run.simulation_id
+    if (run.baseline_id) query.baseline_id = run.baseline_id
+    if (run.branch_label) query.branch_label = run.branch_label
+    if (run.branch_type) query.branch_type = run.branch_type
+  }
+  // 传递当前基线的 graph_id，避免 Process 页面使用可能已过期的 project.graph_id
+  const blGraphId = activeBaseline.value?.graph_id
+  if (blGraphId) query.baseline_graph_id = blGraphId
+  router.push({ path: `/process/${projectId.value}`, query })
 }
 function goHome() { router.push('/') }
 function goToReport() {
@@ -816,34 +1311,60 @@ function stateColor(key, val) {
 
 /* ========== 项目概览卡片 ========== */
 .overview-card {
-  background: linear-gradient(135deg, var(--teal-500) 0%, var(--teal-600) 100%);
+  background: linear-gradient(135deg, #0D9488 0%, #0F766E 100%);
   border-radius: 16px;
-  padding: 16px;
+  padding: 16px 18px;
   margin-bottom: 20px;
-  box-shadow: 0 4px 15px rgba(20, 184, 166, 0.3);
+  box-shadow: 0 4px 15px rgba(13, 148, 136, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+.overview-card::before {
+  content: '';
+  position: absolute;
+  top: -30px; right: -30px;
+  width: 100px; height: 100px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 50%;
+  pointer-events: none;
 }
 .overview-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
 }
 .overview-icon { font-size: 16px; }
-.overview-title { font-size: 13px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.05em; }
+.overview-title { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.7); text-transform: uppercase; letter-spacing: 0.08em; }
+.overview-name {
+  font-size: 14px; font-weight: 700; color: #fff;
+  margin-bottom: 8px; line-height: 1.4;
+  overflow: hidden; text-overflow: ellipsis;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.overview-stage {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: rgba(255,255,255,0.9);
+  margin-bottom: 12px; font-weight: 500;
+}
+.stage-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #5EEAD4; box-shadow: 0 0 6px #5EEAD4;
+  flex-shrink: 0;
+}
 .overview-stats {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(10px);
-  border-radius: 12px;
-  padding: 12px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 10px;
+  padding: 10px 6px;
 }
-.stat-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-.stat-num { font-size: 22px; font-weight: 800; color: #fff; }
-.stat-label { font-size: 10px; color: rgba(255, 255, 255, 0.8); text-transform: uppercase; letter-spacing: 0.05em; }
-.stat-divider { width: 1px; height: 30px; background: rgba(255, 255, 255, 0.2); }
+.stat-item { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.stat-icon { font-size: 13px; margin-bottom: 2px; }
+.stat-num { font-size: 20px; font-weight: 800; color: #fff; line-height: 1.1; }
+.stat-label { font-size: 9px; color: rgba(255, 255, 255, 0.65); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+.stat-divider { width: 1px; height: 28px; background: rgba(255, 255, 255, 0.15); }
 
 /* ========== 全局状态卡片（深色视觉焦点） ========== */
 .global-status-card {
@@ -982,6 +1503,7 @@ function stateColor(key, val) {
 
 .mini-progress { width: 100%; height: 4px; background: var(--teal-100); border-radius: 2px; overflow: hidden; }
 .mini-progress-fill { height: 100%; background: linear-gradient(90deg, var(--teal-400), var(--teal-500)); border-radius: 2px; transition: width 0.3s; }
+.rebuild-elapsed { font-size: 11px; color: var(--teal-500); margin-top: 4px; font-variant-numeric: tabular-nums; }
 
 /* ========== 态势状态条 ========== */
 .state-grid { display: flex; flex-direction: column; gap: 8px; }
@@ -1068,7 +1590,12 @@ function stateColor(key, val) {
 .baseline-detail { margin-top: 12px; padding: 12px; border-radius: 12px; background: var(--teal-50); border: 1px solid var(--teal-100); }
 .bd-section { margin-bottom: 12px; }
 .bd-section:last-child { margin-bottom: 0; }
-.bd-label { font-size: 10px; font-weight: 700; color: var(--teal-600); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+.bd-label { font-size: 10px; font-weight: 700; color: var(--teal-600); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; display: flex; align-items: center; gap: 8px; }
+.bd-rebuild-btn { font-size: 10px; padding: 1px 6px; border: 1px solid var(--teal-200); border-radius: 4px; background: var(--teal-50); color: var(--teal-600); cursor: pointer; margin-left: auto; }
+.bd-rebuild-btn:hover { background: var(--teal-100); }
+.bd-view-graph-btn { margin-left: auto; margin-right: 0; background: #eef2ff; border-color: #c7d2fe; color: #4f46e5; }
+.bd-view-graph-btn:hover { background: #e0e7ff; }
+.bd-rebuild-hint { font-size: 10px; color: var(--teal-500); margin-left: auto; }
 .bd-list { list-style: none; padding: 0; margin: 0; }
 .bd-list li { font-size: 11px; color: var(--color-black); padding: 4px 0; line-height: 1.4; border-bottom: 1px solid var(--teal-100); }
 .bd-list li:last-child { border-bottom: none; }
@@ -1120,6 +1647,8 @@ function stateColor(key, val) {
 .run-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .run-view-btn { background: rgba(20, 184, 166, 0.15); }
 .run-view-btn:hover { background: var(--teal-300); }
+.run-delete-btn { background: rgba(239, 68, 68, 0.12); color: #ef4444; font-size: 11px; padding: 2px 7px; margin-left: 4px; }
+.run-delete-btn:hover:not(:disabled) { background: rgba(239, 68, 68, 0.25); color: #dc2626; }
 .run-start-group { display: inline-flex; align-items: center; gap: 6px; }
 .rounds-input {
   width: 48px;
@@ -1266,6 +1795,202 @@ function stateColor(key, val) {
 .qa-icon { font-size: 24px; }
 .qa-label { font-size: 12px; font-weight: 600; color: var(--teal-600); }
 
+/* ========== 主链路步骤导航 ========== */
+.step-nav-bar {
+  margin-top: 16px;
+  background: linear-gradient(135deg, var(--color-white), var(--teal-50));
+  border: 1px solid var(--teal-100);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+.step-nav-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.step-nav-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--teal-500);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.step-nav-branch {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--teal-700);
+  background: rgba(20, 184, 166, 0.08);
+  padding: 2px 8px;
+  border-radius: 6px;
+  margin-left: auto;
+}
+.step-nav-branch-none {
+  color: var(--teal-400);
+  background: none;
+  font-style: italic;
+}
+.step-nav-branch-status {
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 4px;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.step-nav-branch-status.completed { background: #d1fae5; color: #065f46; }
+.step-nav-branch-status.running { background: #dbeafe; color: #1e40af; }
+.step-nav-branch-status.preparing { background: #fef3c7; color: #92400e; }
+.step-nav-branch-status.created { background: #f1f5f9; color: #64748b; }
+.step-nav-branch-status.failed { background: #fee2e2; color: #991b1b; }
+.step-nav-branch-status.superseded { background: #f1f5f9; color: #94a3b8; }
+.step-nav-btns {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.step-nav-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 8px;
+  border: 1px solid var(--teal-200);
+  border-radius: 8px;
+  background: var(--color-white);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.step-nav-btn:hover:not(.disabled) {
+  border-color: var(--teal-400);
+  background: rgba(20, 184, 166, 0.06);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(20, 184, 166, 0.12);
+}
+.step-nav-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.step-nav-num {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--teal-400);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.step-nav-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--teal-700);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Step states */
+.step-nav-btn.done {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+}
+.step-nav-btn.done .step-nav-num { color: #065f46; }
+.step-nav-btn.done .step-nav-name { color: #065f46; }
+.step-nav-btn.active {
+  background: rgba(20, 184, 166, 0.12);
+  border-color: var(--teal-400);
+  box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.15);
+  animation: step-pulse 2s ease-in-out infinite;
+}
+.step-nav-btn.active .step-nav-num { color: var(--teal-600); }
+.step-nav-btn.active .step-nav-name { color: var(--teal-800); font-weight: 700; }
+.step-nav-btn.pending {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+@keyframes step-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.15); }
+  50% { box-shadow: 0 0 0 4px rgba(20, 184, 166, 0.25); }
+}
+.step-nav-check {
+  font-size: 10px;
+  font-weight: 800;
+  color: #065f46;
+  margin-left: auto;
+}
+.step-nav-spinner {
+  width: 10px; height: 10px;
+  border: 2px solid var(--teal-200);
+  border-top-color: var(--teal-500);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ========== 事件因果图 ========== */
+.causal-graph-section { max-height: 420px; overflow-y: auto; }
+.causal-summary {
+  font-size: 12px; color: var(--teal-600); font-weight: 600;
+  padding: 8px 12px; margin-bottom: 8px;
+  background: rgba(20, 184, 166, 0.06); border-radius: 8px;
+  line-height: 1.5;
+}
+.causal-events { position: relative; padding-left: 20px; }
+.causal-node {
+  position: relative; padding: 0 0 16px 16px; min-height: 40px;
+}
+.causal-node:last-child { padding-bottom: 0; }
+.causal-node-dot {
+  position: absolute; left: -20px; top: 4px;
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid var(--teal-300); background: var(--color-white);
+  z-index: 2;
+}
+.causal-node-dot.trigger { background: #ef4444; border-color: #ef4444; }
+.causal-node-dot.escalation { background: #f97316; border-color: #f97316; }
+.causal-node-dot.response { background: #3b82f6; border-color: #3b82f6; }
+.causal-node-dot.mitigation { background: #22c55e; border-color: #22c55e; }
+.causal-node-dot.turning_point { background: #a855f7; border-color: #a855f7; }
+.causal-node-dot.outcome { background: #6366f1; border-color: #6366f1; }
+.causal-node-connector {
+  position: absolute; left: -15px; top: 16px; bottom: 0;
+  width: 2px; background: var(--teal-200);
+}
+.causal-node-content {
+  background: var(--color-white); border: 1px solid var(--teal-100);
+  border-radius: 10px; padding: 10px 12px;
+  transition: all 0.2s ease;
+}
+.causal-node-content:hover {
+  border-color: var(--teal-300); box-shadow: 0 3px 12px rgba(20,184,166,0.1);
+}
+.causal-node-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; flex-wrap: wrap; }
+.causal-time { font-size: 10px; font-weight: 700; color: var(--teal-500); font-family: 'SF Mono', monospace; }
+.causal-type-badge {
+  font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 4px;
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+.causal-type-badge.trigger { background: rgba(239,68,68,0.12); color: #dc2626; }
+.causal-type-badge.escalation { background: rgba(249,115,22,0.12); color: #ea580c; }
+.causal-type-badge.response { background: rgba(59,130,246,0.12); color: #2563eb; }
+.causal-type-badge.mitigation { background: rgba(34,197,94,0.12); color: #16a34a; }
+.causal-type-badge.turning_point { background: rgba(168,85,247,0.12); color: #9333ea; }
+.causal-type-badge.outcome { background: rgba(99,102,241,0.12); color: #4f46e5; }
+.causal-stage-badge { font-size: 9px; color: var(--color-muted); background: var(--teal-50); padding: 1px 5px; border-radius: 3px; }
+.causal-node-title { font-size: 13px; font-weight: 700; color: var(--color-text); line-height: 1.4; }
+.causal-node-actor { font-size: 11px; color: var(--teal-500); font-weight: 600; margin-top: 1px; }
+.causal-node-desc { font-size: 11px; color: var(--color-muted); line-height: 1.5; margin-top: 4px; }
+.causal-edges { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+.causal-edge-tag {
+  font-size: 9px; padding: 2px 6px; border-radius: 4px;
+  background: rgba(20,184,166,0.08); color: var(--teal-600);
+  border: 1px solid var(--teal-100); line-height: 1.3;
+}
+.causal-edge-tag.triggered { background: rgba(239,68,68,0.06); color: #dc2626; border-color: rgba(239,68,68,0.2); }
+.causal-edge-tag.escalated { background: rgba(249,115,22,0.06); color: #ea580c; border-color: rgba(249,115,22,0.2); }
+.causal-edge-tag.caused { background: rgba(249,115,22,0.06); color: #ea580c; border-color: rgba(249,115,22,0.2); }
+.causal-edge-tag.responded_to { background: rgba(59,130,246,0.06); color: #2563eb; border-color: rgba(59,130,246,0.2); }
+.causal-edge-tag.mitigated { background: rgba(34,197,94,0.06); color: #16a34a; border-color: rgba(34,197,94,0.2); }
+.causal-edge-tag.led_to { background: rgba(99,102,241,0.06); color: #4f46e5; border-color: rgba(99,102,241,0.2); }
+
 /* ========== 帮助提示 ========== */
 .help-tips {
   background: linear-gradient(135deg, var(--teal-50), rgba(20, 184, 166, 0.05));
@@ -1304,4 +2029,99 @@ function stateColor(key, val) {
 .modal-box p { font-size: 13px; color: var(--color-muted); line-height: 1.6; margin-bottom: 8px; }
 .modal-hint { font-size: 11px; color: #94a3b8; }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+/* 追加材料对话框 */
+.append-material-modal { max-width: 520px; }
+.append-section { margin-bottom: 4px; }
+.append-section-header {
+  font-size: 13px; font-weight: 600; color: var(--color-black);
+  margin-bottom: 8px;
+}
+.section-desc { font-size: 12px; color: var(--color-muted); margin-bottom: 8px; }
+.append-divider {
+  display: flex; align-items: center; gap: 12px;
+  margin: 14px 0; color: #94a3b8; font-size: 11px;
+}
+.append-divider::before, .append-divider::after {
+  content: ''; flex: 1; height: 1px; background: #e2e8f0;
+}
+.file-drop-zone {
+  border: 2px dashed var(--teal-200); border-radius: 12px;
+  padding: 20px 16px; text-align: center; cursor: pointer;
+  transition: all 0.2s; background: #fafffe;
+}
+.file-drop-zone:hover { border-color: var(--teal-400); background: #f0fdfa; }
+.file-drop-zone .drop-icon { font-size: 28px; margin-bottom: 4px; }
+.file-drop-zone p { font-size: 12px; color: var(--color-muted); margin: 2px 0; }
+.file-drop-zone .drop-hint { font-size: 11px; color: #94a3b8; }
+.file-list-preview {
+  margin-top: 8px; padding: 6px 8px; border-radius: 8px;
+  background: #f8fffe; max-height: 100px; overflow-y: auto;
+}
+.file-preview-item {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px; color: var(--color-black); padding: 4px 6px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.file-preview-item:last-child { border-bottom: none; }
+.file-remove {
+  cursor: pointer; color: #94a3b8; font-size: 16px; line-height: 1;
+  padding: 0 4px; border-radius: 4px;
+}
+.file-remove:hover { color: #ef4444; background: #fef2f2; }
+.append-upload-btn { margin-top: 8px; width: 100%; }
+.append-done-hint {
+  margin-top: 6px; font-size: 12px; color: #059669; font-weight: 500;
+}
+.web-search-modal .modal-desc { font-size: 13px; color: var(--color-muted); margin-bottom: 16px; }
+.web-search-form { display: flex; gap: 8px; margin-bottom: 12px; }
+.web-search-input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid var(--teal-200);
+  border-radius: 10px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+  background: #f8fffe;
+  color: var(--color-black);
+}
+.web-search-input:focus { border-color: var(--teal-400); box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1); }
+.web-search-input:disabled { opacity: 0.6; }
+.web-search-btn { white-space: nowrap; flex-shrink: 0; }
+.web-search-error { color: #ef4444; font-size: 12px; margin-bottom: 8px; }
+.web-search-result { margin-top: 12px; }
+.web-search-success {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-radius: 10px;
+  background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+  color: #065f46; font-size: 13px; font-weight: 500;
+  margin-bottom: 10px;
+}
+.success-icon { font-size: 16px; color: #10b981; }
+.web-search-sources {
+  list-style: none; padding: 0; margin: 0;
+  max-height: 180px; overflow-y: auto;
+}
+.web-source-item {
+  padding: 6px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.web-source-item:last-child { border-bottom: none; }
+.web-source-link {
+  color: var(--teal-600);
+  text-decoration: none;
+  word-break: break-all;
+}
+.web-source-link:hover { text-decoration: underline; }
+.btn-spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>

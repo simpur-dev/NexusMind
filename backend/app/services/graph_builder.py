@@ -8,10 +8,13 @@ import re
 import uuid
 import time
 import asyncio
+import logging
 import threading
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel, Field, create_model
 from graphiti_core import Graphiti
@@ -286,26 +289,36 @@ class GraphBuilderService:
             error_msg = f"{str(e)}\n{traceback.format_exc()}"
             self.task_manager.fail_task(task_id, error_msg)
     
-    def create_graph(self, name: str) -> str:
-        """创建图谱（清理旧数据 → 初始化索引）"""
+    def create_graph(self, name: str, old_graph_id: str = None) -> str:
+        """创建图谱（清理旧项目数据 → 初始化索引）
+        
+        Args:
+            name: 图谱名称
+            old_graph_id: 需要清理的旧图谱 ID（仅删除该 ID 关联的数据）。
+                          如果为 None，则不删除任何已有数据。
+        """
         graph_id = f"nexusmind_{uuid.uuid4().hex[:16]}"
         
-        # 清理旧图谱数据，确保不同项目之间数据隔离
-        from neo4j import AsyncGraphDatabase
-        async def _clear():
-            driver = AsyncGraphDatabase.driver(
-                Config.NEO4J_URI,
-                auth=(Config.NEO4J_USERNAME, Config.NEO4J_PASSWORD),
-            )
-            try:
-                await driver.execute_query(
-                    "MATCH (n) DETACH DELETE n",
-                    database_=Config.NEO4J_DATABASE,
+        # 仅清理属于旧图谱的数据，不影响其他项目
+        if old_graph_id:
+            from neo4j import AsyncGraphDatabase
+            async def _clear():
+                driver = AsyncGraphDatabase.driver(
+                    Config.NEO4J_URI,
+                    auth=(Config.NEO4J_USERNAME, Config.NEO4J_PASSWORD),
                 )
-            finally:
-                await driver.close()
-        
-        run_async(_clear())
+                try:
+                    # 删除旧图谱的节点和关系
+                    await driver.execute_query(
+                        "MATCH (n) WHERE n.group_id = $gid DETACH DELETE n",
+                        gid=old_graph_id,
+                        database_=Config.NEO4J_DATABASE,
+                    )
+                    logger.info(f"已清理旧图谱数据: {old_graph_id}")
+                finally:
+                    await driver.close()
+            
+            run_async(_clear())
         
         graphiti = get_graphiti(graph_id)
         run_async(graphiti.build_indices_and_constraints())
@@ -504,23 +517,111 @@ class GraphBuilderService:
             progress_callback(f"所有 {total} 个文本块已处理完成", 1.0)
     
     def tag_graph_data(self, graph_id: str):
-        """构建完成后，给所有节点和边打上 group_id 标记，用于按项目隔离数据"""
+        """构建完成后，给所有节点和边打上 group_id / group_ids 标记，用于按项目隔离数据。
+        
+        策略：
+        1. 标记所有未归属的 Episodic 节点
+        2. 通过 MENTIONS 关系将 graph_id 追加到 Entity 节点的 group_ids 数组（不覆盖旧图谱的归属）
+        3. 标记所有未归属的关系，并为跨图谱的关系追加 group_ids
+        
+        关键：Entity 在 Graphiti 中会被去重复用，同一实体可能属于多个图谱，
+        因此使用 group_ids 数组记录所有归属图谱，避免重建某个基线时破坏其他基线的数据。
+        """
         async def _tag():
             driver = get_neo4j_async_driver()
+            # 1) 标记未归属的 Episodic 节点（每次构建都会新建 Episode）
+            await driver.execute_query(
+                "MATCH (ep:Episodic) WHERE ep.group_id IS NULL OR ep.group_id = '' "
+                "SET ep.group_id = $gid",
+                gid=graph_id,
+                database_=Config.NEO4J_DATABASE,
+            )
+            # 2) 通过 Episode→Entity MENTIONS 关系传播：追加到 group_ids 数组
+            #    仅在 Entity 尚无 group_id 时设置 group_id（保留首次归属）
+            await driver.execute_query(
+                "MATCH (ep:Episodic {group_id: $gid})-[:MENTIONS]->(n:Entity) "
+                "SET n.group_ids = CASE "
+                "  WHEN n.group_ids IS NULL THEN "
+                "    CASE WHEN n.group_id IS NOT NULL AND n.group_id <> '' AND n.group_id <> $gid "
+                "      THEN [n.group_id, $gid] ELSE [$gid] END "
+                "  WHEN NOT $gid IN n.group_ids THEN n.group_ids + $gid "
+                "  ELSE n.group_ids END",
+                gid=graph_id,
+                database_=Config.NEO4J_DATABASE,
+            )
+            await driver.execute_query(
+                "MATCH (ep:Episodic {group_id: $gid})-[:MENTIONS]->(n:Entity) "
+                "WHERE n.group_id IS NULL OR n.group_id = '' "
+                "SET n.group_id = $gid",
+                gid=graph_id,
+                database_=Config.NEO4J_DATABASE,
+            )
+            # 3) 标记未归属的 Entity 节点（兜底）
             await driver.execute_query(
                 "MATCH (n:Entity) WHERE n.group_id IS NULL OR n.group_id = '' "
-                "SET n.group_id = $gid",
+                "SET n.group_id = $gid, n.group_ids = [$gid]",
+                gid=graph_id,
+                database_=Config.NEO4J_DATABASE,
+            )
+            # 4) 关系标记：两端任一属于当前图谱的关系都追加 group_ids
+            await driver.execute_query(
+                "MATCH (a:Entity)-[r]->(b:Entity) "
+                "WHERE $gid IN coalesce(a.group_ids, [a.group_id]) "
+                "  AND $gid IN coalesce(b.group_ids, [b.group_id]) "
+                "SET r.group_ids = CASE "
+                "  WHEN r.group_ids IS NULL THEN "
+                "    CASE WHEN r.group_id IS NOT NULL AND r.group_id <> '' AND r.group_id <> $gid "
+                "      THEN [r.group_id, $gid] ELSE [$gid] END "
+                "  WHEN NOT $gid IN r.group_ids THEN r.group_ids + $gid "
+                "  ELSE r.group_ids END, "
+                "r.group_id = coalesce(r.group_id, $gid)",
                 gid=graph_id,
                 database_=Config.NEO4J_DATABASE,
             )
             await driver.execute_query(
                 "MATCH ()-[r]->() WHERE r.group_id IS NULL OR r.group_id = '' "
-                "SET r.group_id = $gid",
+                "SET r.group_id = $gid, r.group_ids = [$gid]",
                 gid=graph_id,
                 database_=Config.NEO4J_DATABASE,
             )
         
         run_async(_tag())
+    
+    def repair_group_ids(self):
+        """修复所有 Entity / Edge 的 group_ids 数组。
+        
+        通过 Episodic→Entity MENTIONS 关系重建正确的多图谱归属，
+        解决旧版 tag_graph_data 覆盖 group_id 导致的数据丢失问题。
+        """
+        async def _repair():
+            driver = get_neo4j_async_driver()
+            # 1) 根据 Episode MENTIONS 重建 Entity.group_ids
+            await driver.execute_query(
+                "MATCH (ep:Episodic)-[:MENTIONS]->(n:Entity) "
+                "WHERE ep.group_id IS NOT NULL AND ep.group_id <> '' "
+                "WITH n, collect(DISTINCT ep.group_id) AS gids "
+                "SET n.group_ids = gids",
+                database_=Config.NEO4J_DATABASE,
+            )
+            # 2) 未被任何 Episode 提及但有 group_id 的 Entity，兜底填充
+            await driver.execute_query(
+                "MATCH (n:Entity) "
+                "WHERE n.group_ids IS NULL AND n.group_id IS NOT NULL AND n.group_id <> '' "
+                "SET n.group_ids = [n.group_id]",
+                database_=Config.NEO4J_DATABASE,
+            )
+            # 3) 重建 Edge.group_ids：取两端 group_ids 的交集
+            await driver.execute_query(
+                "MATCH (a:Entity)-[r]->(b:Entity) "
+                "WHERE a.group_ids IS NOT NULL AND b.group_ids IS NOT NULL "
+                "WITH r, [x IN a.group_ids WHERE x IN b.group_ids] AS common "
+                "WHERE size(common) > 0 "
+                "SET r.group_ids = common, r.group_id = common[0]",
+                database_=Config.NEO4J_DATABASE,
+            )
+            logger.info("group_ids 修复完成")
+        
+        run_async(_repair())
     
     def _get_graph_info(self, graph_id: str) -> GraphInfo:
         """获取图谱信息"""
@@ -549,8 +650,9 @@ class GraphBuilderService:
         """
         async def _fetch():
             driver = get_neo4j_async_driver()
-            # 按 group_id 过滤（兼容未标记的旧数据）
-            gid_filter = "WHERE n.group_id = $gid OR n.group_id IS NULL" if graph_id else ""
+            # 按 group_id / group_ids 过滤（兼容未标记的旧数据）
+            gid_filter = ("WHERE n.group_id = $gid OR $gid IN coalesce(n.group_ids, []) "
+                          "OR n.group_id IS NULL") if graph_id else ""
             node_result = await driver.execute_query(
                 f"MATCH (n:Entity) {gid_filter} "
                 "RETURN n.uuid AS uuid, n.name AS name, n.summary AS summary, "
@@ -559,7 +661,8 @@ class GraphBuilderService:
                 gid=graph_id,
                 database_=Config.NEO4J_DATABASE,
             )
-            edge_gid = "WHERE r.group_id = $gid OR r.group_id IS NULL" if graph_id else ""
+            edge_gid = ("WHERE r.group_id = $gid OR $gid IN coalesce(r.group_ids, []) "
+                        "OR r.group_id IS NULL") if graph_id else ""
             edge_result = await driver.execute_query(
                 f"MATCH (a:Entity)-[r]->(b:Entity) {edge_gid} "
                 "RETURN r.uuid AS uuid, r.name AS name, r.fact AS fact, "
