@@ -570,12 +570,14 @@ const graphSvg = ref(null)
 let pollTimer = null
 
 const statusText = computed(() => {
+  if (rebuildingGraph.value || currentPhase.value === 1) {
+    return '图谱构建中'
+  }
   if (error.value) return '构建失败'
   if (stepStatus.value === 'error') return '出错'
   switch (currentStep.value) {
     case 1:
       if (currentPhase.value >= 2) return '构建完成'
-      if (currentPhase.value === 1) return '图谱构建中'
       if (currentPhase.value === 0) return '本体生成中'
       return '初始化中'
     case 2:
@@ -590,6 +592,7 @@ const statusText = computed(() => {
 })
 
 const statusClass = computed(() => {
+  if (rebuildingGraph.value || currentPhase.value === 1) return 'processing'
   if (error.value || stepStatus.value === 'error') return 'error'
   // Step 1: 图谱构建
   if (currentStep.value === 1) {
@@ -1494,14 +1497,14 @@ const renderGraph = () => {
       .distance(d => {
         const sr = nodeRadius({ degree: degreeMap[typeof d.source === 'object' ? d.source.id : d.source] || 0 })
         const tr = nodeRadius({ degree: degreeMap[typeof d.target === 'object' ? d.target.id : d.target] || 0 })
-        return sr + tr + 60
+        return sr + tr + 200
       })
-      .strength(0.4))
-    .force('charge', d3.forceManyBody().strength(d => -120 - d.degree * 30))
-    .force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
-    .force('collision', d3.forceCollide().radius(d => nodeRadius(d) + 16).strength(0.7))
-    .force('x', d3.forceX(width / 2).strength(0.03))
-    .force('y', d3.forceY(height / 2).strength(0.03))
+      .strength(0.25))
+    .force('charge', d3.forceManyBody().strength(d => -400 - d.degree * 80))
+    .force('center', d3.forceCenter(width / 2, height / 2).strength(0.02))
+    .force('collision', d3.forceCollide().radius(d => nodeRadius(d) + 45).strength(0.9))
+    .force('x', d3.forceX(width / 2).strength(0.015))
+    .force('y', d3.forceY(height / 2).strength(0.015))
     .alphaDecay(0.028)
     .velocityDecay(0.35)
   

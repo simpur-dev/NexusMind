@@ -11,9 +11,18 @@
         </div>
       </div>
       <div class="nav-links">
-        <button class="auth-btn login-btn" @click="showAuthModal = true; authMode = 'login'">
-          登录
-        </button>
+        <template v-if="!isLoggedIn">
+          <button class="auth-btn login-btn" @click="showAuthModal = true; authMode = 'login'">
+            登录
+          </button>
+        </template>
+        <template v-else>
+          <div class="user-info">
+            <span class="user-avatar">{{ currentUser.charAt(0).toUpperCase() }}</span>
+            <span class="user-name">{{ currentUser }}</span>
+            <button class="auth-btn logout-btn" @click="handleLogout">退出</button>
+          </div>
+        </template>
         <a href="https://github.com/simpur-dev/NexusMind" target="_blank" class="github-link github-link-ghost">
           访问 GitHub <span class="arrow">↗</span>
         </a>
@@ -40,26 +49,13 @@
 
             <!-- 表单 -->
             <form @submit.prevent="handleAuth" class="auth-form">
-              <template v-if="authMode === 'register'">
-                <div class="form-group">
-                  <label class="form-label">用户名</label>
-                  <input
-                    v-model="authForm.username"
-                    type="text"
-                    class="form-input"
-                    placeholder="请输入用户名"
-                    required
-                  />
-                </div>
-              </template>
-
               <div class="form-group">
-                <label class="form-label">邮箱</label>
+                <label class="form-label">账号</label>
                 <input
-                  v-model="authForm.email"
-                  type="email"
+                  v-model="authForm.username"
+                  type="text"
                   class="form-input"
-                  placeholder="请输入邮箱"
+                  placeholder="请输入账号"
                   required
                 />
               </div>
@@ -143,7 +139,7 @@
     </Teleport>
 
     <div class="main-content">
-      <section class="hero-section">
+      <section v-if="!isLoggedIn" class="hero-section">
         <div class="hero-left" :class="{ 'slide-in-left': isMounted }">
           <div class="hero-panel">
             <div class="hero-panel-top">
@@ -261,19 +257,8 @@
         </div>
       </section>
 
-      <div class="hero-scroll-row">
-        <button class="scroll-down-btn" @click="scrollToBottom">
-          <span class="scroll-copy">
-            <span class="scroll-kicker">NEXT LAYER</span>
-            <span class="scroll-label">向下探索 / 进入模拟控制台</span>
-          </span>
-          <span class="scroll-arrow-wrap">
-            <span class="scroll-arrow">↓</span>
-          </span>
-        </button>
-      </div>
 
-      <section class="dashboard-section">
+      <section v-if="isLoggedIn" class="dashboard-section">
         <div class="left-panel" :class="{ 'slide-in-left': isMounted }">
           <div class="panel-header">
             <span class="status-dot">●</span> 系统状态
@@ -473,7 +458,7 @@
         </div>
       </section>
 
-      <HistoryDatabase />
+      <HistoryDatabase v-if="isLoggedIn" />
     </div>
   </div>
 </template>
@@ -499,13 +484,49 @@ const authForm = ref({
   remember: false
 })
 
+const isLoggedIn = ref(false)
+const currentUser = ref('')
+
+const DEMO_PASSWORD = '123456'
+
 const handleAuth = () => {
-  // 前端仅作演示，无实际提交
-  console.log('Auth submitted:', { mode: authMode.value, form: authForm.value })
-  alert(authMode.value === 'login' ? '登录功能演示（无后端）' : '注册功能演示（无后端）')
+  if (authMode.value === 'register') {
+    const name = authForm.value.username || 'User'
+    doLogin(name)
+    return
+  }
+  // 登录：密码为 123456 即可
+  if (authForm.value.password === DEMO_PASSWORD && authForm.value.username.trim()) {
+    doLogin(authForm.value.username.trim())
+  } else {
+    alert('账号或密码错误')
+  }
+}
+
+const doLogin = (username) => {
+  isLoggedIn.value = true
+  currentUser.value = username
+  localStorage.setItem('nexusmind_logged_in', 'true')
+  localStorage.setItem('nexusmind_user', username)
+  showAuthModal.value = false
+  // 回到顶部（dashboard 会自动显示）
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+const handleLogout = () => {
+  isLoggedIn.value = false
+  currentUser.value = ''
+  localStorage.removeItem('nexusmind_logged_in')
+  localStorage.removeItem('nexusmind_user')
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 onMounted(() => {
+  // 恢复登录状态
+  if (localStorage.getItem('nexusmind_logged_in') === 'true') {
+    isLoggedIn.value = true
+    currentUser.value = localStorage.getItem('nexusmind_user') || 'User'
+  }
   // 延迟一点触发动画，确保页面渲染完成
   setTimeout(() => {
     isMounted.value = true
@@ -2222,6 +2243,47 @@ const startSimulation = () => {
   background: rgba(96, 165, 250, 0.25);
   border-color: rgba(96, 165, 250, 0.6);
   transform: translateY(-1px);
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px;
+}
+
+.user-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #73A8B9, #5C9EAF);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.user-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--blue-primary);
+  font-family: var(--font-mono);
+}
+
+.logout-btn {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.logout-btn:hover {
+  background: rgba(96, 165, 250, 0.1);
+  color: var(--blue-primary);
 }
 
 .modal-overlay {
