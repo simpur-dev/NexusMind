@@ -1,16 +1,5 @@
 <template>
   <div class="process-page">
-    <!-- 极光渐变背景层 -->
-    <div class="aurora-bg">
-      <div class="aurora-orb aurora-orb-1"></div>
-      <div class="aurora-orb aurora-orb-2"></div>
-      <div class="aurora-orb aurora-orb-3"></div>
-      <div class="aurora-orb aurora-orb-4"></div>
-    </div>
-    
-    <!-- 十字星点阵背景层 -->
-    <canvas ref="starCanvas" class="star-canvas"></canvas>
-    
     <!-- 顶部导航栏 -->
     <nav class="navbar">
       <div class="nav-brand-group">
@@ -92,21 +81,6 @@
         <div class="graph-container" ref="graphContainer">
           <!-- 图谱可视化（只要有数据就显示） -->
           <div v-if="graphData" class="graph-view">
-            <div class="graph-symbol-decor" aria-hidden="true">
-              <span
-                v-for="(s, i) in GRAPH_DECOR_SYMBOLS"
-                :key="i"
-                class="sym-chip"
-                :class="'sym-drift-' + s.drift"
-                :style="{
-                  left: s.left,
-                  top: s.top,
-                  fontSize: s.size + 'px',
-                  animationDuration: s.f + 's, ' + s.d + 's',
-                  animationDelay: s.fd + 's, ' + s.dd + 's'
-                }"
-              >{{ s.kind === 'plus' ? '+' : '×' }}</span>
-            </div>
             <svg ref="graphSvg" class="graph-svg"></svg>
             <!-- 构建中提示 -->
             <div v-if="currentPhase === 1" class="graph-building-hint">
@@ -324,6 +298,22 @@
       </div>
     </Transition>
 
+      <!-- 可拖拽分隔条 -->
+      <div
+        v-if="currentStep <= 2 && !isFullScreen"
+        class="resize-handle"
+        :class="{ 'dragging': isDragging }"
+        @mousedown="startResize"
+        @dblclick="resetLayout"
+        title="拖拽调整比例 / 双击重置为 7:3"
+      >
+        <div class="handle-indicator">
+          <span class="handle-dot"></span>
+          <span class="handle-dot"></span>
+          <span class="handle-dot"></span>
+        </div>
+      </div>
+
       <!-- 右侧: Step 组件容器 -->
       <div
         class="right-panel"
@@ -471,10 +461,6 @@ import * as d3 from 'd3'
 const route = useRoute()
 const router = useRouter()
 
-// 十字星点阵画布引用
-const starCanvas = ref(null)
-let starAnimationId = null
-
 // 当前项目ID（可能从'new'变为实际ID）
 const currentProjectId = ref(route.params.projectId)
 
@@ -502,17 +488,72 @@ const pendingFreshStart = ref(false) // Step2 点击"开始推演"时置 true，
 const stepStatus = ref('') // 子组件通过 emit('update-status') 上报的状态: processing / completed / error
 const systemLogs = ref([])
 
+// 响应式布局状态
+const leftPanelWidth = ref(70) // 默认 70%
+const isDragging = ref(false)
+let resizeStartX = 0
+let resizeStartWidth = 70
+
+// 开始拖拽调整布局
+const startResize = (e) => {
+  if (isFullScreen.value || currentStep.value > 2) return
+  isDragging.value = true
+  resizeStartX = e.clientX
+  resizeStartWidth = leftPanelWidth.value
+  // 拖拽时禁用过渡效果以实现即时响应
+  document.body.classList.add('is-resizing')
+  document.addEventListener('mousemove', handleResize)
+  document.addEventListener('mouseup', stopResize)
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+}
+
+// 处理拖拽 - 使用 requestAnimationFrame 优化性能
+let resizeRafId = null
+const handleResize = (e) => {
+  if (!isDragging.value) return
+  
+  if (resizeRafId) return
+  resizeRafId = requestAnimationFrame(() => {
+    resizeRafId = null
+    
+    const containerWidth = document.querySelector('.main-content')?.offsetWidth || window.innerWidth
+    const deltaX = e.clientX - resizeStartX
+    const deltaPercent = (deltaX / containerWidth) * 100
+    
+    // 限制范围在 20% - 80% 之间
+    let newWidth = resizeStartWidth + deltaPercent
+    newWidth = Math.max(20, Math.min(80, newWidth))
+    
+    // 同时更新 Vue 响应式状态和 CSS 变量实现即时同步
+    leftPanelWidth.value = newWidth
+    document.documentElement.style.setProperty('--left-panel-width', newWidth + '%')
+  })
+}
+
+// 停止拖拽
+const stopResize = () => {
+  isDragging.value = false
+  if (resizeRafId) {
+    cancelAnimationFrame(resizeRafId)
+    resizeRafId = null
+  }
+  document.body.classList.remove('is-resizing')
+  document.removeEventListener('mousemove', handleResize)
+  document.removeEventListener('mouseup', stopResize)
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+}
+
+// 重置布局为默认 7:3
+const resetLayout = () => {
+  leftPanelWidth.value = 70
+  document.documentElement.style.setProperty('--left-panel-width', '70%')
+}
+
 // DOM引用
 const graphContainer = ref(null)
 const graphSvg = ref(null)
-
-// 停止十字星画布动画
-const stopStarAnimation = () => {
-  if (starAnimationId) {
-    cancelAnimationFrame(starAnimationId)
-    starAnimationId = null
-  }
-}
 
 // 轮询定时器
 let pollTimer = null
@@ -1207,34 +1248,34 @@ const renderGraph = () => {
   // ── 视觉主题 ──
   const PALETTE = {
     // 鲜明、高饱和度、深色背景友好的配色
-    'Person':          { fill: '#6366f1', glow: '#818cf8' },
-    'Organization':    { fill: '#f59e0b', glow: '#fbbf24' },
-    'Government':      { fill: '#ef4444', glow: '#f87171' },
-    'Location':        { fill: '#10b981', glow: '#34d399' },
-    'Event':           { fill: '#f43f5e', glow: '#fb7185' },
-    'Policy':          { fill: '#8b5cf6', glow: '#a78bfa' },
-    'MediaOutlet':     { fill: '#ec4899', glow: '#f472b6' },
-    'AcademicLead':    { fill: '#14b8a6', glow: '#2dd4bf' },
-    'University':      { fill: '#0ea5e9', glow: '#38bdf8' },
-    'Entity':          { fill: '#38bdf8', glow: '#7dd3fc' },
+    'Person':          { fill: '#6366f1', glow: '#818cf8', icon: '👤' },
+    'Organization':    { fill: '#f59e0b', glow: '#fbbf24', icon: '🏢' },
+    'Government':      { fill: '#ef4444', glow: '#f87171', icon: '🏛️' },
+    'Location':        { fill: '#10b981', glow: '#34d399', icon: '📍' },
+    'Event':           { fill: '#f43f5e', glow: '#fb7185', icon: '📢' },
+    'Policy':          { fill: '#8b5cf6', glow: '#a78bfa', icon: '📋' },
+    'MediaOutlet':     { fill: '#ec4899', glow: '#f472b6', icon: '📺' },
+    'AcademicLead':    { fill: '#14b8a6', glow: '#2dd4bf', icon: '🎓' },
+    'University':      { fill: '#0ea5e9', glow: '#38bdf8', icon: '🏛️' },
+    'Entity':          { fill: '#38bdf8', glow: '#7dd3fc', icon: '◆' },
   }
   const FALLBACK_COLORS = [
-    { fill: '#6366f1', glow: '#818cf8' },
-    { fill: '#f59e0b', glow: '#fbbf24' },
-    { fill: '#8b5cf6', glow: '#a78bfa' },
-    { fill: '#10b981', glow: '#34d399' },
-    { fill: '#ef4444', glow: '#f87171' },
-    { fill: '#ec4899', glow: '#f472b6' },
-    { fill: '#0ea5e9', glow: '#38bdf8' },
-    { fill: '#14b8a6', glow: '#2dd4bf' },
+    { fill: '#6366f1', glow: '#818cf8', icon: '●' },
+    { fill: '#f59e0b', glow: '#fbbf24', icon: '●' },
+    { fill: '#8b5cf6', glow: '#a78bfa', icon: '●' },
+    { fill: '#10b981', glow: '#34d399', icon: '●' },
+    { fill: '#ef4444', glow: '#f87171', icon: '●' },
+    { fill: '#ec4899', glow: '#f472b6', icon: '●' },
+    { fill: '#0ea5e9', glow: '#38bdf8', icon: '●' },
+    { fill: '#14b8a6', glow: '#2dd4bf', icon: '●' },
   ]
   // 度数分级配色：当所有节点同一类型时，按连接度分层着色
   const DEGREE_TIER_COLORS = [
-    { fill: '#38bdf8', glow: '#7dd3fc' },  // 低度数：天蓝
-    { fill: '#6366f1', glow: '#818cf8' },  // 中度数：靛蓝
-    { fill: '#a855f7', glow: '#c084fc' },  // 中高度数：紫
-    { fill: '#f43f5e', glow: '#fb7185' },  // 高度数：玫红
-    { fill: '#f59e0b', glow: '#fbbf24' },  // 最高度数：琥珀
+    { fill: '#38bdf8', glow: '#7dd3fc', icon: '○' },  // 低度数：天蓝
+    { fill: '#6366f1', glow: '#818cf8', icon: '◐' },  // 中度数：靛蓝
+    { fill: '#a855f7', glow: '#c084fc', icon: '◑' },  // 中高度数：紫
+    { fill: '#f43f5e', glow: '#fb7185', icon: '◉' },  // 高度数：玫红
+    { fill: '#f59e0b', glow: '#fbbf24', icon: '●' },  // 最高度数：琥珀
   ]
   const types = [...new Set(nodes.map(n => n.type))]
   const typeColorMap = {}
@@ -1269,6 +1310,12 @@ const renderGraph = () => {
   }
   const getColorId = (d) => isSingleType && d._colorId ? d._colorId : d.type.replace(/\s+/g, '_')
   
+  // 获取节点图标
+  const getNodeIcon = (d) => {
+    const colorInfo = getColor(d)
+    return colorInfo.icon || '●'
+  }
+  
   // ── 节点半径：基于度数，高连接度的节点更大更醒目 ──
   const maxDeg = Math.max(...nodes.map(n => n.degree), 1)
   const nodeRadius = (d) => {
@@ -1280,25 +1327,59 @@ const renderGraph = () => {
   // ── SVG Defs: 径向渐变 + 辉光 + 箭头 ──
   const defs = svg.append('defs')
   
+  // 创建增强辉光滤镜（多层叠加效果）
+  const createEnhancedGlow = (id, c) => {
+    // 外层大范围柔和大辉光
+    const filterOuter = defs.append('filter')
+      .attr('id', `glow-outer-${id}`)
+      .attr('x', '-100%').attr('y', '-100%').attr('width', '300%').attr('height', '300%')
+    filterOuter.append('feGaussianBlur')
+      .attr('in', 'SourceGraphic')
+      .attr('stdDeviation', '8')
+      .attr('result', 'blur1')
+    const mergeOuter = filterOuter.append('feMerge')
+    mergeOuter.append('feMergeNode').attr('in', 'blur1')
+    mergeOuter.append('feMergeNode').attr('in', 'SourceGraphic')
+    
+    // 内层精细辉光
+    const filterInner = defs.append('filter')
+      .attr('id', `glow-inner-${id}`)
+      .attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%')
+    filterInner.append('feGaussianBlur')
+      .attr('in', 'SourceGraphic')
+      .attr('stdDeviation', '3')
+      .attr('result', 'blur2')
+    filterInner.append('feColorMatrix')
+      .attr('in', 'blur2')
+      .attr('type', 'matrix')
+      .attr('values', `0 0 0 0 ${parseInt(c.glow.slice(1, 3), 16) / 255}  0 0 0 0 ${parseInt(c.glow.slice(3, 5), 16) / 255}  0 0 0 0 ${parseInt(c.glow.slice(5, 7), 16) / 255}  0 0 0 0.7 0`)
+      .attr('result', 'colorBlur')
+    const mergeInner = filterInner.append('feMerge')
+    mergeInner.append('feMergeNode').attr('in', 'colorBlur')
+    mergeInner.append('feMergeNode').attr('in', 'SourceGraphic')
+  }
+  
   // 创建渐变和辉光的辅助函数
   const createGradientAndGlow = (id, c) => {
+    // 外层辉光
+    createEnhancedGlow(id, c)
+    
+    // 主渐变（带高光效果，更通透）
     const grad = defs.append('radialGradient')
       .attr('id', `grad-${id}`)
-      .attr('cx', '35%').attr('cy', '35%').attr('r', '65%')
-    grad.append('stop').attr('offset', '0%').attr('stop-color', '#fff').attr('stop-opacity', 0.45)
-    grad.append('stop').attr('offset', '50%').attr('stop-color', c.fill).attr('stop-opacity', 1)
-    grad.append('stop').attr('offset', '100%').attr('stop-color', d3.color(c.fill).darker(0.6)).attr('stop-opacity', 1)
+      .attr('cx', '35%').attr('cy', '30%').attr('r', '65%')
+    grad.append('stop').attr('offset', '0%').attr('stop-color', '#ffffff').attr('stop-opacity', 0.95)
+    grad.append('stop').attr('offset', '25%').attr('stop-color', c.glow).attr('stop-opacity', 0.85)
+    grad.append('stop').attr('offset', '60%').attr('stop-color', c.fill).attr('stop-opacity', 0.9)
+    grad.append('stop').attr('offset', '100%').attr('stop-color', d3.color(c.fill).darker(0.5)).attr('stop-opacity', 0.85)
     
-    const filter = defs.append('filter')
-      .attr('id', `glow-${id}`)
-      .attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%')
-    filter.append('feGaussianBlur').attr('in', 'SourceGraphic').attr('stdDeviation', '4').attr('result', 'blur')
-    filter.append('feColorMatrix').attr('in', 'blur').attr('type', 'matrix')
-      .attr('values', `0 0 0 0 ${parseInt(c.glow.slice(1, 3), 16) / 255}  0 0 0 0 ${parseInt(c.glow.slice(3, 5), 16) / 255}  0 0 0 0 ${parseInt(c.glow.slice(5, 7), 16) / 255}  0 0 0 0.65 0`)
-      .attr('result', 'colorBlur')
-    const merge = filter.append('feMerge')
-    merge.append('feMergeNode').attr('in', 'colorBlur')
-    merge.append('feMergeNode').attr('in', 'SourceGraphic')
+    // 内环发光渐变（用于节点边缘光晕，更通透）
+    const gradRing = defs.append('radialGradient')
+      .attr('id', `grad-ring-${id}`)
+      .attr('cx', '50%').attr('cy', '50%').attr('r', '50%')
+    gradRing.append('stop').attr('offset', '70%').attr('stop-color', c.fill).attr('stop-opacity', 0)
+    gradRing.append('stop').attr('offset', '90%').attr('stop-color', c.glow).attr('stop-opacity', 0.4)
+    gradRing.append('stop').attr('offset', '100%').attr('stop-color', c.glow).attr('stop-opacity', 0.15)
   }
   // 每种类型创建渐变和辉光
   types.forEach(t => {
@@ -1348,22 +1429,49 @@ const renderGraph = () => {
       g.attr('transform', event.transform)
     }))
   
-  // ── 绘制边：曲线 + 可选箭头 ──
+  // ── 绘制边：曲线 + 发光动画 ──
   const linkGroup = g.append('g').attr('class', 'links')
     .selectAll('g').data(edges).enter().append('g')
     .style('cursor', 'pointer')
     .on('click', (event, d) => { event.stopPropagation(); selectEdge(d.rawData) })
   
-  // 曲线路径
-  const linkPath = linkGroup.append('path')
+  // 边外层辉光（模糊的粗线）
+  linkGroup.append('path')
+    .attr('class', 'link-glow')
     .attr('fill', 'none')
     .attr('stroke', d => {
       const srcNode = typeof d.source === 'object' ? nodes.find(n => n.id === d.source.id) : null
       const c = getColor(srcNode || 'Entity')
       return c.glow || '#7dd3fc'
     })
-    .attr('stroke-width', 1.4)
-    .attr('stroke-opacity', 0.3)
+    .attr('stroke-width', 6)
+    .attr('stroke-opacity', 0.15)
+    .attr('stroke-linecap', 'round')
+  
+  // 边发光尾迹（用于动画）
+  linkGroup.append('path')
+    .attr('class', 'link-trail')
+    .attr('fill', 'none')
+    .attr('stroke', d => {
+      const srcNode = typeof d.source === 'object' ? nodes.find(n => n.id === d.source.id) : null
+      const c = getColor(srcNode || 'Entity')
+      return c.glow || '#7dd3fc'
+    })
+    .attr('stroke-width', 2.5)
+    .attr('stroke-opacity', 0.5)
+    .attr('stroke-linecap', 'round')
+  
+  // 曲线路径（主线条）
+  const linkPath = linkGroup.append('path')
+    .attr('class', 'link-main')
+    .attr('fill', 'none')
+    .attr('stroke', d => {
+      const srcNode = typeof d.source === 'object' ? nodes.find(n => n.id === d.source.id) : null
+      const c = getColor(srcNode || 'Entity')
+      return c.glow || '#7dd3fc'
+    })
+    .attr('stroke-width', 1.5)
+    .attr('stroke-opacity', 0.4)
     .attr('marker-end', 'url(#arrow)')
   
   // 透明宽路径用于点击
@@ -1398,24 +1506,63 @@ const renderGraph = () => {
       .on('drag', dragged)
       .on('end', dragended))
   
+  // 主圆：径向渐变 + 辉光滤镜
+  node.append('circle')
+    .attr('r', nodeRadius)
+    .attr('fill', d => `url(#grad-${getColorId(d)})`)
+    .attr('filter', d => `url(#glow-outer-${getColorId(d)})`)
+    .attr('stroke', d => d3.color(getColor(d).fill).brighter(0.5))
+    .attr('stroke-width', d => d.degree >= 5 ? 2.5 : d.degree >= 2 ? 1.8 : 1.2)
+    .attr('stroke-opacity', 0.8)
+    .attr('class', 'node-circle')
+
+  // 外层大辉光环（所有节点，渐变透明度）
+  node.append('circle')
+    .attr('class', 'node-outer-glow')
+    .attr('r', d => nodeRadius(d) + 12)
+    .attr('fill', d => `url(#grad-ring-${getColorId(d)})`)
+    .attr('opacity', d => Math.min(0.3 + d.degree * 0.05, 0.7))
+
+  // 脉冲光环动画（仅高度数节点）
+  node.filter(d => d.degree >= 3)
+    .append('circle')
+    .attr('class', 'node-pulse')
+    .attr('r', d => nodeRadius(d) + 8)
+    .attr('fill', 'none')
+    .attr('stroke', d => getColor(d).glow)
+    .attr('stroke-width', 2)
+    .attr('stroke-opacity', 0)
+    .attr('stroke-dasharray', '4 4')
+
   // 外层辉光圈（仅高度数节点）
   node.filter(d => d.degree >= 3).append('circle')
     .attr('r', d => nodeRadius(d) + 6)
     .attr('fill', 'none')
     .attr('stroke', d => getColor(d).glow)
     .attr('stroke-width', 1.5)
-    .attr('stroke-opacity', 0.4)
+    .attr('stroke-opacity', 0.5)
     .attr('stroke-dasharray', '3 3')
-  
-  // 主圆：径向渐变 + 辉光滤镜
-  node.append('circle')
-    .attr('r', nodeRadius)
-    .attr('fill', d => `url(#grad-${getColorId(d)})`)
-    .attr('filter', d => d.degree >= 1 ? `url(#glow-${getColorId(d)})` : null)
-    .attr('stroke', d => d3.color(getColor(d).fill).brighter(0.3))
-    .attr('stroke-width', d => d.degree >= 5 ? 2 : 1.2)
-    .attr('stroke-opacity', 0.7)
-    .attr('class', 'node-circle')
+
+  // 节点内部图标
+  node.append('text')
+    .attr('class', 'node-icon')
+    .attr('text-anchor', 'middle')
+    .attr('dominant-baseline', 'central')
+    .attr('font-size', d => Math.max(8, nodeRadius(d) * 0.7))
+    .attr('fill', '#ffffff')
+    .attr('opacity', 0.9)
+    .attr('pointer-events', 'none')
+    .text(d => getNodeIcon(d))
+
+  // 内层光点（高度数节点增加中心亮点）
+  node.filter(d => d.degree >= 2)
+    .append('circle')
+    .attr('class', 'node-core')
+    .attr('r', 2)
+    .attr('cx', 0)
+    .attr('cy', 0)
+    .attr('fill', '#ffffff')
+    .attr('opacity', 0.8)
   
   // 节点标签：居中在节点下方，重要节点有背景药丸
   const labelG = g.append('g').attr('class', 'node-labels')
@@ -1445,7 +1592,7 @@ const renderGraph = () => {
       return d.name.length > maxLen ? d.name.substring(0, maxLen) + '...' : d.name
     })
   
-  // ── Hover 交互：高亮连通子图，边标签显示 ──
+  // ── Hover 交互：高亮连通子图，边动画加速 ──
   node.on('mouseover', (event, d) => {
     const connected = new Set([d.id])
     const connectedEdges = new Set()
@@ -1456,15 +1603,33 @@ const renderGraph = () => {
       if (tid === d.id) { connected.add(sid); connectedEdges.add(i) }
     })
     
-    // 节点淡入淡出
+    // 节点淡入淡出 + 放大效果
     node.select('.node-circle')
       .transition().duration(200)
       .attr('opacity', n => connected.has(n.id) ? 1 : 0.12)
+      .attr('r', n => connected.has(n.id) ? nodeRadius(n) * 1.15 : nodeRadius(n))
     
-    // 边高亮
-    linkPath.transition().duration(200)
-      .attr('stroke-opacity', (e, i) => connectedEdges.has(i) ? 0.7 : 0.04)
+    // 外层辉光增强
+    node.select('.node-outer-glow')
+      .transition().duration(200)
+      .attr('opacity', n => connected.has(n.id) ? Math.min(0.5 + n.degree * 0.08, 0.9) : 0)
+    
+    // 边高亮 + 增粗
+    linkGroup.select('.link-main')
+      .transition().duration(200)
+      .attr('stroke-opacity', (e, i) => connectedEdges.has(i) ? 0.9 : 0.04)
       .attr('stroke-width', (e, i) => connectedEdges.has(i) ? 2.5 : 1.2)
+    
+    // 辉光边增强
+    linkGroup.select('.link-glow')
+      .transition().duration(200)
+      .attr('stroke-opacity', (e, i) => connectedEdges.has(i) ? 0.35 : 0.05)
+    
+    // 尾迹边增强
+    linkGroup.select('.link-trail')
+      .transition().duration(200)
+      .attr('stroke-opacity', (e, i) => connectedEdges.has(i) ? 0.8 : 0.2)
+      .attr('stroke-width', (e, i) => connectedEdges.has(i) ? 4 : 2)
     
     // 标签显隐
     labelItem.select('text')
@@ -1473,13 +1638,38 @@ const renderGraph = () => {
     
     // 边标签：只显示关联的
     linkLabel.transition().duration(200)
-      .attr('opacity', (e, i) => connectedEdges.has(i) ? 0.85 : 0)
+      .attr('opacity', (e, i) => connectedEdges.has(i) ? 0.9 : 0)
   })
   .on('mouseout', () => {
-    node.select('.node-circle').transition().duration(300).attr('opacity', 1)
-    linkPath.transition().duration(300).attr('stroke-opacity', 0.3).attr('stroke-width', 1.4)
-    labelItem.select('text').transition().duration(300).attr('opacity', 1)
-    linkLabel.transition().duration(300).attr('opacity', 0)
+    node.select('.node-circle')
+      .transition().duration(300)
+      .attr('opacity', 1)
+      .attr('r', nodeRadius)
+    
+    node.select('.node-outer-glow')
+      .transition().duration(300)
+      .attr('opacity', d => Math.min(0.3 + d.degree * 0.05, 0.7))
+    
+    linkGroup.select('.link-main')
+      .transition().duration(300)
+      .attr('stroke-opacity', 0.4)
+      .attr('stroke-width', 1.5)
+    
+    linkGroup.select('.link-glow')
+      .transition().duration(300)
+      .attr('stroke-opacity', 0.15)
+    
+    linkGroup.select('.link-trail')
+      .transition().duration(300)
+      .attr('stroke-opacity', 0.5)
+      .attr('stroke-width', 2.5)
+    
+    labelItem.select('text')
+      .transition().duration(300)
+      .attr('opacity', 1)
+    
+    linkLabel.transition().duration(300)
+      .attr('opacity', 0)
   })
   
   // 点击空白关闭
@@ -1498,6 +1688,12 @@ const renderGraph = () => {
   simulation.on('tick', () => {
     linkPath.attr('d', linkArc)
     linkHit.attr('d', linkArc)
+    
+    // 更新辉光路径
+    linkGroup.select('.link-glow').attr('d', linkArc)
+    
+    // 更新尾迹路径
+    linkGroup.select('.link-trail').attr('d', linkArc)
     
     linkLabel
       .attr('x', d => (d.source.x + d.target.x) / 2)
@@ -1577,13 +1773,14 @@ watch(currentStep, (newStep, oldStep) => {
 
 // 生命周期
 onMounted(() => {
+  // 初始化布局宽度 CSS 变量
+  document.documentElement.style.setProperty('--left-panel-width', leftPanelWidth.value + '%')
   initProject()
 })
 
 onUnmounted(() => {
   stopPolling()
   stopGraphPolling()
-  stopStarAnimation()
 })
 </script>
 
@@ -1762,6 +1959,100 @@ onUnmounted(() => {
   50% { opacity: 0.5; }
 }
 
+/* 节点脉冲动画 */
+.node-pulse {
+  animation: pulse-expand 2s ease-in-out infinite;
+}
+
+@keyframes pulse-expand {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.6;
+    stroke-width: 2;
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 0;
+    stroke-width: 0.5;
+  }
+}
+
+/* 节点图标悬浮发光效果 */
+.node-icon {
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.95));
+  transition: all 0.3s ease;
+}
+
+/* 边流动动画 */
+.link-main {
+  stroke-dasharray: 0;
+  animation: edge-glow 3s ease-in-out infinite;
+}
+
+@keyframes edge-glow {
+  0%, 100% {
+    stroke-opacity: 0.3;
+  }
+  50% {
+    stroke-opacity: 0.5;
+  }
+}
+
+/* 边尾迹动画 */
+.link-trail {
+  stroke-dasharray: 6 12;
+  animation: flow-dash 1.2s linear infinite;
+}
+
+@keyframes flow-dash {
+  0% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: -18;
+  }
+}
+
+/* 高度数节点外层辉光持续呼吸效果 */
+.node-outer-glow {
+  animation: outer-glow-breathe 3s ease-in-out infinite;
+}
+
+@keyframes outer-glow-breathe {
+  0%, 100% {
+    opacity: 0.2;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(1.05);
+  }
+}
+
+/* 节点hover时的放大效果 */
+.nodes g {
+  transition: transform 0.2s ease;
+}
+
+.nodes g:hover .node-circle {
+  filter: brightness(1.25) drop-shadow(0 0 10px currentColor);
+}
+
+.nodes g:hover .node-icon {
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 1));
+  transform: scale(1.1);
+}
+
+.nodes g:hover .node-outer-glow {
+  filter: brightness(1.3);
+}
+
+.nodes g:hover .link-main,
+.nodes g:hover .link-glow,
+.nodes g:hover .link-trail {
+  filter: brightness(1.2) drop-shadow(0 0 4px currentColor);
+}
+
 .status-text {
   font-size: 0.75rem;
   color: #3A5A6A;
@@ -1776,17 +2067,25 @@ onUnmounted(() => {
 }
 
 /* 左侧面板 - 50% default（冰蓝浅色底，与右侧工作台协调） */
+/* 使用 CSS 变量实现即时响应式更新 */
 .left-panel {
-  width: 50%;
-  flex: none; /* Fixed width initially */
+  flex: none;
   display: flex;
   flex-direction: column;
   border-right: 1px solid rgba(173, 196, 214, 0.45);
-  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  /* 正常状态有过渡效果 */
+  transition: opacity 0.35s ease;
   background: linear-gradient(165deg, #f4f9fb 0%, #eef5f8 45%, #e6f0f4 100%);
   z-index: 5;
   position: relative;
   overflow: hidden;
+  /* 使用 CSS 变量控制宽度，实现即时响应 */
+  width: var(--left-panel-width, 70%);
+}
+
+/* 拖拽时禁用宽度过渡以实现即时响应 */
+body.is-resizing .left-panel {
+  transition: none !important;
 }
 
 /* 左侧面板与右侧面板之间的柔和分隔 */
@@ -1815,71 +2114,73 @@ onUnmounted(() => {
   min-height: 280px;
   min-width: 240px;
   background:
-    radial-gradient(ellipse 60% 50% at 50% 46%, rgba(25, 35, 55, 0.6) 0%, transparent 70%),
-    linear-gradient(160deg, #0c1220 0%, #0e1629 45%, #101a2e 100%);
+    /* 星空粒子效果 */
+    radial-gradient(1px 1px at 20% 30%, rgba(255, 255, 255, 0.8) 0%, transparent 100%),
+    radial-gradient(1px 1px at 40% 70%, rgba(255, 255, 255, 0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 60% 20%, rgba(255, 255, 255, 0.7) 0%, transparent 100%),
+    radial-gradient(1px 1px at 80% 50%, rgba(255, 255, 255, 0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 10% 80%, rgba(255, 255, 255, 0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 90% 10%, rgba(255, 255, 255, 0.7) 0%, transparent 100%),
+    radial-gradient(1px 1px at 50% 90%, rgba(255, 255, 255, 0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 30% 50%, rgba(255, 255, 255, 0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 70% 80%, rgba(255, 255, 255, 0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 15% 60%, rgba(255, 255, 255, 0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 85% 35%, rgba(255, 255, 255, 0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 45% 15%, rgba(255, 255, 255, 0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 25% 95%, rgba(255, 255, 255, 0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 75% 45%, rgba(255, 255, 255, 0.4) 0%, transparent 100%),
+    /* 星云渐变 */
+    radial-gradient(ellipse 80% 60% at 50% 50%, rgba(30, 40, 70, 0.8) 0%, transparent 70%),
+    radial-gradient(ellipse 100% 80% at 20% 20%, rgba(60, 40, 90, 0.3) 0%, transparent 50%),
+    radial-gradient(ellipse 80% 100% at 80% 80%, rgba(40, 60, 90, 0.25) 0%, transparent 60%),
+    /* 主背景渐变 */
+    linear-gradient(180deg, #0a0a1a 0%, #0d1020 30%, #0a0e1f 60%, #080818 100%);
   border-radius: 0 0 12px 0;
-}
-
-.graph-symbol-decor {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
   overflow: hidden;
 }
 
-.graph-symbol-decor .sym-chip {
+/* 星空动画层 */
+.graph-view::before {
+  content: '';
   position: absolute;
-  margin: 0;
-  padding: 0;
-  transform: translate(-50%, -50%);
-  font-family: 'JetBrains Mono', 'Noto Sans SC', ui-monospace, monospace;
-  font-weight: 500;
-  line-height: 1;
-  color: rgba(95, 125, 150, 0.52);
-  user-select: none;
-  will-change: opacity, transform;
-  animation-name: graph-decor-flicker, graph-decor-drift-a;
-  animation-timing-function: ease-in-out, ease-in-out;
-  animation-iteration-count: infinite, infinite;
+  inset: 0;
+  background:
+    radial-gradient(2px 2px at 12% 42%, rgba(255, 255, 255, 0.9) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 67% 23%, rgba(200, 220, 255, 0.7) 0%, transparent 100%),
+    radial-gradient(2px 2px at 88% 67%, rgba(255, 255, 255, 0.8) 0%, transparent 100%),
+    radial-gradient(1px 1px at 33% 88%, rgba(180, 200, 255, 0.6) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 55% 12%, rgba(255, 255, 255, 0.7) 0%, transparent 100%),
+    radial-gradient(1px 1px at 78% 92%, rgba(200, 220, 255, 0.5) 0%, transparent 100%),
+    radial-gradient(2px 2px at 5% 75%, rgba(255, 255, 255, 0.8) 0%, transparent 100%),
+    radial-gradient(1px 1px at 92% 8%, rgba(180, 200, 255, 0.6) 0%, transparent 100%);
+  animation: twinkle 4s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
 }
 
-.graph-symbol-decor .sym-chip.sym-drift-b {
-  animation-name: graph-decor-flicker, graph-decor-drift-b;
+/* 星云光效 */
+.graph-view::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 40% 30% at 30% 40%, rgba(100, 80, 180, 0.15) 0%, transparent 70%),
+    radial-gradient(ellipse 35% 40% at 70% 60%, rgba(60, 100, 160, 0.12) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 25% at 50% 80%, rgba(80, 120, 180, 0.1) 0%, transparent 60%);
+  animation: nebula-drift 20s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
 }
 
-.graph-symbol-decor .sym-chip.sym-drift-c {
-  animation-name: graph-decor-flicker, graph-decor-drift-c;
+@keyframes twinkle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
-@keyframes graph-decor-flicker {
-  0%, 100% { opacity: 0.58; }
-  18% { opacity: 0.14; }
-  33% { opacity: 0.52; }
-  52% { opacity: 0.82; }
-  71% { opacity: 0.1; }
-  88% { opacity: 0.46; }
-}
-
-@keyframes graph-decor-drift-a {
-  0%, 100% { transform: translate(-50%, -50%) translate(0, 0); }
-  28% { transform: translate(-50%, -50%) translate(3px, -2px); }
-  55% { transform: translate(-50%, -50%) translate(-2px, 2px); }
-  82% { transform: translate(-50%, -50%) translate(2px, 1px); }
-}
-
-@keyframes graph-decor-drift-b {
-  0%, 100% { transform: translate(-50%, -50%) translate(0, 0); }
-  32% { transform: translate(-50%, -50%) translate(-3px, 2px); }
-  58% { transform: translate(-50%, -50%) translate(2px, -2px); }
-  84% { transform: translate(-50%, -50%) translate(-1px, -1px); }
-}
-
-@keyframes graph-decor-drift-c {
-  0%, 100% { transform: translate(-50%, -50%) translate(0, 0); }
-  24% { transform: translate(-50%, -50%) translate(2px, 3px); }
-  48% { transform: translate(-50%, -50%) translate(-2px, -1px); }
-  74% { transform: translate(-50%, -50%) translate(1px, -2px); }
+@keyframes nebula-drift {
+  0%, 100% { transform: scale(1) translate(0, 0); opacity: 1; }
+  33% { transform: scale(1.05) translate(5px, -5px); opacity: 0.9; }
+  66% { transform: scale(0.98) translate(-3px, 3px); opacity: 1; }
 }
 
 .left-panel.full-screen {
@@ -1974,75 +2275,6 @@ onUnmounted(() => {
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Cg fill='none' stroke='%2394a8b8' stroke-linecap='round' stroke-width='1.25'%3E%3Cpath d='M30 38h11M35.5 33v11' opacity='0.42'/%3E%3Cpath d='M54 22l7.5 7.5m0-7.5L54 29.5' opacity='0.3'/%3E%3Cpath d='M138 52h10M143 47v10' opacity='0.36'/%3E%3Cpath d='M172 78l8 8m0-8l-8 8' opacity='0.28'/%3E%3Cpath d='M22 128h9M26.5 123v10' opacity='0.32'/%3E%3Cpath d='M92 98l6.5 6.5m0-6.5L92 104.5' opacity='0.38'/%3E%3Cpath d='M158 134h9M162.5 129v10' opacity='0.34'/%3E%3Cpath d='M48 170l7 7m0-7l-7 7' opacity='0.26'/%3E%3Cpath d='M124 174h10M129 169v10' opacity='0.33'/%3E%3Cpath d='M12 88h8M16 84v8' opacity='0.25'/%3E%3Cpath d='M180 24l6 6m0-6l-6 6' opacity='0.22'/%3E%3C/g%3E%3C/svg%3E");
   background-size: auto, auto, auto, 200px 200px;
   background-repeat: no-repeat, no-repeat, no-repeat, repeat;
-}
-
-/* 左侧已改用面板内浅色氛围层，极光层关闭以免叠色 */
-.aurora-bg {
-  display: none;
-}
-
-.aurora-orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(100px);
-  opacity: 0.4;
-  animation: aurora-float 20s ease-in-out infinite;
-}
-
-.aurora-orb-1 {
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.5) 0%, rgba(59, 130, 246, 0) 70%);
-  top: -10%;
-  left: -15%;
-  animation-delay: 0s;
-}
-
-.aurora-orb-2 {
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, rgba(6, 182, 212, 0.5) 0%, rgba(6, 182, 212, 0) 70%);
-  bottom: -10%;
-  right: -10%;
-  animation-delay: -5s;
-}
-
-.aurora-orb-3 {
-  width: 400px;
-  height: 400px;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.4) 0%, rgba(139, 92, 246, 0) 70%);
-  top: 40%;
-  left: 30%;
-  animation-delay: -10s;
-}
-
-.aurora-orb-4 {
-  width: 350px;
-  height: 350px;
-  background: radial-gradient(circle, rgba(34, 211, 238, 0.35) 0%, rgba(34, 211, 238, 0) 70%);
-  top: 20%;
-  right: 20%;
-  animation-delay: -15s;
-}
-
-@keyframes aurora-float {
-  0%, 100% {
-    transform: translate(0, 0) scale(1);
-  }
-  25% {
-    transform: translate(30px, -30px) scale(1.05);
-  }
-  50% {
-    transform: translate(-20px, 20px) scale(0.95);
-  }
-  75% {
-    transform: translate(20px, 10px) scale(1.02);
-  }
-}
-
-/* 十字星画布已改为面板内 CSS 图案，固定画布关闭 */
-.star-canvas {
-  display: none;
 }
 
 .panel-header {
@@ -2600,17 +2832,25 @@ onUnmounted(() => {
 }
 
 /* 右侧面板 - 50% default */
+/* 使用 CSS 变量实现即时响应式更新 */
 .right-panel {
-  width: 50%;
   flex: none;
   display: flex;
   flex-direction: column;
   background: #F8FAFC;
   box-shadow: -4px 0 24px rgba(115, 168, 185, 0.08);
-  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, transform 0.3s ease;
+  /* 正常状态有过渡效果，但拖拽时禁用 */
+  transition: opacity 0.3s ease, transform 0.3s ease;
   overflow: hidden;
   opacity: 1;
   position: relative;
+  /* 使用 CSS 变量控制宽度，实现即时响应 */
+  width: calc(100% - var(--left-panel-width, 70%));
+}
+
+/* 拖拽时禁用宽度过渡以实现即时响应 */
+body.is-resizing .right-panel {
+  transition: none !important;
 }
 
 /* 右侧面板左侧渐变边框 - 与左侧深色面板过渡 */
@@ -2976,5 +3216,68 @@ onUnmounted(() => {
 .panel-slide-leave-to {
   width: 0;
   opacity: 0;
+}
+
+/* 可拖拽分隔条 */
+.resize-handle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: -6px;
+  width: 12px;
+  height: 64px;
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.08) 0%, rgba(115, 168, 185, 0.15) 50%, rgba(59, 130, 246, 0.08) 100%);
+  border-radius: 6px;
+  cursor: col-resize;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: width 0.15s ease, background 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.1);
+  /* 使用 CSS 变量动态控制位置 */
+  left: var(--left-panel-width, 70%);
+}
+
+.resize-handle:hover,
+.resize-handle.dragging {
+  width: 14px;
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.25) 50%, rgba(59, 130, 246, 0.15) 100%);
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.2), 0 0 0 1px rgba(59, 130, 246, 0.2);
+}
+
+.resize-handle.dragging {
+  opacity: 0.9;
+}
+
+.handle-indicator {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.handle-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.4);
+  transition: all 0.2s ease;
+}
+
+.resize-handle:hover .handle-dot,
+.resize-handle.dragging .handle-dot {
+  background: rgba(59, 130, 246, 0.8);
+  transform: scale(1.2);
+}
+
+/* 拖拽时的视觉反馈 - 统一使用 body.is-resizing 类 */
+body.is-resizing .left-panel,
+body.is-resizing .right-panel {
+  pointer-events: none;
+}
+
+body.is-resizing .resize-handle {
+  pointer-events: auto;
 }
 </style>
