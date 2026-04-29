@@ -1911,8 +1911,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   padding: 6px 24px;
-  background: linear-gradient(90deg, rgba(59,130,246,0.08) 0%, rgba(6,182,212,0.06) 50%, rgba(139,92,246,0.06) 100%);
-  border-bottom: 1px solid rgba(59,130,246,0.12);
+  background: linear-gradient(90deg, #e6f4f3 0%, #eef7fb 30%, #eff3fc 60%, #f3f0f9 100%);
+  border-bottom: 1px solid rgba(115, 168, 185, 0.2);
   font-size: 12px;
   color: #94a3b8;
   z-index: 99;
