@@ -1940,8 +1940,9 @@ onUnmounted(() => {
 .branch-ctx-type.intervention_c { background: rgba(236,72,153,0.15); color: #ec4899; }
 
 .branch-ctx-label {
-  color: #cbd5e1;
-  font-weight: 500;
+  color: #64748b;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
 }
 
 .branch-ctx-sep {
