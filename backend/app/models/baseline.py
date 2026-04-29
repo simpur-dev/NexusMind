@@ -33,6 +33,9 @@ class BaselineSnapshot:
     current_risks: List[str] = field(default_factory=list)
     recommended_monitoring_signals: List[str] = field(default_factory=list)
 
+    # 材料驱动的事件因果图
+    event_causal_graph: Optional[Dict[str, Any]] = None
+
     # 关联的图谱
     graph_id: Optional[str] = None
 
@@ -51,6 +54,7 @@ class BaselineSnapshot:
             "open_questions": self.open_questions,
             "current_risks": self.current_risks,
             "recommended_monitoring_signals": self.recommended_monitoring_signals,
+            "event_causal_graph": self.event_causal_graph,
             "graph_id": self.graph_id,
         }
 
@@ -70,6 +74,7 @@ class BaselineSnapshot:
             open_questions=data.get("open_questions", []),
             current_risks=data.get("current_risks", []),
             recommended_monitoring_signals=data.get("recommended_monitoring_signals", []),
+            event_causal_graph=data.get("event_causal_graph"),
             graph_id=data.get("graph_id"),
         )
 
@@ -115,6 +120,7 @@ class BaselineManager:
         open_questions: Optional[List[str]] = None,
         current_risks: Optional[List[str]] = None,
         recommended_monitoring_signals: Optional[List[str]] = None,
+        event_causal_graph: Optional[Dict[str, Any]] = None,
         graph_id: Optional[str] = None,
     ) -> BaselineSnapshot:
         cls._ensure_dir(project_id)
@@ -136,6 +142,7 @@ class BaselineManager:
             open_questions=open_questions or [],
             current_risks=current_risks or [],
             recommended_monitoring_signals=recommended_monitoring_signals or [],
+            event_causal_graph=event_causal_graph,
             graph_id=graph_id,
         )
 

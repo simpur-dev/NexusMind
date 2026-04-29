@@ -144,9 +144,14 @@ def append_materials(project_id: str):
         else:
             return jsonify({"success": False, "error": "请上传文件或提交 JSON 文本"}), 400
 
-        # 更新项目级统计
+        # 更新项目级统计 & 同步 project.files（让推演回放页也能看到新材料）
         project.materials_count = MaterialManager.count(project_id)
         project.last_material_at = datetime.now().isoformat()
+        all_materials = MaterialManager.list_materials(project_id)
+        project.files = [
+            {"filename": m.title or m.material_id, "size": m.text_length or 0}
+            for m in all_materials
+        ]
         ProjectManager.save_project(project)
 
         return jsonify({
@@ -160,6 +165,95 @@ def append_materials(project_id: str):
 
     except Exception as e:
         logger.error(f"追加材料失败: {e}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@incident_bp.route("/project/<project_id>/materials/append-web", methods=["POST"])
+def append_materials_from_web(project_id: str):
+    """
+    通过网络搜索抓取内容，作为种子材料追加到项目。
+
+    请求 JSON：
+      {
+        "query": "搜索关键词",          // 必填
+        "max_results": 8,              // 可选，默认 8
+        "source_type": "web"           // 可选，默认 "web"
+      }
+    """
+    try:
+        project = ProjectManager.get_project(project_id)
+        if not project:
+            return jsonify({"success": False, "error": f"项目不存在: {project_id}"}), 404
+
+        data = request.get_json(silent=True) or {}
+        query = data.get("query", "").strip()
+        if not query:
+            return jsonify({"success": False, "error": "请提供搜索关键词 (query)"}), 400
+
+        max_results = int(data.get("max_results", 8))
+        source_type = data.get("source_type", "web")
+
+        from ..services.web_scraper import WebScraperService
+        scraper = WebScraperService()
+        if not scraper.is_available():
+            return jsonify({"success": False, "error": "网络搜索服务未配置，请在 .env 中设置 TAVILY_API_KEY"}), 503
+
+        search_result = scraper.search_to_document_texts(
+            query=query,
+            max_results=max_results,
+            simulation_requirement=project.simulation_requirement or "",
+        )
+        if not search_result["success"]:
+            return jsonify({"success": False, "error": search_result.get("error", "搜索失败")}), 400
+
+        added = []
+        sources = search_result.get("sources", [])
+        doc_texts = search_result.get("document_texts", [])
+
+        for i, doc_text in enumerate(doc_texts):
+            title = sources[i]["title"] if i < len(sources) else f"网络搜索-{i+1}"
+            url = sources[i].get("url", "") if i < len(sources) else ""
+
+            entry = MaterialManager.add_material(
+                project_id,
+                title=f"[网络] {title}",
+                source_type=source_type,
+                source_url=url,
+                credibility=0.7,
+                tags=["web", "auto-search"],
+            )
+            ext_name = MaterialManager.save_extracted_text(project_id, entry.material_id, doc_text)
+            MaterialManager.update_material(
+                project_id,
+                entry.material_id,
+                extracted_text_path=ext_name,
+                text_length=len(doc_text),
+            )
+            added.append(entry.material_id)
+
+        # 更新项目级统计 & 同步 project.files
+        project.materials_count = MaterialManager.count(project_id)
+        project.last_material_at = datetime.now().isoformat()
+        all_materials = MaterialManager.list_materials(project_id)
+        project.files = [
+            {"filename": m.title or m.material_id, "size": m.text_length or 0}
+            for m in all_materials
+        ]
+        ProjectManager.save_project(project)
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "project_id": project_id,
+                "added_material_ids": added,
+                "total_materials": project.materials_count,
+                "query": query,
+                "sources": sources,
+            },
+        })
+
+    except Exception as e:
+        logger.error(f"网络搜索追加材料失败: {e}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
 
 
@@ -237,6 +331,15 @@ def rebuild_baseline(project_id: str):
 
         prev_baseline = BaselineManager.get_latest_baseline(project_id)
 
+        # 提取事件因果图（基于材料文本）
+        prev_causal_graph = None
+        if prev_baseline and prev_baseline.event_causal_graph:
+            prev_causal_graph = prev_baseline.event_causal_graph
+        combined_text = MaterialManager.get_combined_text(project_id, material_ids)
+        causal_graph = _llm_extract_causal_graph(
+            combined_text, project.simulation_requirement or "", prev_causal_graph
+        ) if combined_text.strip() else {"events": [], "edges": [], "summary": ""}
+
         snapshot = BaselineManager.create_baseline(
             project_id,
             based_on_material_ids=material_ids,
@@ -249,6 +352,7 @@ def rebuild_baseline(project_id: str):
             open_questions=data.get("open_questions") or analysis.get("open_questions", []),
             current_risks=data.get("current_risks") or analysis.get("current_risks", []),
             recommended_monitoring_signals=data.get("recommended_monitoring_signals") or analysis.get("recommended_monitoring_signals", []),
+            event_causal_graph=causal_graph,
             graph_id=project.graph_id,
         )
 
@@ -261,8 +365,9 @@ def rebuild_baseline(project_id: str):
         rebuild_graph = data.get("rebuild_graph", True)
         if rebuild_graph and project.ontology:
             try:
-                # 1) 将所有材料文本合并写入 project 级 extracted_text
-                all_text = MaterialManager.get_combined_text(project_id)
+                # 1) 将该基线关联的材料文本合并（而非全部材料，保证每个基线图谱独立）
+                baseline_material_ids = snapshot.based_on_material_ids or None
+                all_text = MaterialManager.get_combined_text(project_id, material_ids=baseline_material_ids)
                 if all_text.strip():
                     ProjectManager.save_extracted_text(project_id, all_text)
 
@@ -291,11 +396,17 @@ def rebuild_baseline(project_id: str):
                             chunks = TextProcessor.split_text(all_text, chunk_size=project.chunk_size or Config.DEFAULT_CHUNK_SIZE, overlap=project.chunk_overlap or Config.DEFAULT_CHUNK_OVERLAP)
 
                             task_manager.update_task(graph_task_id, message="创建图谱...", progress=10)
+                            # 每个 baseline 拥有独立的 graph，不删除旧 baseline 的图谱
                             graph_id = builder.create_graph(name=project.name or "Incident Graph")
-                            project.graph_id = graph_id
-                            snapshot.graph_id = graph_id
-                            BaselineManager.save_baseline(snapshot)
-                            ProjectManager.save_project(project)
+                            # 保存 graph_id 到基线（重新读取避免竞态覆盖）
+                            fresh_snapshot = BaselineManager.get_baseline(project_id, snapshot.baseline_id) or snapshot
+                            fresh_snapshot.graph_id = graph_id
+                            BaselineManager.save_baseline(fresh_snapshot)
+                            # 项目全局 graph_id：仅在尚无图谱时设置，避免覆盖其他基线的图谱
+                            _proj = ProjectManager.get_project(project_id) or project
+                            if not _proj.graph_id:
+                                _proj.graph_id = graph_id
+                                ProjectManager.save_project(_proj)
 
                             builder.set_ontology(graph_id, project.ontology)
 
@@ -319,6 +430,7 @@ def rebuild_baseline(project_id: str):
                                 _logger.warning(f"向量索引构建失败（非致命）: {ve}")
 
                             project.status = ProjectStatus.GRAPH_COMPLETED
+                            project.error = None
                             ProjectManager.save_project(project)
                             graph_data = builder.get_graph_data(graph_id)
                             task_manager.update_task(graph_task_id, status=TaskStatus.COMPLETED, message="图谱重建完成", progress=100, result={
@@ -350,6 +462,100 @@ def rebuild_baseline(project_id: str):
 
     except Exception as e:
         logger.error(f"重建基线失败: {e}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@incident_bp.route("/project/<project_id>/baseline/<baseline_id>/rebuild-graph", methods=["POST"])
+def rebuild_baseline_graph(project_id: str, baseline_id: str):
+    """
+    为指定基线单独重建图谱（使用该基线关联的材料）。
+    用于修复旧基线丢失的图谱数据。
+    """
+    try:
+        project = ProjectManager.get_project(project_id)
+        if not project:
+            return jsonify({"success": False, "error": f"项目不存在: {project_id}"}), 404
+
+        snapshot = BaselineManager.get_baseline(project_id, baseline_id)
+        if not snapshot:
+            return jsonify({"success": False, "error": f"基线不存在: {baseline_id}"}), 404
+
+        if not project.ontology:
+            return jsonify({"success": False, "error": "项目尚未生成本体，无法构建图谱"}), 400
+
+        baseline_material_ids = snapshot.based_on_material_ids or None
+        all_text = MaterialManager.get_combined_text(project_id, material_ids=baseline_material_ids)
+        if not all_text.strip():
+            return jsonify({"success": False, "error": "该基线关联的材料无文本内容"}), 400
+
+        from ..models.task import TaskManager, TaskStatus
+        from ..models.project import ProjectStatus
+        from ..services.graph_builder import GraphBuilderService
+        from ..config import Config
+        import threading
+
+        task_manager = TaskManager()
+        graph_task_id = task_manager.create_task(f"重建基线图谱-{baseline_id}")
+
+        def _rebuild():
+            _logger = get_logger("nexusmind.incident.baseline_graph_rebuild")
+            try:
+                task_manager.update_task(graph_task_id, status=TaskStatus.PROCESSING, message="初始化...", progress=5)
+                builder = GraphBuilderService()
+                chunks = TextProcessor.split_text(
+                    all_text,
+                    chunk_size=project.chunk_size or Config.DEFAULT_CHUNK_SIZE,
+                    overlap=project.chunk_overlap or Config.DEFAULT_CHUNK_OVERLAP,
+                )
+
+                task_manager.update_task(graph_task_id, message="创建图谱...", progress=10)
+                graph_id = builder.create_graph(name=f"{project.name or 'Incident'} - {snapshot.current_stage or baseline_id}")
+                # 重新读取避免竞态覆盖
+                fresh_snapshot = BaselineManager.get_baseline(project_id, baseline_id) or snapshot
+                fresh_snapshot.graph_id = graph_id
+                BaselineManager.save_baseline(fresh_snapshot)
+
+                builder.set_ontology(graph_id, project.ontology)
+
+                def _prog(msg, ratio):
+                    task_manager.update_task(graph_task_id, message=msg, progress=15 + int(ratio * 40))
+                task_manager.update_task(graph_task_id, message=f"添加 {len(chunks)} 个文本块...", progress=15)
+                episode_uuids = builder.add_text_batches(graph_id, chunks, batch_size=5, progress_callback=_prog)
+
+                def _wait_prog(msg, ratio):
+                    task_manager.update_task(graph_task_id, message=msg, progress=55 + int(ratio * 35))
+                builder._wait_for_episodes(episode_uuids, _wait_prog)
+
+                task_manager.update_task(graph_task_id, message="标记图谱数据...", progress=92)
+                builder.tag_graph_data(graph_id)
+
+                try:
+                    task_manager.update_task(graph_task_id, message="构建向量索引...", progress=93)
+                    from ..services.vector_store import VectorStore
+                    VectorStore().store_chunks(graph_id=graph_id, chunks=chunks)
+                except Exception as ve:
+                    _logger.warning(f"向量索引构建失败（非致命）: {ve}")
+
+                graph_data = builder.get_graph_data(graph_id)
+                task_manager.update_task(graph_task_id, status=TaskStatus.COMPLETED, message="图谱重建完成", progress=100, result={
+                    "graph_id": graph_id,
+                    "node_count": graph_data.get("node_count", 0),
+                    "edge_count": graph_data.get("edge_count", 0),
+                })
+                _logger.info(f"基线 {baseline_id} 图谱重建完成: {graph_id}")
+            except Exception as e:
+                _logger.error(f"基线图谱重建失败: {e}")
+                task_manager.update_task(graph_task_id, status=TaskStatus.FAILED, message=f"失败: {e}", error=str(e))
+
+        threading.Thread(target=_rebuild, daemon=True).start()
+
+        return jsonify({
+            "success": True,
+            "data": {"task_id": graph_task_id, "baseline_id": baseline_id},
+        })
+
+    except Exception as e:
+        logger.error(f"重建基线图谱失败: {e}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
 
 
@@ -402,6 +608,147 @@ def _llm_analyze_materials(text: str, requirement: str = "") -> dict:
     except Exception as e:
         logger.warning(f"LLM 基线分析失败，使用空基线: {e}")
         return {}
+
+
+def _llm_extract_causal_graph(text: str, requirement: str = "", prev_graph: dict = None) -> dict:
+    """
+    调用 LLM 从材料文本中提取事件因果图。
+    返回 { events: [...], edges: [...] }
+    """
+    import json as _json
+    try:
+        from ..utils.llm_client import LLMClient
+        llm = LLMClient()
+
+        prev_context = ""
+        if prev_graph and prev_graph.get("events"):
+            prev_events = prev_graph["events"]
+            prev_summary = "\n".join(
+                f"- [{e.get('id')}] {e.get('time', '?')} | {e.get('actor', '?')}: {e.get('title', '?')}"
+                for e in prev_events[:30]
+            )
+            prev_context = f"""
+【上一版本因果图中已有的事件】
+{prev_summary}
+
+请在此基础上增量更新：保留已有事件（保持相同 id），新增材料中出现的新事件，补充新的因果关系边。
+如果新材料修正了之前的事件描述，更新该事件内容但保持 id 不变。
+"""
+
+        prompt = f"""请根据以下材料，提取事件因果图。
+
+【事件背景】
+{requirement[:500] if requirement else '（无）'}
+
+【材料原文】
+{text[:6000]}
+{prev_context}
+## 任务
+从材料中识别所有**关键事件节点**，并推断事件之间的**因果关系**。
+
+### 事件节点要求
+- 每个事件必须是材料中明确描述或可直接推断的具体事件
+- 包含：时间（精确到日期或时段）、核心主体、事件标题、简要描述
+- 按时间先后排序
+- 标注事件类型：trigger(触发事件) / response(回应) / escalation(升级) / mitigation(缓和) / turning_point(转折点) / outcome(结果)
+
+### 因果关系边要求
+- 标注关系类型：caused(导致) / triggered(触发) / escalated(升级) / mitigated(缓和) / responded_to(回应) / led_to(演变为)
+- 每条边附简短说明
+
+### 返回JSON格式（不要markdown）
+{{
+  "events": [
+    {{
+      "id": "evt_1",
+      "time": "2025-01-16",
+      "actor": "学生",
+      "title": "学生发帖举报导师",
+      "description": "某学生在社交平台发布帖子，举报导师学术不端和不当行为",
+      "type": "trigger",
+      "stage": "爆发期"
+    }},
+    {{
+      "id": "evt_2",
+      "time": "2025-01-17",
+      "actor": "媒体",
+      "title": "主流媒体跟进报道",
+      "description": "多家主流媒体转载并深入报道该事件",
+      "type": "escalation",
+      "stage": "发酵期"
+    }}
+  ],
+  "edges": [
+    {{
+      "source": "evt_1",
+      "target": "evt_2",
+      "relation": "triggered",
+      "label": "引发媒体关注"
+    }}
+  ],
+  "summary": "事件因果链概述（一句话）"
+}}"""
+
+        response = llm.chat(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=4096,
+        )
+
+        resp_text = response.strip()
+        if resp_text.startswith("```"):
+            resp_text = resp_text.split("```")[1]
+            if resp_text.startswith("json"):
+                resp_text = resp_text[4:]
+        result = _json.loads(resp_text)
+        logger.info(f"LLM 因果图提取完成: {len(result.get('events', []))} 个事件, {len(result.get('edges', []))} 条因果边")
+        return result
+
+    except Exception as e:
+        logger.warning(f"LLM 因果图提取失败: {e}")
+        return {"events": [], "edges": [], "summary": ""}
+
+
+@incident_bp.route("/project/<project_id>/causal-graph", methods=["GET"])
+def get_causal_graph(project_id: str):
+    """获取当前基线的事件因果图"""
+    try:
+        project = ProjectManager.get_project(project_id)
+        if not project:
+            return jsonify({"success": False, "error": f"项目不存在: {project_id}"}), 404
+
+        baseline_id = request.args.get("baseline_id") or getattr(project, "current_baseline_id", None)
+        if not baseline_id:
+            return jsonify({"success": True, "data": {"events": [], "edges": [], "summary": ""}, "message": "尚未创建基线"})
+
+        snapshot = BaselineManager.get_baseline(project_id, baseline_id)
+        if not snapshot:
+            return jsonify({"success": True, "data": {"events": [], "edges": [], "summary": ""}})
+
+        causal_graph = snapshot.event_causal_graph
+        # 旧基线没有因果图，自动补充生成
+        if not causal_graph or not causal_graph.get("events"):
+            material_ids = snapshot.based_on_material_ids or []
+            combined_text = MaterialManager.get_combined_text(project_id, material_ids) if material_ids else ""
+            if combined_text.strip():
+                logger.info(f"为旧基线 {baseline_id} 补充生成因果图...")
+                causal_graph = _llm_extract_causal_graph(
+                    combined_text, project.simulation_requirement or "", None
+                )
+                # 持久化回基线文件，后续不再重复生成
+                if causal_graph and causal_graph.get("events"):
+                    snapshot.event_causal_graph = causal_graph
+                    BaselineManager.save_baseline(snapshot)
+            else:
+                causal_graph = {"events": [], "edges": [], "summary": ""}
+
+        return jsonify({
+            "success": True,
+            "data": causal_graph,
+            "baseline_id": baseline_id,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @incident_bp.route("/project/<project_id>/baseline/current", methods=["GET"])
@@ -609,6 +956,23 @@ def get_forecast_run(project_id: str, run_id: str):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@incident_bp.route("/project/<project_id>/forecast/<run_id>", methods=["DELETE"])
+def delete_forecast_run(project_id: str, run_id: str):
+    """删除指定预测分支"""
+    try:
+        ok = ForecastRunManager.delete_run(project_id, run_id)
+        if not ok:
+            return jsonify({"success": False, "error": "预测分支不存在"}), 404
+        # 如果删的是当前活跃分支，清除引用
+        project = ProjectManager.get_project(project_id)
+        if project and getattr(project, "active_run_id", None) == run_id:
+            project.active_run_id = None
+            ProjectManager.save_project(project)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @incident_bp.route("/project/<project_id>/forecast/compare", methods=["POST"])
 def compare_forecast_runs(project_id: str):
     """
@@ -670,6 +1034,11 @@ def bootstrap_project(project_id: str):
 
         project.materials_count = MaterialManager.count(project_id)
         project.last_material_at = datetime.now().isoformat()
+        all_materials = MaterialManager.list_materials(project_id)
+        project.files = [
+            {"filename": m.title or m.material_id, "size": m.text_length or 0}
+            for m in all_materials
+        ]
         ProjectManager.save_project(project)
 
         return jsonify({
@@ -706,6 +1075,15 @@ def get_project_overview(project_id: str):
         current_baseline = None
         if project.current_baseline_id:
             current_baseline = BaselineManager.get_baseline(project_id, project.current_baseline_id)
+
+        # 自动修复 project.files 与实际材料不一致
+        if len(project.files or []) != len(materials):
+            project.files = [
+                {"filename": m.title or m.material_id, "size": m.text_length or 0}
+                for m in materials
+            ]
+            project.materials_count = len(materials)
+            ProjectManager.save_project(project)
 
         return jsonify({
             "success": True,

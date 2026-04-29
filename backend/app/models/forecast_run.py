@@ -171,6 +171,15 @@ class ForecastRunManager:
         return result
 
     @classmethod
+    def delete_run(cls, project_id: str, run_id: str) -> bool:
+        """删除指定预测分支文件，返回是否成功。"""
+        path = cls._run_path(project_id, run_id)
+        if os.path.exists(path):
+            os.remove(path)
+            return True
+        return False
+
+    @classmethod
     def list_runs_for_baseline(cls, project_id: str, baseline_id: str) -> List[ForecastRun]:
         return [r for r in cls.list_runs(project_id) if r.baseline_id == baseline_id]
 

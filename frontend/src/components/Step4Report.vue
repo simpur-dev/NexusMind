@@ -38,7 +38,7 @@
           <div class="report-header-block">
             <div class="report-meta">
               <span class="report-tag">决策报告</span>
-              <span class="report-id">编号 {{ reportId || '—' }}</span>
+              <span class="report-id">编号 {{ activeReportId || reportId || '—' }}</span>
               <button
                 v-if="isComplete"
                 class="export-pdf-btn"
@@ -501,10 +501,14 @@ const emit = defineEmits(['add-log', 'update-status', 'next-step'])
 
 // Navigation
 const goToInteraction = () => {
-  if (props.reportId) {
-    emit('next-step', { reportId: props.reportId })
+  const rid = activeReportId.value || props.reportId
+  if (rid) {
+    emit('next-step', { reportId: rid })
   }
 }
+
+// 内部实际使用的 reportId（可能来自 props，也可能来自自动生成）
+const activeReportId = ref('')
 
 // State
 const agentLogs = ref([])
@@ -2320,10 +2324,11 @@ let agentLogTimer = null
 let consoleLogTimer = null
 
 const fetchAgentLog = async () => {
-  if (!props.reportId) return
+  const rid = activeReportId.value || props.reportId
+  if (!rid) return
   
   try {
-    const res = await getAgentLog(props.reportId, agentLogLine.value)
+    const res = await getAgentLog(rid, agentLogLine.value)
     
     if (res.success && res.data) {
       const newLogs = res.data.logs || []
@@ -2428,10 +2433,11 @@ const extractFinalContent = (response) => {
 }
 
 const fetchConsoleLog = async () => {
-  if (!props.reportId) return
+  const rid = activeReportId.value || props.reportId
+  if (!rid) return
   
   try {
-    const res = await getConsoleLog(props.reportId, consoleLogLine.value)
+    const res = await getConsoleLog(rid, consoleLogLine.value)
     
     if (res.success && res.data) {
       const newLogs = res.data.logs || []
@@ -2454,11 +2460,12 @@ const fetchConsoleLog = async () => {
 
 // 直接从后端加载已完成的报告（不依赖日志回放）
 const loadExistingReport = async () => {
-  if (!props.reportId) return false
+  const rid = activeReportId.value || props.reportId
+  if (!rid) return false
   
   try {
     // 先获取报告元信息
-    const reportRes = await getReport(props.reportId)
+    const reportRes = await getReport(rid)
     if (!reportRes.success || !reportRes.data) return false
     
     const report = reportRes.data
@@ -2470,7 +2477,7 @@ const loadExistingReport = async () => {
     
     // 如果报告已完成，直接加载各章节内容
     if (report.status === 'completed') {
-      const sectionsRes = await getReportSections(props.reportId)
+      const sectionsRes = await getReportSections(activeReportId.value || props.reportId)
       if (sectionsRes.success && sectionsRes.data) {
         const sections = sectionsRes.data.sections || []
         sections.forEach(s => {
@@ -2517,6 +2524,7 @@ const stopPolling = () => {
 // 初始化：优先加载已完成的报告，否则开始轮询
 const initReport = async (reportId) => {
   if (!reportId) return
+  activeReportId.value = reportId
   
   stopPolling()
   agentLogs.value = []

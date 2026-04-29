@@ -135,14 +135,7 @@
           class="action-btn secondary"
           @click="scrollToSimGraph"
         >
-          查看模拟图谱
-        </button>
-        <button
-          v-if="phase === 2"
-          class="action-btn secondary"
-          @click="openEvaluation"
-        >
-          量化评估报告
+          查看事件故事线
         </button>
         <button
           class="action-btn primary"
@@ -659,7 +652,7 @@ const doResumeSimulation = async () => {
 
 // 打开模拟图谱独立页面
 const scrollToSimGraph = () => {
-  vueRouter.push({
+  const resolved = vueRouter.resolve({
     name: 'SimGraph',
     params: { simulationId: props.simulationId },
     query: {
@@ -667,15 +660,9 @@ const scrollToSimGraph = () => {
       project_id: props.projectData?.project_id
     }
   })
+  window.open(resolved.href, '_blank')
 }
 
-// 打开量化评估报告页面
-const openEvaluation = () => {
-  vueRouter.push({
-    name: 'Evaluation',
-    params: { simulationId: props.simulationId }
-  })
-}
 
 // 重新模拟：先停止当前（如在运行），再强制启动
 const doRestartSimulation = async () => {
@@ -1157,8 +1144,19 @@ const bootstrap = async () => {
       await fetchRunStatusDetail()
       await fetchWorldModelData({ initial: true })
     } else {
-      // idle / null：首次进入，启动
-      doStartSimulation()
+      // idle / null：检查是否有已持久化的历史数据
+      const hasHistoricData = (data.current_round || 0) > 0
+      if (hasHistoricData) {
+        addLog(`✓ 检测到历史模拟数据 (R${data.current_round})，加载中`)
+        runStatus.value = data
+        phase.value = 2
+        await fetchRunStatusDetail()
+        await fetchWorldModelData({ initial: true })
+        emit('update-status', 'completed')
+      } else {
+        // 真正的首次进入，启动
+        doStartSimulation()
+      }
     }
   } catch (err) {
     addLog(`读取当前模拟状态失败: ${err.message}，尝试启动`)
@@ -1204,29 +1202,29 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(10, 10, 12, 0.45);
-  backdrop-filter: blur(4px);
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(8px);
 }
 .run-choice-card {
-  background: var(--color-white);
-  border: 1px solid var(--gradient-cyan);
+  background: #FFFFFF;
+  border: 1px solid #c7d2fe;
   border-radius: 16px;
   padding: 28px 32px;
   max-width: 440px;
   width: 90%;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(255,255,255,0.8);
 }
 .run-choice-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: var(--gradient-purple);
+  color: #4338ca;
   font-size: 15px;
   font-weight: 600;
   margin-bottom: 18px;
 }
 .run-choice-body {
-  color: var(--color-black);
+  color: #1e293b;
 }
 .run-choice-info {
   font-size: 14px;
@@ -1234,12 +1232,12 @@ onUnmounted(() => {
   margin-bottom: 8px;
 }
 .run-choice-info strong {
-  color: var(--color-black);
+  color: #0f172a;
   font-weight: 600;
 }
 .run-choice-hint {
   font-size: 13px;
-  color: #64748b;
+  color: #475569;
   margin-bottom: 20px;
 }
 .run-choice-actions {

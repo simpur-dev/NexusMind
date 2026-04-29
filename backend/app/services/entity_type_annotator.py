@@ -256,7 +256,8 @@ def annotate_entity_types(
     # ---- 1. 读取所有节点 ----
     async def _fetch_nodes():
         driver = get_neo4j_async_driver()
-        gid_filter = "WHERE n.group_id = $gid OR n.group_id IS NULL" if graph_id else ""
+        gid_filter = ("WHERE n.group_id = $gid OR $gid IN coalesce(n.group_ids, []) "
+                      "OR n.group_id IS NULL") if graph_id else ""
         result = await driver.execute_query(
             f"MATCH (n:Entity) {gid_filter} "
             "RETURN n.uuid AS uuid, n.name AS name, n.summary AS summary, "

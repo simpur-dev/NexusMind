@@ -10,7 +10,7 @@
             <polyline points="9 22 9 12 15 12 15 22"/>
           </svg>
         </button>
-        <button v-if="fromIncidentWorkspace" class="home-btn incident-back-btn" @click="goBackToWorkspace" title="返回事件工作台">
+        <button class="home-btn incident-back-btn" @click="goBackToWorkspace" title="返回事件工作台">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="15 18 9 12 15 6"/>
           </svg>
@@ -41,6 +41,15 @@
         <span class="status-text">{{ statusText }}</span>
       </div>
     </nav>
+
+    <!-- 分支上下文条（从事件工作台跳转时显示） -->
+    <div class="branch-context-bar" v-if="branchContext">
+      <span class="branch-ctx-icon">⑂</span>
+      <span class="branch-ctx-type" :class="branchContext.type">{{ branchContext.typeLabel }}</span>
+      <span class="branch-ctx-label">{{ branchContext.label }}</span>
+      <span class="branch-ctx-sep">|</span>
+      <span class="branch-ctx-baseline">基线 {{ branchContext.baselineId?.slice(-6) || '—' }}</span>
+    </div>
 
     <!-- 主内容区 -->
     <div class="main-content">
@@ -375,7 +384,6 @@
           </div>
         </div>
 
-        <!-- Step 内容区 -->
         <div class="step-area">
           <Transition name="step-slide" mode="out-in">
             <div :key="currentStep" class="step-area-inner">
@@ -387,8 +395,10 @@
                 :buildProgress="buildProgress"
                 :graphData="graphData"
                 :systemLogs="systemLogs"
+                :rebuildingGraph="rebuildingGraph"
                 @next-step="handleNextStep"
                 @simulation-created="handleSimulationCreated"
+                @rebuild-graph="handleRebuildGraph"
               />
               <!-- Step 2 用和 Step 1 相同的外层包裹 -->
               <div v-else-if="currentStep === 2" class="workbench-wrapper">
@@ -473,11 +483,12 @@ const graphData = ref(null)
 const buildProgress = ref(null)
 const ontologyProgress = ref(null) // 本体生成进度
 const currentPhase = ref(-1) // -1: 上传中, 0: 本体生成中, 1: 图谱构建, 2: 完成
+const rebuildingGraph = ref(false) // 重新构建图谱中
 const selectedItem = ref(null) // 选中的节点或边
 const isFullScreen = ref(false)
 
 // Step 导航状态
-const currentStep = ref(1) // 1: 图谱构建, 2: 环境搭建, 3: 开始模拟, 4: 报告生成, 5: 深度互动
+const currentStep = ref(1) // 1: 图谱构建, 2: 环境搭建, 3: 世界模型推演, 4: 报告生成, 5: 深度互动
 const maxReachedStep = ref(1) // 已到达过的最高步骤，允许在已访问步骤间自由跳转
 const stepNames = ['图谱构建', '环境搭建', '世界模型推演', '报告生成', '深度互动']
 const currentSimulationId = ref(null)
@@ -573,8 +584,6 @@ const statusText = computed(() => {
       return stepStatus.value === 'completed' ? '模拟完成' : '模拟运行中'
     case 4:
       return stepStatus.value === 'completed' ? '报告完成' : '报告生成中'
-    case 5:
-      return '深度互动就绪'
     default:
       return ''
   }
@@ -613,6 +622,20 @@ const entityTypes = computed(() => {
 
 // 是否从事件工作台跳转过来
 const fromIncidentWorkspace = computed(() => !!route.query.sim)
+
+const branchTypeCN = { base: '基准', recalibrated: '校准', intervention_a: '干预A', intervention_b: '干预B', intervention_c: '干预C' }
+const branchContext = computed(() => {
+  const bl = route.query.baseline_id
+  const label = route.query.branch_label
+  const type = route.query.branch_type
+  if (!bl && !label) return null
+  return {
+    baselineId: bl || '',
+    label: label || '—',
+    type: type || 'base',
+    typeLabel: branchTypeCN[type] || type || '基准',
+  }
+})
 
 const goBackToWorkspace = () => {
   router.push(`/incident/${currentProjectId.value}`)
@@ -896,6 +919,7 @@ const handleNewProject = async () => {
 const loadProject = async () => {
   try {
     loading.value = true
+    error.value = ''
     const response = await getProject(currentProjectId.value)
     
     if (response.success) {
@@ -907,16 +931,48 @@ const loadProject = async () => {
       // 事件工作台跳转时可通过 ?sim= 指定 simulation_id
       const querySim = route.query.sim
 
+      // 辅助：从 baseline / simulation / project 中解析正确的 graph_id
+      // 优先级：baseline_graph_id（路由参数）> simulation graph_id > project graph_id
+      const queryBaselineGraphId = route.query.baseline_graph_id
+      const resolveGraphId = async (simId) => {
+        // 1. 事件工作台传入的基线 graph_id（最可靠）
+        if (queryBaselineGraphId) return queryBaselineGraphId
+        // 2. 从模拟分支获取
+        if (simId) {
+          try {
+            const { getSimulation } = await import('../api/simulation')
+            const simRes = await getSimulation(simId)
+            const simGraphId = simRes?.data?.graph_id
+            if (simGraphId && simGraphId !== response.data.graph_id) {
+              const checkRes = await getGraphData(simGraphId)
+              const nodeCount = checkRes?.data?.node_count || checkRes?.data?.nodes?.length || 0
+              if (nodeCount > 0) return simGraphId
+            }
+          } catch (_) { /* fallback */ }
+        }
+        // 3. 回退到项目全局 graph_id
+        return response.data.graph_id
+      }
+
       // 从项目数据恢复 Step 导航状态
       if (response.data.report_id) {
         // 报告已生成，恢复关联数据
         currentSimulationId.value = querySim || response.data.simulation_id
         currentReportId.value = response.data.report_id
         maxReachedStep.value = 5
-        if (response.data.graph_id) {
+        const graphIdToLoad = await resolveGraphId(currentSimulationId.value)
+        if (graphIdToLoad) {
           currentPhase.value = 2
-          await loadGraph(response.data.graph_id)
+          await loadGraph(graphIdToLoad)
         }
+        // 从后端恢复模拟轮数配置
+        try {
+          const { getRunStatus } = await import('../api/simulation')
+          const statusRes = await getRunStatus(currentSimulationId.value)
+          if (statusRes?.data?.total_rounds) {
+            maxRounds.value = statusRes.data.total_rounds
+          }
+        } catch (_) { /* 模拟状态不可用 */ }
         // 优先使用 URL 指定的步骤，否则默认 Step 4
         const targetStep = (requestedStep >= 1 && requestedStep <= maxReachedStep.value) ? requestedStep : 4
         currentStep.value = targetStep
@@ -925,10 +981,19 @@ const loadProject = async () => {
         // 模拟已创建，恢复关联数据（querySim 来自事件工作台跳转）
         currentSimulationId.value = querySim || response.data.simulation_id
         maxReachedStep.value = 5
-        if (response.data.graph_id) {
+        const graphIdToLoad = await resolveGraphId(currentSimulationId.value)
+        if (graphIdToLoad) {
           currentPhase.value = 2
-          await loadGraph(response.data.graph_id)
+          await loadGraph(graphIdToLoad)
         }
+        // 从后端恢复模拟轮数配置
+        try {
+          const { getRunStatus } = await import('../api/simulation')
+          const statusRes = await getRunStatus(currentSimulationId.value)
+          if (statusRes?.data?.total_rounds) {
+            maxRounds.value = statusRes.data.total_rounds
+          }
+        } catch (_) { /* 模拟状态不可用，保持默认 */ }
         // 优先使用 URL 指定的步骤，否则默认 Step 2
         const targetStep = (requestedStep >= 1 && requestedStep <= maxReachedStep.value) ? requestedStep : 2
         currentStep.value = targetStep
@@ -1015,6 +1080,22 @@ const startBuildGraph = async () => {
   }
 }
 
+// 重新构建图谱（用户手动触发）
+const handleRebuildGraph = async () => {
+  if (rebuildingGraph.value) return
+  rebuildingGraph.value = true
+  error.value = ''
+  addLog('用户手动触发图谱重建...')
+  try {
+    await startBuildGraph()
+  } catch (e) {
+    console.error('handleRebuildGraph error:', e)
+    error.value = '重建图谱失败: ' + (e.message || '未知错误')
+  } finally {
+    rebuildingGraph.value = false
+  }
+}
+
 // 图谱数据轮询定时器
 let graphPollTimer = null
 
@@ -1032,7 +1113,7 @@ const startGraphPolling = () => {
 // 手动刷新图谱
 const refreshGraph = async () => {
   graphLoading.value = true
-  await fetchGraphData()
+  await fetchGraphData(true)
   graphLoading.value = false
 }
 
@@ -1045,15 +1126,19 @@ const stopGraphPolling = () => {
 }
 
 // 获取图谱数据
-const fetchGraphData = async () => {
+const fetchGraphData = async (forceRender = false) => {
   try {
-    // 先获取项目信息以获取 graph_id
+    // 先获取项目信息
     const projectResponse = await getProject(currentProjectId.value)
     
-    if (projectResponse.success && projectResponse.data.graph_id) {
-      const graphId = projectResponse.data.graph_id
-      projectData.value = projectResponse.data
-      
+    // 优先使用路由中传入的基线 graph_id，其次使用项目全局 graph_id
+    const blGid = route.query.baseline_graph_id
+    const projGid = projectResponse.success ? projectResponse.data.graph_id : null
+    const graphId = blGid || projGid
+    
+    if (projectResponse.success) projectData.value = projectResponse.data
+    
+    if (graphId) {
       // 获取图谱数据
       const graphResponse = await getGraphData(graphId)
       
@@ -1064,8 +1149,8 @@ const fetchGraphData = async () => {
         
         console.log('Fetching graph data, nodes:', newNodeCount, 'edges:', newData.edge_count || newData.edges?.length || 0)
         
-        // 数据有变化时更新渲染
-        if (newNodeCount !== oldNodeCount || !graphData.value) {
+        // 手动刷新时强制重新渲染；轮询时仅在数据变化时渲染
+        if (forceRender || newNodeCount !== oldNodeCount || !graphData.value) {
           graphData.value = newData
           await nextTick()
           renderGraph()
@@ -1801,6 +1886,9 @@ onUnmounted(() => {
   font-family: 'JetBrains Mono', 'Noto Sans SC', monospace;
   overflow: hidden; /* Prevent body scroll in fullscreen */
   position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
 }
 
 /* 导航栏 */
@@ -1816,6 +1904,54 @@ onUnmounted(() => {
   z-index: 100;
   position: relative;
   border-bottom: 1px solid rgba(115, 168, 185, 0.2);
+}
+
+.branch-context-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 24px;
+  background: linear-gradient(90deg, rgba(59,130,246,0.08) 0%, rgba(6,182,212,0.06) 50%, rgba(139,92,246,0.06) 100%);
+  border-bottom: 1px solid rgba(59,130,246,0.12);
+  font-size: 12px;
+  color: #94a3b8;
+  z-index: 99;
+  position: relative;
+}
+
+.branch-ctx-icon {
+  font-size: 15px;
+  color: #60a5fa;
+}
+
+.branch-ctx-type {
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  background: rgba(59,130,246,0.15);
+  color: #60a5fa;
+}
+
+.branch-ctx-type.recalibrated { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.branch-ctx-type.intervention_a { background: rgba(16,185,129,0.15); color: #10b981; }
+.branch-ctx-type.intervention_b { background: rgba(139,92,246,0.15); color: #8b5cf6; }
+.branch-ctx-type.intervention_c { background: rgba(236,72,153,0.15); color: #ec4899; }
+
+.branch-ctx-label {
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+.branch-ctx-sep {
+  color: rgba(148,163,184,0.3);
+}
+
+.branch-ctx-baseline {
+  color: #64748b;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
 }
 
 .nav-brand-group {
@@ -2062,7 +2198,8 @@ onUnmounted(() => {
 /* 主内容区 */
 .main-content {
   display: flex;
-  height: calc(100vh - 56px);
+  flex: 1;
+  min-height: 0;
   position: relative;
 }
 
