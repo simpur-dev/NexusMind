@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="home-container">
     <nav class="navbar">
       <div class="nav-brand">
@@ -7,18 +7,140 @@
         </div>
         <div class="brand-copy">
           <div class="brand-name">NexusMind</div>
+          <div class="brand-badge">群体智能引擎</div>
         </div>
       </div>
       <div class="nav-links">
+        <template v-if="!isLoggedIn">
+          <button class="auth-btn login-btn" @click="showAuthModal = true; authMode = 'login'">
+            登录
+          </button>
+        </template>
+        <template v-else>
+          <div class="user-info">
+            <span class="user-avatar">{{ currentUser.charAt(0).toUpperCase() }}</span>
+            <span class="user-name">{{ currentUser }}</span>
+            <button class="auth-btn logout-btn" @click="handleLogout">退出</button>
+          </div>
+        </template>
         <a href="https://github.com/simpur-dev/NexusMind" target="_blank" class="github-link github-link-ghost">
-          访问我们的 GitHub 主页 <span class="arrow">↗</span>
+          访问 GitHub <span class="arrow">↗</span>
         </a>
       </div>
     </nav>
 
-    <div class="main-content">
-      <section class="hero-section">
-        <div class="hero-left">
+    <!-- 登录/注册弹窗 -->
+    <Teleport to="body">
+      <Transition name="modal-fade">
+        <div v-if="showAuthModal" class="modal-overlay" @click.self="showAuthModal = false">
+          <div class="auth-modal">
+            <button class="modal-close" @click="showAuthModal = false">×</button>
+
+            <!-- 标题区域 -->
+            <div class="modal-header">
+              <div class="modal-brand">
+                <img src="../assets/logo/NexusMind Logo.png" alt="Logo" class="modal-logo" />
+              </div>
+              <h2 class="modal-title">{{ authMode === 'login' ? '欢迎回来' : '创建账户' }}</h2>
+              <p class="modal-subtitle">
+                {{ authMode === 'login' ? '登录以继续使用 NexusMind' : '注册账户开始体验群体智能' }}
+              </p>
+            </div>
+
+            <!-- 表单 -->
+            <form @submit.prevent="handleAuth" class="auth-form">
+              <div class="form-group">
+                <label class="form-label">账号</label>
+                <input
+                  v-model="authForm.username"
+                  type="text"
+                  class="form-input"
+                  placeholder="请输入账号"
+                  required
+                />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">密码</label>
+                <div class="password-wrapper">
+                  <input
+                    v-model="authForm.password"
+                    :type="showPassword ? 'text' : 'password'"
+                    class="form-input"
+                    placeholder="请输入密码"
+                    required
+                  />
+                  <button type="button" class="password-toggle" @click="showPassword = !showPassword">
+                    {{ showPassword ? '隐藏' : '显示' }}
+                  </button>
+                </div>
+              </div>
+
+              <template v-if="authMode === 'register'">
+                <div class="form-group">
+                  <label class="form-label">确认密码</label>
+                  <input
+                    v-model="authForm.confirmPassword"
+                    type="password"
+                    class="form-input"
+                    placeholder="请再次输入密码"
+                    required
+                  />
+                </div>
+              </template>
+
+              <div v-if="authMode === 'login'" class="form-options">
+                <label class="remember-me">
+                  <input type="checkbox" v-model="authForm.remember" />
+                  <span>记住我</span>
+                </label>
+                <a href="#" class="forgot-link">忘记密码？</a>
+              </div>
+
+              <button type="submit" class="submit-btn">
+                {{ authMode === 'login' ? '登 录' : '注 册' }}
+              </button>
+            </form>
+
+            <!-- 社交登录 - 仅登录时显示 -->
+            <template v-if="authMode === 'login'">
+              <div class="divider">
+                <span>或</span>
+              </div>
+              <div class="social-login">
+                <button type="button" class="social-btn">
+                  <svg class="social-icon" viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="currentColor" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.342-3.369-1.342-.454-1.155-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
+                  </svg>
+                  GitHub
+                </button>
+                <button type="button" class="social-btn">
+                  <svg class="social-icon" viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                  Google
+                </button>
+              </div>
+            </template>
+
+            <!-- 切换模式 -->
+            <div class="mode-switch">
+              <span>{{ authMode === 'login' ? '还没有账户？' : '已有账户？' }}</span>
+              <button type="button" class="switch-btn" @click="authMode = authMode === 'login' ? 'register' : 'login'">
+                {{ authMode === 'login' ? '立即注册' : '立即登录' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <div class="main-content" :class="{ 'main-content-dashboard': isLoggedIn }">
+      <section v-if="!isLoggedIn" class="hero-section">
+        <div class="hero-left" :class="{ 'slide-in-left': isMounted }">
           <div class="hero-panel">
             <div class="hero-panel-top">
               <div class="tag-row">
@@ -42,7 +164,7 @@
                   <span class="feature-glyph">⌁</span>
                 </div>
                 <p>
-                  哪怕只是一份简报，<span class="highlight-bold">NexusMind</span> 擎亦能捕获其中的现实参数。瞬息之间，全自动完成百万量级 Agent 的自组织，构建高保真数字平行世界。
+                  哪怕只是一份简报，<span class="highlight-bold">NexusMind</span> 亦能捕获其中的现实参数。自动提取事件要素与关系网络，构建知识图谱，生成多角色智能体进行舆情推演。
                 </p>
               </article>
 
@@ -52,7 +174,7 @@
                 </div>
                 <p>
                   开启全局观测与参数干预。在复杂多智能体（Multi-Agent）的动态博弈网络中，系统将持续演算，精准捕捉环境演变的
-                  <span class="highlight-code">“最优解”</span>。
+                  <span class="highlight-code">"最优解"</span>。
                 </p>
               </article>
             </div>
@@ -62,15 +184,14 @@
             </div>
 
             <div class="hero-footer">
-              <span>// 并行世界: v1.0.3</span>
-              <span>// Agent 数量: 2,100,000</span>
+              <span>// 图谱构建 · 多智能体推演 · 世界模型跟踪 · 滚动预测校准 · 决策简报生成</span>
             </div>
 
             <div class="hero-left-spacer" aria-hidden="true"></div>
           </div>
         </div>
 
-        <div class="hero-right">
+        <div class="hero-right" :class="{ 'slide-in-right': isMounted }">
           <div class="hero-actions">
 
           </div>
@@ -135,89 +256,60 @@
         </div>
       </section>
 
-      <div class="hero-scroll-row">
-        <button class="scroll-down-btn" @click="scrollToBottom">
-          <span class="scroll-copy">
-            <span class="scroll-kicker">NEXT LAYER</span>
-            <span class="scroll-label">向下探索 / 进入模拟控制台</span>
-          </span>
-          <span class="scroll-arrow-wrap">
-            <span class="scroll-arrow">↓</span>
-          </span>
-        </button>
-      </div>
 
-      <section class="dashboard-section">
-        <div class="left-panel">
-          <div class="panel-header">
-            <span class="status-dot">●</span> 系统状态
+      <section v-if="isLoggedIn" class="dashboard-section dashboard-studio">
+        <div class="left-panel studio-hero-card" :class="{ 'slide-in-left': isMounted }">
+          <div class="studio-hero-copy">
+            <div class="panel-header">
+              <span class="status-dot">●</span> NexusMind 启动页
+            </div>
+            <span class="studio-eyebrow">PUBLIC OPINION SIMULATION</span>
+            <h2 class="section-title">从第一份种子材料开始，推演舆情演化的下一步</h2>
+            <p class="section-desc">
+              面向突发舆情事件，接入早期材料、公开网络信息与处置目标，构建可滚动更新的社会世界模型，为风险研判、信任修复和决策简报提供依据。
+            </p>
+            <div class="studio-chip-row">
+              <span>早期材料接入</span>
+              <span>多智能体推演</span>
+              <span>滚动预测更新</span>
+              <span>处置建议生成</span>
+            </div>
           </div>
-
-          <h2 class="section-title">准备就绪</h2>
-          <p class="section-desc">
-            预测引擎待命中，可上传多份非结构化数据以初始化模拟序列。
-          </p>
 
           <div class="metrics-row">
             <div class="metric-card">
+              <span class="metric-icon">◇</span>
               <div class="metric-value">零试错</div>
-              <div class="metric-label">全场景决策推演未来最优解</div>
+              <div class="metric-label">在真实处置前完成多方案推演与风险预判</div>
             </div>
             <div class="metric-card">
+              <span class="metric-icon">◎</span>
               <div class="metric-value">高可扩</div>
-              <div class="metric-label">百万级 Agent 并行构建数字平行世界</div>
+              <div class="metric-label">支持多源材料接入与百万级 Agent 并行建模</div>
             </div>
-          </div>
-
-          <div class="steps-container">
-            <div class="steps-header">
-              <span class="diamond-icon">◆</span> 工作流序列
-            </div>
-            <div class="workflow-list">
-              <div class="workflow-item">
-                <span class="step-num">01</span>
-                <div class="step-info">
-                  <div class="step-title">图谱构建</div>
-                  <div class="step-desc">提取现实种子数据，注入记忆，完成 GraphRAG 知识图谱构建</div>
-                </div>
-              </div>
-              <div class="workflow-item">
-                <span class="step-num">02</span>
-                <div class="step-info">
-                  <div class="step-title">环境搭建</div>
-                  <div class="step-desc">抽取实体关联关系，生成含内部目标与价值权重的智能体设定，完成环境配置与仿真参数部署</div>
-                </div>
-              </div>
-              <div class="workflow-item">
-                <span class="step-num">03</span>
-                <div class="step-info">
-                  <div class="step-title">世界模型推演</div>
-                  <div class="step-desc">双平台并行启动仿真。世界状态每轮写回每个 Agent 的 prompt，使其感知讨论演化、自主决策</div>
-                </div>
-              </div>
-              <div class="workflow-item">
-                <span class="step-num">04</span>
-                <div class="step-info">
-                  <div class="step-title">报告生成</div>
-                  <div class="step-desc">ReportAgent 融合世界状态轨迹与因果图谱，自动生成可解释的专业预测报告</div>
-                </div>
-              </div>
-              <div class="workflow-item">
-                <span class="step-num">05</span>
-                <div class="step-info">
-                  <div class="step-title">深度互动</div>
-                  <div class="step-desc">与模拟世界中的任意角色对话，或与 ReportAgent 连续追问</div>
-                </div>
-              </div>
+            <div class="metric-card">
+              <span class="metric-icon">↻</span>
+              <div class="metric-value">滚动推演</div>
+              <div class="metric-label">随事件进展补充材料并持续校准预测结果</div>
             </div>
           </div>
         </div>
 
-        <div class="right-panel">
+        <div class="right-panel studio-console-card" :class="{ 'slide-in-right': isMounted }">
+          <div class="studio-card-head">
+            <div>
+              <span class="studio-eyebrow">EVENT INTAKE</span>
+              <h3>新事件推演控制台</h3>
+            </div>
+            <span class="studio-state" :class="{ ready: canSubmit }">
+              {{ canSubmit ? 'READY' : 'WAITING INPUT' }}
+            </span>
+          </div>
+
           <div class="console-box">
             <div class="console-section">
               <div class="console-header">
-                <span class="console-label">01 / 现实种子</span>
+                <span class="console-label">01 / 现实种子材料</span>
               </div>
 
               <div class="source-tabs">
@@ -240,7 +332,7 @@
               </div>
 
               <div v-if="sourceMode === 'file'" class="source-panel">
-                <div class="console-meta" style="margin-bottom: 8px;">支持格式: PDF, MD, TXT</div>
+                <div class="console-meta" style="margin-bottom: 8px;">上传第一阶段材料，系统将在下一步构建事件图谱与 Agent 环境。支持格式: PDF, MD, TXT</div>
                 <div
                   class="upload-zone"
                   :class="{ 'drag-over': isDragOver, 'has-files': files.length > 0 }"
@@ -261,8 +353,8 @@
 
                   <div v-if="files.length === 0" class="upload-placeholder">
                     <div class="upload-icon">↑</div>
-                    <div class="upload-title">拖拽文件上传</div>
-                    <div class="upload-hint">或点击浏览文件系统</div>
+                    <div class="upload-title">投放舆情种子材料</div>
+                    <div class="upload-hint">拖拽 PDF / MD / TXT，或点击浏览文件系统</div>
                   </div>
 
                   <div v-else class="file-list">
@@ -298,7 +390,7 @@
               </div>
 
               <div v-else class="source-panel">
-                <div class="console-meta" style="margin-bottom: 8px;">输入关键词，自动搜索公开舆情信息作为种子</div>
+                <div class="console-meta" style="margin-bottom: 8px;">输入事件、人物、机构或平台关键词，自动搜索公开舆情信息作为种子材料</div>
                 <div class="web-search-input">
                   <input
                     v-model="webQuery"
@@ -313,18 +405,18 @@
             </div>
 
             <div class="console-divider">
-              <span>输入参数</span>
+              <span>推演目标</span>
             </div>
 
             <div class="console-section">
               <div class="console-header">
-                <span class="console-label">02 / 模拟提示词</span>
+                <span class="console-label">02 / 事件背景与决策问题</span>
               </div>
               <div class="input-wrapper">
                 <textarea
                   v-model="formData.simulationRequirement"
                   class="code-input"
-                  placeholder="// 描述事件背景与决策问题，例如：&#10;// 武汉大学图书馆争议事件：校方撤销肖某瑫记过处分并维持杨某媛硕士学位。&#10;// 请模拟各利益群体（学生、校友、教职工、公众）对此决定的反应，&#10;// 评估舆情风险、信任修复路径，并给出分阶段的处置建议。"
+                  placeholder="// 描述舆情事件、当前已知事实和需要辅助判断的问题，例如：&#10;// 某争议事件进入第一阶段扩散，请基于已上传材料模拟学生、校友、教职工、媒体与公众的后续反应。&#10;// 重点评估舆情风险、信任修复路径、二次扩散节点，并给出分阶段处置建议。"
                   rows="6"
                   :disabled="loading"
                 ></textarea>
@@ -345,19 +437,128 @@
             </div>
           </div>
         </div>
+
+        <div class="workflow-panel">
+          <div class="steps-container">
+            <div class="steps-header">
+              <span class="diamond-icon">◆</span> 舆情推演决策链
+            </div>
+            <div class="workflow-list">
+              <div class="workflow-item">
+                <span class="step-num">01</span>
+                <div class="step-info">
+                  <div class="step-title">事件图谱生成</div>
+                  <div class="step-desc">提取现实种子数据，注入记忆，完成 GraphRAG 知识事件图谱生成</div>
+                </div>
+              </div>
+              <div class="workflow-item">
+                <span class="step-num">02</span>
+                <div class="step-info">
+                  <div class="step-title">群体环境建模</div>
+                  <div class="step-desc">抽取实体关联关系，生成含内部目标与价值权重的智能体设定，完成环境配置与仿真参数部署</div>
+                </div>
+              </div>
+              <div class="workflow-item">
+                <span class="step-num">03</span>
+                <div class="step-info">
+                  <div class="step-title">舆情态势推演</div>
+                  <div class="step-desc">双平台并行仿真，逐轮回写世界状态，驱动群体立场演化</div>
+                </div>
+              </div>
+              <div class="workflow-item">
+                <span class="step-num">04</span>
+                <div class="step-info">
+                  <div class="step-title">决策简报生成</div>
+                  <div class="step-desc">ReportAgent 融合世界状态轨迹与因果图谱，自动生成可解释的专业预测报告</div>
+                </div>
+              </div>
+              <div class="workflow-item">
+                <span class="step-num">05</span>
+                <div class="step-info">
+                  <div class="step-title">智能追问研判</div>
+                  <div class="step-desc">与模拟世界中的任意角色对话，或与 ReportAgent 连续追问</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </section>
 
-      <HistoryDatabase />
+      <HistoryDatabase v-if="isLoggedIn" />
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import HistoryDatabase from '../components/HistoryDatabase.vue'
 
 const router = useRouter()
+
+const isMounted = ref(false)
+
+// 登录/注册弹窗状态
+const showAuthModal = ref(false)
+const authMode = ref('login') // 'login' | 'register'
+const showPassword = ref(false)
+const authForm = ref({
+  username: '',
+  email: '',
+  password: '',
+  confirmPassword: '',
+  remember: false
+})
+
+const isLoggedIn = ref(false)
+const currentUser = ref('')
+
+const DEMO_PASSWORD = '123456'
+
+const handleAuth = () => {
+  if (authMode.value === 'register') {
+    const name = authForm.value.username || 'User'
+    doLogin(name)
+    return
+  }
+  // 登录：密码为 123456 即可
+  if (authForm.value.password === DEMO_PASSWORD && authForm.value.username.trim()) {
+    doLogin(authForm.value.username.trim())
+  } else {
+    alert('账号或密码错误')
+  }
+}
+
+const doLogin = (username) => {
+  isLoggedIn.value = true
+  currentUser.value = username
+  localStorage.setItem('nexusmind_logged_in', 'true')
+  localStorage.setItem('nexusmind_user', username)
+  showAuthModal.value = false
+  // 回到顶部（dashboard 会自动显示）
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+const handleLogout = () => {
+  isLoggedIn.value = false
+  currentUser.value = ''
+  localStorage.removeItem('nexusmind_logged_in')
+  localStorage.removeItem('nexusmind_user')
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+onMounted(() => {
+  // 恢复登录状态
+  if (localStorage.getItem('nexusmind_logged_in') === 'true') {
+    isLoggedIn.value = true
+    currentUser.value = localStorage.getItem('nexusmind_user') || 'User'
+  }
+  // 延迟一点触发动画，确保页面渲染完成
+  setTimeout(() => {
+    isMounted.value = true
+  }, 50)
+})
 
 const formData = ref({
   simulationRequirement: ''
@@ -478,6 +679,10 @@ const startSimulation = () => {
   --text-primary: #3A5A6A;
   --text-secondary: rgba(58, 90, 106, 0.78);
   --text-muted: rgba(58, 90, 106, 0.52);
+  /* 青色变量（与主题一致） */
+  --blue-primary: #3A5A6A;
+  --blue-accent: #73A8B9;
+  --blue-light: #8EBDCB;
 
   /* ================= 容器基础设置 ================= */
   min-height: 100vh;
@@ -487,25 +692,23 @@ const startSimulation = () => {
   color: var(--text-primary);
   
   /* ================= 核心：高亮科技感背景 ================= */
-  /* 1. 极深的基底色，用来反衬高光 */
-  background-color: #F0F5F7;
+  background-color: #f8fbff;
   
   background-image: 
     /* 层级1：全息坐标网格 (细锐的青色线，构建空间秩序感) */
-    linear-gradient(rgba(115, 168, 185, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(115, 168, 185, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(147, 197, 253, 0.15) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(147, 197, 253, 0.15) 1px, transparent 1px),
     
     /* 层级2：高亮核心光源 (大幅提升透明度，制造“发光”错觉) */
-    radial-gradient(ellipse 50% 35% at 20% 75%, rgba(89, 158, 175, 0.1) 0%, transparent 50%),
-    /* 右上科技蓝副光源 */
-    radial-gradient(ellipse 50% 40% at 85% 20%, rgba(6, 182, 212, 0.1) 0%, transparent 60%),
-    radial-gradient(ellipse 40% 50% at 70% 70%, rgba(115, 168, 185, 0.14) 0%, transparent 55%),
-    linear-gradient(135deg, rgba(240, 245, 247, 0.9) 0%, rgba(218, 235, 240, 0.6) 50%, rgba(200, 225, 232, 0.8) 100%);
+    radial-gradient(ellipse 50% 40% at 20% 80%, rgba(96, 165, 250, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 35% at 85% 15%, rgba(59, 130, 246, 0.1) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 50% at 60% 60%, rgba(147, 197, 253, 0.15) 0%, transparent 50%),
+    linear-gradient(180deg, #f8fbff 0%, #f3f7fc 50%, #eef4fc 100%);
 
   /* 定义网格大小(40px)和光晕铺满 */
-  background-size: 
-    40px 40px, 40px 40px, /* 网格尺寸 */
-    100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+  background-size:
+    40px 40px, 40px 40px,
+    100% 100%, 100% 100%, 100% 100%, 100% 100%;
     
   /* 保证页面滚动时，背景光影和网格锁定不动，质感拉满 */
   background-attachment: fixed;
@@ -535,21 +738,21 @@ const startSimulation = () => {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(rgba(115, 168, 185, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(115, 168, 185, 0.04) 1px, transparent 1px);
+    linear-gradient(rgba(147, 197, 253, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(147, 197, 253, 0.08) 1px, transparent 1px);
   background-size: 88px 88px;
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.3), transparent 82%);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.2), transparent 82%);
   z-index: 0;
 }
 
 :global(html) {
   scrollbar-width: thin;
-  scrollbar-color: #73a8b9 #e6f2f7;
+  scrollbar-color: #93c5fd #e0effe;
 }
 
 :global(body) {
   scrollbar-width: thin;
-  scrollbar-color: #73a8b9 #e6f2f7;
+  scrollbar-color: #93c5fd #e0effe;
 }
 
 :global(html::-webkit-scrollbar),
@@ -559,21 +762,21 @@ const startSimulation = () => {
 
 :global(html::-webkit-scrollbar-track),
 :global(body::-webkit-scrollbar-track) {
-  background: #e6f2f7;
-  border-left: 1px solid rgba(115, 168, 185, 0.12);
+  background: #e0effe;
+  border-left: 1px solid rgba(147, 197, 253, 0.2);
 }
 
 :global(html::-webkit-scrollbar-thumb),
 :global(body::-webkit-scrollbar-thumb) {
-  background: linear-gradient(180deg, #8ebdcb, #73a8b9);
-  border: 2px solid #e6f2f7;
+  background: linear-gradient(180deg, #93c5fd, #60a5fa);
+  border: 2px solid #e0effe;
   border-radius: 999px;
-  box-shadow: inset 0 0 0 1px rgba(248, 250, 252, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
 }
 
 :global(html::-webkit-scrollbar-thumb:hover),
 :global(body::-webkit-scrollbar-thumb:hover) {
-  background: linear-gradient(180deg, #73a8b9, #5c9eaf);
+  background: linear-gradient(180deg, #60a5fa, #3b82f6);
 }
 
 .navbar {
@@ -597,11 +800,11 @@ const startSimulation = () => {
   height: 42px;
   border-radius: 50%;
   overflow: hidden;
-  border: 1.5px solid rgba(115, 168, 185, 0.4);
+  border: 1.5px solid rgba(147, 197, 253, 0.5);
   box-shadow:
-    0 0 0 1px rgba(115, 168, 185, 0.12),
-    0 0 20px rgba(115, 168, 185, 0.25);
-  background: rgba(230, 242, 247, 0.8);
+    0 0 0 1px rgba(96, 165, 250, 0.15),
+    0 0 20px rgba(96, 165, 250, 0.3);
+  background: rgba(227, 242, 255, 0.8);
 }
 
 .brand-mark-image {
@@ -616,7 +819,29 @@ const startSimulation = () => {
   font-weight: 800;
   letter-spacing: 1px;
   font-size: 1.2rem;
-  color: var(--teal-primary);
+  color: var(--blue-primary);
+}
+
+.brand-badge {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.nav-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.nav-tag {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--blue-accent);
+  background: rgba(96, 165, 250, 0.1);
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(96, 165, 250, 0.2);
 }
 
 .nav-links {
@@ -639,11 +864,11 @@ const startSimulation = () => {
 .github-link-ghost,
 .github-link-solid {
   padding: 13px 18px;
-  border: 1px solid rgba(115, 168, 185, 0.4);
-  background: rgba(230, 242, 247, 0.7);
+  border: 1px solid rgba(147, 197, 253, 0.5);
+  background: rgba(227, 242, 255, 0.7);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.6),
-    0 0 16px rgba(115, 168, 185, 0.15);
+    0 0 16px rgba(96, 165, 250, 0.15);
   clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
 }
 
@@ -659,11 +884,11 @@ const startSimulation = () => {
 
 .github-link:hover {
   transform: translateY(-2px);
-  border-color: rgba(115, 168, 185, 0.7);
+  border-color: rgba(96, 165, 250, 0.7);
   box-shadow:
-    inset 0 0 0 1px rgba(115, 168, 185, 0.12),
-    0 0 22px rgba(115, 168, 185, 0.25);
-  color: var(--teal-secondary);
+    inset 0 0 0 1px rgba(96, 165, 250, 0.15),
+    0 0 22px rgba(96, 165, 250, 0.25);
+  color: var(--blue-accent);
 }
 
 .arrow {
@@ -676,6 +901,11 @@ const startSimulation = () => {
   padding: 22px 24px 80px;
   position: relative;
   z-index: 1;
+}
+
+.main-content-dashboard {
+  padding-top: 8px;
+  padding-bottom: 36px;
 }
 
 .hero-section {
@@ -700,13 +930,13 @@ const startSimulation = () => {
   position: relative;
   padding: 34px 38px 24px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), transparent 12%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.65), rgba(230, 242, 247, 0.7));
-  border: 1px solid rgba(115, 168, 185, 0.42);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.8), transparent 12%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.75), rgba(227, 242, 255, 0.7));
+  border: 1px solid rgba(147, 197, 253, 0.5);
   clip-path: polygon(0 18px, 18px 0, calc(100% - 24px) 0, 100% 24px, 100% calc(100% - 24px), calc(100% - 24px) 100%, 18px 100%, 0 calc(100% - 18px));
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.8),
-    0 0 34px rgba(115, 168, 185, 0.16);
+    0 0 34px rgba(96, 165, 250, 0.15);
   overflow: hidden;
 }
 
@@ -719,7 +949,7 @@ const startSimulation = () => {
 
 .hero-panel::before {
   inset: 12px;
-  border: 1px solid rgba(115, 168, 185, 0.2);
+  border: 1px solid rgba(147, 197, 253, 0.25);
   clip-path: polygon(0 10px, 10px 0, calc(100% - 12px) 0, 100% 12px, 100% calc(100% - 12px), calc(100% - 12px) 100%, 12px 100%, 0 calc(100% - 10px));
 }
 
@@ -728,7 +958,7 @@ const startSimulation = () => {
   top: 90px;
   width: 340px;
   height: 340px;
-  background: radial-gradient(circle, rgba(115, 168, 185, 0.2), transparent 70%);
+  background: radial-gradient(circle, rgba(96, 165, 250, 0.25), transparent 70%);
   filter: blur(6px);
 }
 
@@ -782,8 +1012,8 @@ const startSimulation = () => {
   font-weight: 700;
   margin: 0 0 30px 0;
   letter-spacing: -3px;
-  color: var(--teal-deep);
-  text-shadow: 0 0 18px rgba(115, 168, 185, 0.18);
+  color: var(--blue-primary);
+  text-shadow: 0 0 18px rgba(96, 165, 250, 0.2);
 }
 
 .gradient-text {
@@ -806,12 +1036,12 @@ const startSimulation = () => {
   gap: 16px;
   align-items: center;
   padding: 20px 22px;
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid rgba(115, 168, 185, 0.4);
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(147, 197, 253, 0.5);
   border-radius: 8px;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.7),
-    0 0 18px rgba(115, 168, 185, 0.12);
+    0 0 18px rgba(96, 165, 250, 0.1);
 }
 
 .feature-card p {
@@ -827,9 +1057,9 @@ const startSimulation = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(115, 168, 185, 0.4);
+  border: 1px solid rgba(147, 197, 253, 0.5);
   background: rgba(255, 255, 255, 0.6);
-  box-shadow: inset 0 0 12px rgba(115, 168, 185, 0.08);
+  box-shadow: inset 0 0 12px rgba(96, 165, 250, 0.08);
 }
 
 .feature-glyph {
@@ -844,14 +1074,14 @@ const startSimulation = () => {
 }
 
 .highlight-code {
-  background: rgba(115, 168, 185, 0.12);
+  background: rgba(96, 165, 250, 0.12);
   padding: 3px 8px;
   border-radius: 4px;
   font-family: var(--font-mono);
   font-size: 0.9em;
-  color: var(--teal-secondary);
+  color: var(--blue-primary);
   font-weight: 600;
-  border: 1px solid rgba(115, 168, 185, 0.18);
+  border: 1px solid rgba(96, 165, 250, 0.2);
 }
 
 .hero-cta-banner {
@@ -862,13 +1092,13 @@ const startSimulation = () => {
   font-size: 1.15rem;
   font-weight: 600;
   letter-spacing: 0.4px;
-  color: var(--teal-deep);
+  color: var(--blue-primary);
   background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(115, 168, 185, 0.5);
+  border: 1px solid rgba(147, 197, 253, 0.5);
   border-radius: 8px;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.7),
-    0 0 22px rgba(115, 168, 185, 0.16);
+    0 0 22px rgba(96, 165, 250, 0.15);
 }
 
 .hero-footer {
@@ -912,15 +1142,15 @@ const startSimulation = () => {
   position: relative;
   min-height: 560px;
   padding: 22px 18px 96px;
-  border: 1px solid rgba(115, 168, 185, 0.2);
+  border: 1px solid rgba(147, 197, 253, 0.3);
   border-radius: 24px;
   background:
-    rgba(255, 255, 255, 0.55),
-    radial-gradient(circle at 50% 42%, rgba(115, 168, 185, 0.12), transparent 32%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(230, 242, 247, 0.4));
+    rgba(255, 255, 255, 0.6),
+    radial-gradient(circle at 50% 42%, rgba(96, 165, 250, 0.12), transparent 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.65), rgba(227, 242, 255, 0.4));
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.8),
-    inset 0 -30px 60px rgba(200, 225, 232, 0.3);
+    inset 0 -30px 60px rgba(200, 220, 255, 0.3);
   overflow: hidden;
 }
 
@@ -995,8 +1225,8 @@ const startSimulation = () => {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: rgba(115, 168, 185, 0.62);
-  box-shadow: 0 0 10px rgba(115, 168, 185, 0.28);
+  background: rgba(96, 165, 250, 0.7);
+  box-shadow: 0 0 10px rgba(96, 165, 250, 0.35);
 }
 
 .hex-cluster {
@@ -1013,8 +1243,8 @@ const startSimulation = () => {
   width: 58px;
   height: 66px;
   clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0 50%);
-  background: linear-gradient(180deg, rgba(115, 168, 185, 0.12), rgba(115, 168, 185, 0.04));
-  border: 1px solid rgba(115, 168, 185, 0.25);
+  background: linear-gradient(180deg, rgba(96, 165, 250, 0.12), rgba(96, 165, 250, 0.04));
+  border: 1px solid rgba(96, 165, 250, 0.25);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
 }
 
@@ -1030,8 +1260,8 @@ const startSimulation = () => {
   border-radius: 999px;
   filter: blur(0.2px);
   box-shadow:
-    0 0 20px rgba(115, 168, 185, 0.3),
-    0 0 36px rgba(115, 168, 185, 0.14);
+    0 0 20px rgba(96, 165, 250, 0.35),
+    0 0 36px rgba(96, 165, 250, 0.18);
 }
 
 .data-ribbon-one {
@@ -1039,7 +1269,7 @@ const startSimulation = () => {
   left: 30px;
   width: 88%;
   transform: rotate(8deg);
-  background: linear-gradient(90deg, rgba(115, 168, 185, 0), rgba(115, 168, 185, 0.74) 36%, rgba(115, 168, 185, 0.2) 70%, rgba(115, 168, 185, 0));
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0), rgba(96, 165, 250, 0.8) 36%, rgba(96, 165, 250, 0.25) 70%, rgba(96, 165, 250, 0));
 }
 
 .data-ribbon-two {
@@ -1047,7 +1277,7 @@ const startSimulation = () => {
   left: -6px;
   width: 92%;
   transform: rotate(-9deg);
-  background: linear-gradient(90deg, rgba(115, 168, 185, 0), rgba(115, 168, 185, 0.48) 28%, rgba(115, 168, 185, 0.92) 56%, rgba(115, 168, 185, 0));
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0), rgba(96, 165, 250, 0.5) 28%, rgba(96, 165, 250, 0.95) 56%, rgba(96, 165, 250, 0));
 }
 
 .visual-text {
@@ -1175,15 +1405,15 @@ const startSimulation = () => {
   position: relative;
   height: 116px;
   background:
-    radial-gradient(circle at center, rgba(115, 168, 185, 0.18), transparent 62%),
+    radial-gradient(circle at center, rgba(96, 165, 250, 0.2), transparent 62%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.1)),
     linear-gradient(135deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.2));
-  border: 1px solid rgba(115, 168, 185, 0.2);
+  border: 1px solid rgba(96, 165, 250, 0.25);
   border-radius: 10px;
   overflow: hidden;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.7),
-    inset 0 -16px 28px rgba(200, 225, 232, 0.3);
+    inset 0 -16px 28px rgba(200, 220, 255, 0.3);
 }
 
 .network-line,
@@ -1194,11 +1424,11 @@ const startSimulation = () => {
 .network-line {
   height: 2px;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(115, 168, 185, 0.1), rgba(115, 168, 185, 0.82), rgba(115, 168, 185, 0.1));
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0.1), rgba(96, 165, 250, 0.85), rgba(96, 165, 250, 0.1));
   transform-origin: left center;
   box-shadow:
-    0 0 10px rgba(115, 168, 185, 0.12),
-    0 0 18px rgba(115, 168, 185, 0.08);
+    0 0 10px rgba(96, 165, 250, 0.15),
+    0 0 18px rgba(96, 165, 250, 0.1);
 }
 
 .line-1 { left: 32px; top: 82px; width: 118px; transform: rotate(-26deg); }
@@ -1212,12 +1442,12 @@ const startSimulation = () => {
   height: 14px;
   border-radius: 50%;
   background:
-    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.98), rgba(115, 168, 185, 0.88) 18%, rgba(115, 168, 185, 0.92) 42%, rgba(58, 90, 106, 0.96) 72%, rgba(58, 90, 106, 0.98) 100%);
-  border: 1px solid rgba(115, 168, 185, 0.3);
+    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.98), rgba(96, 165, 250, 0.9) 18%, rgba(96, 165, 250, 0.95) 42%, rgba(59, 130, 246, 0.98) 72%, rgba(30, 64, 175, 0.98) 100%);
+  border: 1px solid rgba(96, 165, 250, 0.35);
   box-shadow:
-    inset -2px -3px 6px rgba(200, 225, 232, 0.5),
+    inset -2px -3px 6px rgba(200, 220, 255, 0.5),
     inset 2px 2px 5px rgba(255, 255, 255, 0.3),
-    0 0 14px rgba(115, 168, 185, 0.42);
+    0 0 14px rgba(96, 165, 250, 0.5);
 }
 
 .network-node::before {
@@ -1240,12 +1470,12 @@ const startSimulation = () => {
 
 .network-node-core {
   background:
-    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 1), rgba(230, 242, 247, 0.95) 22%, rgba(115, 168, 185, 0.98) 44%, rgba(92, 158, 175, 0.95) 70%, rgba(58, 90, 106, 0.98) 100%);
+    radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 1), rgba(227, 242, 255, 0.95) 22%, rgba(96, 165, 250, 0.98) 44%, rgba(59, 130, 246, 0.95) 70%, rgba(30, 64, 175, 0.98) 100%);
   box-shadow:
-    inset -2px -3px 6px rgba(200, 225, 232, 0.5),
+    inset -2px -3px 6px rgba(200, 220, 255, 0.5),
     inset 2px 2px 6px rgba(255, 255, 255, 0.3),
-    0 0 18px rgba(115, 168, 185, 0.7),
-    0 0 32px rgba(115, 168, 185, 0.28);
+    0 0 18px rgba(96, 165, 250, 0.75),
+    0 0 32px rgba(96, 165, 250, 0.35);
 }
 
 .network-node-hub {
@@ -1270,23 +1500,23 @@ const startSimulation = () => {
   width: 100%;
   margin-top: 0;
   padding: 14px 18px;
-  border: 1px solid rgba(115, 168, 185, 0.24);
+  border: 1px solid rgba(147, 197, 253, 0.3);
   border-radius: 18px;
   background:
     rgba(255, 255, 255, 0.6),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.5), rgba(230, 242, 247, 0.5));
+    linear-gradient(90deg, rgba(255, 255, 255, 0.5), rgba(227, 242, 255, 0.5));
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   cursor: pointer;
-  color: var(--teal-deep);
+  color: var(--blue-primary);
   font-family: var(--font-mono);
   font-size: 0.95rem;
   letter-spacing: 0.4px;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.7),
-    0 0 22px rgba(115, 168, 185, 0.12);
+    0 0 22px rgba(96, 165, 250, 0.12);
   transition: color 0.25s ease, transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
@@ -1306,7 +1536,7 @@ const startSimulation = () => {
 
 .scroll-label {
   font-size: 0.96rem;
-  color: var(--teal-deep);
+  color: var(--blue-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1321,31 +1551,31 @@ const startSimulation = () => {
   align-items: center;
   justify-content: center;
   background: rgba(255, 255, 255, 0.65);
-  border: 1px solid rgba(115, 168, 185, 0.28);
+  border: 1px solid rgba(147, 197, 253, 0.35);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.7),
-    0 0 18px rgba(115, 168, 185, 0.12);
+    0 0 18px rgba(96, 165, 250, 0.15);
 }
 
 .scroll-down-btn:hover {
-  color: var(--teal-secondary);
+  color: var(--blue-accent);
   transform: translateY(2px);
-  border-color: rgba(115, 168, 185, 0.5);
+  border-color: rgba(96, 165, 250, 0.5);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.6),
-    0 0 28px rgba(115, 168, 185, 0.18);
+    inset 0 0 0 1px rgba(96, 165, 250, 0.1),
+    0 0 28px rgba(96, 165, 250, 0.2);
 }
 
 .scroll-arrow {
   font-size: 1.7rem;
   line-height: 1;
-  text-shadow: 0 0 18px rgba(115, 168, 185, 0.36);
+  text-shadow: 0 0 18px rgba(96, 165, 250, 0.4);
 }
 
 .dashboard-section {
   display: flex;
   gap: 60px;
-  border-top: 1px solid rgba(115, 168, 185, 0.2);
+  border-top: 1px solid rgba(147, 197, 253, 0.25);
   padding-top: 52px;
   align-items: flex-start;
 }
@@ -1395,8 +1625,8 @@ const startSimulation = () => {
 }
 
 .metric-card {
-  border: 1px solid rgba(115, 168, 185, 0.25);
-  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(147, 197, 253, 0.3);
+  background: rgba(255, 255, 255, 0.6);
   padding: 20px 30px;
   min-width: 150px;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
@@ -1416,8 +1646,8 @@ const startSimulation = () => {
 }
 
 .steps-container {
-  border: 1px solid rgba(115, 168, 185, 0.25);
-  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(147, 197, 253, 0.3);
+  background: rgba(255, 255, 255, 0.6);
   padding: 30px;
   position: relative;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
@@ -1478,12 +1708,12 @@ const startSimulation = () => {
 }
 
 .console-box {
-  border: 1px solid rgba(115, 168, 185, 0.3);
-  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(147, 197, 253, 0.35);
+  background: rgba(255, 255, 255, 0.6);
   padding: 8px;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.7),
-    0 0 22px rgba(115, 168, 185, 0.12);
+    0 0 22px rgba(96, 165, 250, 0.1);
 }
 
 .console-section {
@@ -1621,9 +1851,9 @@ const startSimulation = () => {
 }
 
 .source-tab.active {
-  background: rgba(115, 168, 185, 0.15);
-  color: var(--teal-deep);
-  box-shadow: inset 0 -2px 0 var(--teal-primary);
+  background: rgba(96, 165, 250, 0.15);
+  color: var(--blue-primary);
+  box-shadow: inset 0 -2px 0 var(--blue-accent);
 }
 
 .source-tab:not(.active):hover {
@@ -1772,9 +2002,9 @@ const startSimulation = () => {
 
 .start-engine-btn {
   width: 100%;
-  background: linear-gradient(90deg, rgba(115, 168, 185, 0.2), rgba(92, 158, 175, 0.15));
-  color: var(--teal-deep);
-  border: 1px solid rgba(115, 168, 185, 0.4);
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0.2), rgba(59, 130, 246, 0.15));
+  color: var(--blue-primary);
+  border: 1px solid rgba(96, 165, 250, 0.5);
   padding: 20px;
   font-family: var(--font-mono);
   font-weight: 700;
@@ -1790,17 +2020,16 @@ const startSimulation = () => {
 }
 
 .start-engine-btn:not(:disabled) {
-  /* perf: 将 box-shadow 动画由 infinite 调为 hover 触发，同时提升合成层 */
   will-change: box-shadow;
 }
 
 .start-engine-btn:not(:disabled):hover {
-  animation: pulse-border 2s infinite;
+  animation: pulse-border-blue 2s infinite;
 }
 
 .start-engine-btn:hover:not(:disabled) {
-  background: linear-gradient(90deg, rgba(115, 168, 185, 0.3), rgba(92, 158, 175, 0.25));
-  border-color: rgba(115, 168, 185, 0.7);
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0.3), rgba(59, 130, 246, 0.25));
+  border-color: rgba(96, 165, 250, 0.7);
   transform: translateY(-2px);
 }
 
@@ -1809,23 +2038,451 @@ const startSimulation = () => {
 }
 
 .start-engine-btn:disabled {
-  background: rgba(200, 225, 232, 0.5);
-  color: rgba(58, 90, 106, 0.5);
+  background: rgba(227, 242, 255, 0.5);
+  color: rgba(59, 130, 246, 0.5);
   cursor: not-allowed;
   transform: none;
-  border: 1px solid rgba(115, 168, 185, 0.12);
+  border: 1px solid rgba(147, 197, 253, 0.2);
 }
 
-@keyframes pulse-border {
-  0% { box-shadow: 0 0 0 0 rgba(115, 168, 185, 0.2); }
-  70% { box-shadow: 0 0 0 8px rgba(115, 168, 185, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(115, 168, 185, 0); }
+@keyframes pulse-border-blue {
+  0% { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.3); }
+  70% { box-shadow: 0 0 0 8px rgba(96, 165, 250, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0); }
+}
+
+.dashboard-studio {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.82fr) minmax(520px, 1.18fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  min-height: calc(100vh - 116px);
+  padding-top: 12px;
+  border-top: 1px solid rgba(115, 168, 185, 0.18);
+  align-items: stretch;
+}
+
+.dashboard-studio .left-panel,
+.dashboard-studio .right-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.studio-hero-card,
+.studio-console-card,
+.workflow-panel {
+  position: relative;
+  border: 1px solid rgba(115, 168, 185, 0.24);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(237, 248, 252, 0.58));
+  border-radius: 28px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72),
+    0 24px 52px rgba(58, 90, 106, 0.08);
+  overflow: hidden;
+}
+
+.studio-hero-card {
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 16px;
+  min-height: 0;
+}
+
+.studio-hero-card::before,
+.studio-console-card::before,
+.workflow-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 12% 20%, rgba(115, 168, 185, 0.18), transparent 34%),
+    radial-gradient(circle at 88% 12%, rgba(96, 165, 250, 0.14), transparent 28%);
+}
+
+.studio-hero-copy,
+.studio-hero-card .metrics-row,
+.studio-console-card > *,
+.workflow-panel > *,
+.insight-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.studio-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 1.8px;
+  color: var(--teal-secondary);
+}
+
+.studio-hero-card .panel-header {
+  margin-bottom: 5px;
+}
+
+.studio-hero-card .section-title {
+  max-width: 900px;
+  margin: 6px 0 8px;
+  font-size: clamp(1.42rem, 2.1vw, 2.1rem);
+  line-height: 1.02;
+  letter-spacing: -1.2px;
+  font-weight: 760;
+  color: var(--teal-deep);
+}
+
+.studio-hero-card .section-desc {
+  max-width: 840px;
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.42;
+  color: rgba(58, 90, 106, 0.74);
+}
+
+.studio-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.studio-chip-row span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: var(--teal-deep);
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(115, 168, 185, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.58);
+}
+
+.dashboard-studio .metrics-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  align-self: stretch;
+}
+
+.dashboard-studio .metric-card {
+  min-width: 0;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(115, 168, 185, 0.22);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(246, 252, 254, 0.5));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 16px 34px rgba(58, 90, 106, 0.06);
+  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.dashboard-studio .metric-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(115, 168, 185, 0.42);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.74),
+    0 22px 46px rgba(58, 90, 106, 0.1);
+}
+
+.metric-icon {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+  border-radius: 9px;
+  color: var(--teal-secondary);
+  background: rgba(115, 168, 185, 0.1);
+  border: 1px solid rgba(115, 168, 185, 0.18);
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+
+.dashboard-studio .metric-value {
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.8px;
+}
+
+.dashboard-studio .metric-label {
+  font-size: 0.68rem;
+  line-height: 1.3;
+}
+
+.studio-console-card {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  padding: 14px;
+}
+
+.studio-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.studio-card-head h3 {
+  margin: 5px 0 0;
+  color: var(--teal-deep);
+  font-size: clamp(1.18rem, 1.8vw, 1.55rem);
+  line-height: 1.1;
+  letter-spacing: -1px;
+}
+
+.studio-state {
+  flex-shrink: 0;
+  padding: 7px 10px;
+  border-radius: 999px;
+  color: rgba(58, 90, 106, 0.58);
+  background: rgba(227, 242, 247, 0.72);
+  border: 1px solid rgba(115, 168, 185, 0.14);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+}
+
+.studio-state.ready {
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--teal-deep), var(--teal-primary));
+  box-shadow: 0 10px 24px rgba(58, 90, 106, 0.18);
+}
+
+.studio-console-card .console-box {
+  position: relative;
+  z-index: 1;
+  padding: 6px;
+  border-radius: 18px;
+  border-color: rgba(115, 168, 185, 0.22);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(244, 251, 253, 0.6));
+}
+
+.studio-console-card .console-section {
+  padding: 10px;
+}
+
+.studio-console-card .console-header {
+  margin-bottom: 8px;
+  color: var(--teal-secondary);
+  font-weight: 800;
+  letter-spacing: 0.8px;
+}
+
+.studio-console-card .source-tabs {
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(115, 168, 185, 0.18);
+  border-radius: 18px;
+  background: rgba(227, 242, 247, 0.62);
+}
+
+.studio-console-card .source-tab {
+  border-radius: 11px;
+  padding: 7px 0;
+}
+
+.studio-console-card .source-tab + .source-tab {
+  border-left: none;
+}
+
+.studio-console-card .source-tab.active {
+  color: var(--teal-deep);
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72),
+    0 10px 22px rgba(58, 90, 106, 0.08);
+}
+
+.studio-console-card .upload-zone {
+  height: 118px;
+  border-radius: 16px;
+  border-color: rgba(115, 168, 185, 0.32);
+  background:
+    radial-gradient(circle at 50% 18%, rgba(115, 168, 185, 0.14), transparent 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(245, 251, 253, 0.52));
+}
+
+.studio-console-card .upload-zone:hover,
+.studio-console-card .upload-zone.drag-over {
+  border-color: rgba(92, 158, 175, 0.64);
+  background:
+    radial-gradient(circle at 50% 18%, rgba(115, 168, 185, 0.2), transparent 46%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(238, 248, 252, 0.62));
+  transform: translateY(-2px);
+}
+
+.studio-console-card .upload-icon {
+  width: 32px;
+  height: 32px;
+  margin-bottom: 6px;
+  border-radius: 11px;
+  background: rgba(115, 168, 185, 0.1);
+  font-size: 0.95rem;
+}
+
+.studio-console-card .upload-title {
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.studio-console-card .upload-hint {
+  max-width: 320px;
+  margin: 0 auto;
+  line-height: 1.2;
+  font-size: 0.68rem;
+}
+
+.studio-console-card .web-toggle-section,
+.studio-console-card .input-wrapper,
+.studio-console-card .web-query-input {
+  border-radius: 18px;
+}
+
+.studio-console-card .input-wrapper {
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.studio-console-card .code-input {
+  min-height: 92px;
+  padding: 12px;
+  font-size: 0.78rem;
+  line-height: 1.38;
+}
+
+.studio-console-card .web-query-input {
+  min-height: 0;
+  padding-right: 116px;
+}
+
+.studio-console-card .start-engine-btn {
+  min-height: 48px;
+  border: none;
+  border-radius: 14px;
+  padding: 13px 16px;
+  color: #ffffff;
+  background:
+    linear-gradient(135deg, var(--teal-deep), var(--teal-secondary) 52%, var(--teal-primary));
+  box-shadow:
+    0 20px 42px rgba(58, 90, 106, 0.2),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+
+.studio-console-card .start-engine-btn:hover:not(:disabled) {
+  background:
+    linear-gradient(135deg, #2f4e5e, var(--teal-secondary) 48%, var(--teal-light));
+  box-shadow:
+    0 24px 48px rgba(58, 90, 106, 0.24),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.24);
+}
+
+.studio-console-card .start-engine-btn:disabled {
+  color: rgba(58, 90, 106, 0.42);
+  background: rgba(227, 242, 247, 0.68);
+  border: 1px solid rgba(115, 168, 185, 0.14);
+  box-shadow: none;
+}
+
+.workflow-panel {
+  grid-column: 1;
+  grid-row: 2;
+  padding: 14px;
+}
+
+.workflow-panel .steps-container {
+  position: relative;
+  z-index: 1;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.workflow-panel .steps-header {
+  margin-bottom: 8px;
+  color: var(--teal-secondary);
+  font-weight: 800;
+  letter-spacing: 0.8px;
+}
+
+.workflow-panel .workflow-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+}
+
+.workflow-panel .workflow-item {
+  gap: 8px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(115, 168, 185, 0.14);
+  background: rgba(255, 255, 255, 0.52);
+  transition: transform 0.25s ease, border-color 0.25s ease, background 0.25s ease;
+}
+
+.workflow-panel .workflow-item:hover {
+  transform: translateX(4px);
+  border-color: rgba(115, 168, 185, 0.32);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.workflow-panel .step-num {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  color: var(--teal-secondary);
+  background: rgba(115, 168, 185, 0.1);
+  opacity: 1;
+}
+
+.workflow-panel .step-title {
+  font-size: 0.88rem;
+}
+
+.workflow-panel .step-desc {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 @media (max-width: 1180px) {
   .hero-section {
     grid-template-columns: 1fr;
     align-items: start;
+  }
+
+  .dashboard-studio,
+  .studio-hero-card {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-studio {
+    min-height: auto;
+  }
+
+  .studio-console-card,
+  .workflow-panel {
+    grid-column: 1;
+    grid-row: auto;
   }
 
   .hero-right {
@@ -1971,5 +2628,433 @@ const startSimulation = () => {
   .console-header {
     flex-direction: column;
   }
+
+  .dashboard-studio {
+    gap: 16px;
+  }
+
+  .studio-hero-card,
+  .studio-console-card,
+  .workflow-panel {
+    padding: 20px;
+    border-radius: 22px;
+  }
+
+  .dashboard-studio .metrics-row {
+    grid-template-columns: 1fr;
+  }
+
+  .studio-card-head {
+    flex-direction: column;
+  }
+}
+
+/* ========== 入场动画 ========== */
+.hero-left,
+.hero-right,
+.left-panel,
+.right-panel {
+  opacity: 0;
+}
+
+/* Hero 区域动画 */
+.hero-left.slide-in-left {
+  animation: slideInLeft 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.hero-right.slide-in-right {
+  animation: slideInRight 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 0.15s;
+}
+
+/* Dashboard 区域动画 - 延迟执行，等 Hero 完成后 */
+.left-panel.slide-in-left {
+  animation: slideInLeft 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 0.5s;
+}
+
+.right-panel.slide-in-right {
+  animation: slideInRight 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 0.65s;
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-80px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(80px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ========== 登录/注册弹窗样式 ========== */
+.auth-btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.login-btn {
+  background: rgba(96, 165, 250, 0.15);
+  color: var(--blue-primary);
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  margin: 0 8px;
+}
+
+.login-btn:hover {
+  background: rgba(96, 165, 250, 0.25);
+  border-color: rgba(96, 165, 250, 0.6);
+  transform: translateY(-1px);
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px;
+}
+
+.user-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #73A8B9, #5C9EAF);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.user-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--blue-primary);
+  font-family: var(--font-mono);
+}
+
+.logout-btn {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.logout-btn:hover {
+  background: rgba(96, 165, 250, 0.1);
+  color: var(--blue-primary);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+}
+
+.auth-modal {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(248, 251, 255, 0.98));
+  border: 1px solid rgba(147, 197, 253, 0.5);
+  border-radius: 20px;
+  padding: 32px;
+  width: 100%;
+  max-width: 440px;
+  position: relative;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.8),
+    0 25px 50px rgba(59, 130, 246, 0.15),
+    0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+.modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: rgba(147, 197, 253, 0.2);
+  border-radius: 8px;
+  font-size: 1.2rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+  background: rgba(96, 165, 250, 0.2);
+  color: var(--teal-primary);
+}
+
+.modal-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.modal-brand {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.modal-logo {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid rgba(147, 197, 253, 0.5);
+  box-shadow: 0 0 20px rgba(96, 165, 250, 0.2);
+}
+
+.modal-title {
+  font-family: var(--font-sans);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 8px 0;
+}
+
+.modal-subtitle {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.form-input {
+  padding: 14px 16px;
+  border: 1px solid rgba(147, 197, 253, 0.4);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.8);
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--blue-accent);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
+}
+
+.form-input::placeholder {
+  color: var(--text-muted);
+}
+
+.password-wrapper {
+  position: relative;
+}
+
+.password-wrapper .form-input {
+  padding-right: 60px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--blue-accent);
+  font-size: 0.8rem;
+  cursor: pointer;
+  font-family: var(--font-mono);
+}
+
+.password-toggle:hover {
+  color: var(--blue-primary);
+}
+
+.form-options {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.remember-me {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.remember-me input {
+  accent-color: var(--blue-accent);
+}
+
+.forgot-link {
+  color: var(--blue-accent);
+  text-decoration: none;
+}
+
+.forgot-link:hover {
+  color: var(--blue-primary);
+  text-decoration: underline;
+}
+
+.submit-btn {
+  width: 100%;
+  padding: 16px;
+  background: linear-gradient(135deg, #2563EB, #1D4ED8);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  letter-spacing: 1px;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+}
+
+.submit-btn:hover {
+  background: linear-gradient(135deg, #1D4ED8, #1E40AF);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.5);
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 16px 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(147, 197, 253, 0.4);
+}
+
+.social-login {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.social-btn {
+  width: 100%;
+  padding: 14px 20px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(147, 197, 253, 0.4);
+  border-radius: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  transition: all 0.2s ease;
+}
+
+.social-btn:hover {
+  background: rgba(147, 197, 253, 0.1);
+  border-color: rgba(96, 165, 250, 0.5);
+  transform: translateY(-1px);
+}
+
+.social-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.mode-switch {
+  text-align: center;
+  margin-top: 16px;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.switch-btn {
+  background: none;
+  border: none;
+  color: var(--blue-accent);
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: 6px;
+  font-family: var(--font-mono);
+}
+
+.switch-btn:hover {
+  color: var(--blue-primary);
+  text-decoration: underline;
+}
+
+/* 弹窗动画 */
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
+
+.modal-fade-enter-active .auth-modal,
+.modal-fade-leave-active .auth-modal {
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.modal-fade-enter-from .auth-modal,
+.modal-fade-leave-to .auth-modal {
+  transform: scale(0.95) translateY(20px);
+  opacity: 0;
 }
 </style>

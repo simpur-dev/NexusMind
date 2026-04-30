@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="env-setup-panel">
     <div class="scroll-container">
       <!-- Step 01: 模拟实例 -->
@@ -6,7 +6,7 @@
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">01</span>
-            <span class="step-title">模拟实例初始化</span>
+            <span class="step-title">推演场景初始化</span>
           </div>
           <div class="step-status">
             <span v-if="phase > 0" class="badge success">已完成</span>
@@ -17,7 +17,7 @@
         <div class="card-content">
           <p class="api-note">POST /api/simulation/create</p>
           <p class="description">
-            新建simulation实例，拉取模拟世界参数模版
+            创建推演实例，绑定事件记忆图谱，并拉取世界模型运行所需的基础参数。
           </p>
 
           <div v-if="simulationId" class="info-card">
@@ -46,7 +46,7 @@
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">02</span>
-            <span class="step-title">生成 Agent 人设</span>
+            <span class="step-title">群体角色画像生成</span>
           </div>
           <div class="step-status">
             <span v-if="phase > 1 && !isProfilesIncomplete" class="badge success">已完成</span>
@@ -59,14 +59,14 @@
         <div class="card-content">
           <p class="api-note">POST /api/simulation/prepare</p>
           <p class="description">
-            从知识图谱梳理实体与关系，初始化模拟个体，并基于现实种子赋予独特的行为、记忆与<span class="desc-accent">内部目标、价值权重</span>等目标驱动的认知属性
+            从事件记忆图谱梳理关键对象与关系，生成可参与舆情演化的智能体画像，并注入<span class="desc-accent">立场倾向、记忆线索、行动目标</span>等认知属性。
           </p>
 
           <!-- 继续生成提示 -->
           <div v-if="isProfilesIncomplete && phase > 1" class="incomplete-notice">
             <div class="notice-info">
               <span class="notice-icon">⚠</span>
-              <span>当前Agent数 <strong>{{ profiles.length }}</strong> 未达到预期 <strong>{{ expectedTotal }}</strong>，可继续生成剩余Agent</span>
+              <span>当前角色数 <strong>{{ profiles.length }}</strong> 未达到预期 <strong>{{ expectedTotal }}</strong>，可继续生成剩余角色</span>
             </div>
             <button class="continue-btn" :disabled="isContinueGenerating" @click="continueGenerateProfiles">
               <span v-if="isContinueGenerating" class="btn-spinner"></span>
@@ -78,22 +78,22 @@
           <div v-if="profiles.length > 0" class="stats-grid">
             <div class="stat-card">
               <span class="stat-value">{{ profiles.length }}</span>
-              <span class="stat-label">当前Agent数</span>
+              <span class="stat-label">已生成角色</span>
             </div>
             <div class="stat-card">
               <span class="stat-value">{{ expectedTotal || '-' }}</span>
-              <span class="stat-label">预期Agent总数</span>
+              <span class="stat-label">目标角色数</span>
             </div>
             <div class="stat-card">
               <span class="stat-value">{{ totalTopicsCount }}</span>
-              <span class="stat-label">现实种子当前关联话题数</span>
+              <span class="stat-label">关联议题数</span>
             </div>
           </div>
 
           <!-- Profiles List Preview -->
           <div v-if="profiles.length > 0" class="profiles-preview">
             <div class="preview-header">
-              <span class="preview-title">已生成的 Agent 人设</span>
+              <span class="preview-title">已生成的群体角色画像</span>
             </div>
             <div class="profiles-list">
               <div 
@@ -131,7 +131,7 @@
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">03</span>
-            <span class="step-title">生成双平台模拟配置</span>
+            <span class="step-title">推演参数自动配置</span>
           </div>
           <div class="step-status">
             <span v-if="phase > 2" class="badge success">已完成</span>
@@ -143,7 +143,7 @@
         <div class="card-content">
           <p class="api-note">POST /api/simulation/prepare</p>
           <p class="description">
-            LLM 根据模拟需求与现实种子，智能设置<span class="desc-accent">双平台时间流速、推荐算法</span>、个体活跃时段与发言频率、事件触发等 OASIS 运行参数，并初始化<span class="desc-accent">世界模型反馈闭环</span>的事件阈值与推演规则
+            根据推演目标与现实种子，自动配置<span class="desc-accent">时间流速、传播机制</span>、角色活跃窗口与发言频率，并初始化<span class="desc-accent">世界模型反馈闭环</span>的触发阈值与演化规则。
           </p>
           
           <!-- Config Preview -->
@@ -152,7 +152,7 @@
             <div class="config-block">
               <div class="config-grid">
                 <div class="config-item">
-                  <span class="config-item-label">模拟时长</span>
+                  <span class="config-item-label">推演时长</span>
                   <span class="config-item-value">{{ simulationConfig.time_config?.total_simulation_hours || '-' }} 小时</span>
                 </div>
                 <div class="config-item">
@@ -195,7 +195,7 @@
             <!-- Agent 配置 -->
             <div class="config-block">
               <div class="config-block-header">
-                <span class="config-block-title">Agent 配置</span>
+                <span class="config-block-title">角色行为配置</span>
                 <span class="config-block-badge">{{ simulationConfig.agent_configs?.length || 0 }} 个</span>
               </div>
               <div class="agents-cards">
@@ -364,7 +364,7 @@
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">04</span>
-            <span class="step-title">初始激活编排</span>
+            <span class="step-title">初始议题激活</span>
           </div>
           <div class="step-status">
             <span v-if="phase > 3" class="badge success">已完成</span>
@@ -376,7 +376,7 @@
         <div class="card-content">
           <p class="api-note">POST /api/simulation/prepare</p>
           <p class="description">
-            基于叙事方向，自动生成初始激活事件与热点话题，作为<span class="desc-accent">世界状态反馈闭环</span>的起始输入，引导模拟世界的演化轨迹
+            基于事件叙事方向，生成首批触发话题与起始发言，作为<span class="desc-accent">世界状态反馈闭环</span>的初始输入，引导舆情场域进入可观测演化。
           </p>
 
           <div v-if="simulationConfig?.event_config" class="orchestration-content">
@@ -393,14 +393,14 @@
                     </linearGradient>
                   </defs>
                 </svg>
-                叙事引导方向
+                舆情演化主线
               </span>
               <p class="narrative-text">{{ simulationConfig.event_config.narrative_direction }}</p>
             </div>
 
             <!-- 热点话题 -->
             <div class="topics-section">
-              <span class="box-label">初始热点话题</span>
+              <span class="box-label">初始触发议题</span>
               <div class="hot-topics-grid">
                 <span v-for="topic in simulationConfig.event_config.hot_topics" :key="topic" class="hot-topic-tag">
                   # {{ topic }}
@@ -410,7 +410,7 @@
 
             <!-- 初始帖子流 -->
             <div class="initial-posts-section">
-              <span class="box-label">初始激活序列 ({{ simulationConfig.event_config.initial_posts.length }})</span>
+              <span class="box-label">首轮发言序列 ({{ simulationConfig.event_config.initial_posts.length }})</span>
               <div class="posts-timeline">
                 <div v-for="(post, idx) in simulationConfig.event_config.initial_posts" :key="idx" class="timeline-item">
                   <div class="timeline-marker"></div>
@@ -436,7 +436,7 @@
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">05</span>
-            <span class="step-title">准备完成</span>
+            <span class="step-title">推演启动就绪</span>
           </div>
           <div class="step-status">
             <span v-if="phase >= 4" class="badge processing">进行中</span>
@@ -446,14 +446,14 @@
 
         <div class="card-content">
           <p class="api-note">POST /api/simulation/start</p>
-          <p class="description">模拟环境已准备完成，可以开始运行模拟</p>
+          <p class="description">群体角色、传播参数与初始议题已配置完成，可启动双平台舆情态势推演。</p>
           
           <!-- 模拟轮数配置 - 只有在配置生成完成且轮数计算出来后才显示 -->
           <div v-if="simulationConfig && autoGeneratedRounds" class="rounds-config-section">
             <div class="rounds-header">
               <div class="header-left">
-                <span class="section-title">模拟轮数设定</span>
-                <span class="section-desc">NexusMind自动规划推演现实 <span class="desc-highlight">{{ simulationConfig?.time_config?.total_simulation_hours || '-' }}</span> 小时，每轮代表现实 <span class="desc-highlight">{{ simulationConfig?.time_config?.minutes_per_round || '-' }}</span> 分钟时间流逝</span>
+                <span class="section-title">推演轮次设定</span>
+                <span class="section-desc">NexusMind 自动规划未来 <span class="desc-highlight">{{ simulationConfig?.time_config?.total_simulation_hours || '-' }}</span> 小时的舆情演化，每轮代表现实 <span class="desc-highlight">{{ simulationConfig?.time_config?.minutes_per_round || '-' }}</span> 分钟时间流逝</span>
               </div>
               <label class="switch-control">
                 <input type="checkbox" v-model="useCustomRounds">
@@ -470,7 +470,7 @@
                     <span class="val-unit">轮</span>
                   </div>
                   <div class="slider-meta-info">
-                    <span>若Agent规模为100：预计耗时约 {{ Math.round(customMaxRounds * 0.6) }} 分钟</span>
+                    <span>若角色规模为 100：预计耗时约 {{ Math.round(customMaxRounds * 0.6) }} 分钟</span>
                   </div>
                 </div>
 
@@ -510,7 +510,7 @@
                           <circle cx="12" cy="12" r="10"></circle>
                           <polyline points="12 6 12 12 16 14"></polyline>
                         </svg>
-                        若Agent规模为100：预计耗时 {{ Math.round(autoGeneratedRounds * 0.6) }} 分钟
+                        若角色规模为 100：预计耗时 {{ Math.round(autoGeneratedRounds * 0.6) }} 分钟
                       </span>
                     </div>
                     <div class="auto-desc">
@@ -527,14 +527,14 @@
               class="action-btn secondary"
               @click="$emit('go-back')"
             >
-              ← 返回图谱构建
+              ← 返回事件图谱生成
             </button>
             <button 
               class="action-btn primary"
               :disabled="phase < 4"
               @click="handleStartSimulation"
             >
-              开始双平台世界模型推演 ➝
+              开始推演 ➝
             </button>
           </div>
         </div>
@@ -700,7 +700,7 @@ watch(currentStage, (newStage) => {
     phase.value = 2
     // 进入配置生成阶段，开始轮询配置
     if (!configTimer) {
-      addLog('开始生成双平台模拟配置...')
+      addLog('开始生成推演参数配置...')
       startConfigPolling()
     }
   } else if (newStage === '准备模拟脚本' || newStage === 'copying_scripts') {
@@ -761,7 +761,7 @@ const addLog = (msg) => {
 const continueGenerateProfiles = async () => {
   if (isContinueGenerating.value || !props.simulationId) return
   isContinueGenerating.value = true
-  addLog(`继续生成Agent人设（当前 ${profiles.value.length}/${expectedTotal.value}）...`)
+  addLog(`继续生成角色画像（当前 ${profiles.value.length}/${expectedTotal.value}）...`)
   
   try {
     phase.value = 1
@@ -774,7 +774,7 @@ const continueGenerateProfiles = async () => {
     
     if (res.success && res.data) {
       if (res.data.already_prepared) {
-        addLog('准备工作已完成')
+        addLog('群体环境建模已完成')
         isContinueGenerating.value = false
         await loadPreparedData()
       } else {
@@ -796,7 +796,7 @@ const continueGenerateProfiles = async () => {
   }
 }
 
-// 处理开始模拟按钮点击
+// 处理启动推演按钮点击
 const handleStartSimulation = () => {
   // 构建传递给父组件的参数
   const params = {}
@@ -804,11 +804,11 @@ const handleStartSimulation = () => {
   if (useCustomRounds.value) {
     // 用户自定义轮数
     params.maxRounds = customMaxRounds.value
-    addLog(`开始模拟，自定义轮数: ${customMaxRounds.value} 轮`)
+    addLog(`启动推演，自定义轮数: ${customMaxRounds.value} 轮`)
   } else {
     // 使用自动配置轮数——同样传递给 Step3，避免残留旧值
     params.maxRounds = autoGeneratedRounds.value
-    addLog(`开始模拟，使用自动配置轮数: ${autoGeneratedRounds.value} 轮`)
+    addLog(`启动推演，使用自动配置轮数: ${autoGeneratedRounds.value} 轮`)
   }
   
   // 传递每轮时长给 Step3 用于推演时间计算
@@ -840,8 +840,8 @@ const startPrepareSimulation = async () => {
   
   // 标记第一步完成，开始第二步
   phase.value = 1
-  addLog(`模拟实例已创建: ${props.simulationId}`)
-  addLog('正在准备模拟环境...')
+  addLog(`推演场景已初始化: ${props.simulationId}`)
+  addLog('正在搭建群体推演环境...')
   emit('update-status', 'processing')
   
   try {
@@ -853,35 +853,35 @@ const startPrepareSimulation = async () => {
     
     if (res.success && res.data) {
       if (res.data.already_prepared) {
-        addLog('检测到已有完成的准备工作，直接使用')
+        addLog('检测到已有完成的群体环境建模，直接使用')
         await loadPreparedData()
         return
       }
       
       taskId.value = res.data.task_id
-      addLog(`准备任务已启动`)
+      addLog(`群体环境建模任务已启动`)
       addLog(`  └─ Task ID: ${res.data.task_id}`)
       
       // 立即设置预期Agent总数（从prepare接口返回值获取）
       if (res.data.expected_entities_count) {
         expectedTotal.value = res.data.expected_entities_count
-        addLog(`从Graphiti +Neo4j图谱读取到 ${res.data.expected_entities_count} 个实体`)
+        addLog(`从事件记忆图谱识别到 ${res.data.expected_entities_count} 个关键对象`)
         if (res.data.entity_types && res.data.entity_types.length > 0) {
-          addLog(`  └─ 实体类型: ${res.data.entity_types.join(', ')}`)
+          addLog(`  └─ 对象类型: ${res.data.entity_types.join(', ')}`)
         }
       }
       
-      addLog('开始轮询准备进度...')
+      addLog('开始监听建模进度...')
       // 开始轮询进度
       startPolling()
       // 开始实时获取 Profiles
       startProfilesPolling()
     } else {
-      addLog(`准备失败: ${res.error || '未知错误'}`)
+      addLog(`群体环境建模失败: ${res.error || '未知错误'}`)
       emit('update-status', 'error')
     }
   } catch (err) {
-    addLog(`准备异常: ${err.message}`)
+    addLog(`群体环境建模异常: ${err.message}`)
     emit('update-status', 'error')
   }
 }
@@ -926,8 +926,8 @@ const pollPrepareStatus = async () => {
         stopPolling()
         stopProfilesPolling()
         stopConfigPolling()
-        const message = data.error || '环境搭建失败，请检查图谱构建结果'
-        addLog(`✗ 环境搭建失败: ${message}`)
+        const message = data.error || '群体环境建模失败，请检查事件图谱生成结果'
+        addLog(`✗ 群体环境建模失败: ${message}`)
         emit('update-status', 'error')
         return
       }
@@ -936,7 +936,7 @@ const pollPrepareStatus = async () => {
       if (data.status === 'not_started') {
         stopPolling()
         stopProfilesPolling()
-        addLog(`准备任务未完成，请重新开始`)
+        addLog(`群体环境建模未完成，请重新启动`)
         emit('update-status', 'error')
         return
       }
@@ -952,7 +952,7 @@ const pollPrepareStatus = async () => {
         // 从轮询结果中获取预期Agent总数
         if (data.progress_detail.expected_entities_count && !expectedTotal.value) {
           expectedTotal.value = data.progress_detail.expected_entities_count
-          addLog(`从图谱读取到 ${data.progress_detail.expected_entities_count} 个实体`)
+          addLog(`从事件记忆图谱识别到 ${data.progress_detail.expected_entities_count} 个关键对象`)
         }
         
         // 输出详细进度日志（避免重复）
@@ -982,7 +982,7 @@ const pollPrepareStatus = async () => {
       
       // 检查是否完成
       if (data.status === 'completed' || data.status === 'ready' || data.already_prepared) {
-        addLog('✓ 准备工作已完成')
+        addLog('✓ 群体环境建模已完成')
         stopPolling()
         stopProfilesPolling()
         await loadPreparedData()
@@ -1030,13 +1030,13 @@ const fetchProfilesRealtime = async () => {
         const latestProfile = profiles.value[currentCount - 1]
         const profileName = latestProfile?.name || latestProfile?.username || `Agent_${currentCount}`
         if (currentCount === 1) {
-          addLog(`开始生成Agent人设...`)
+          addLog(`开始生成群体角色画像...`)
         }
-        addLog(`→ Agent人设 ${currentCount}/${total}: ${profileName} (${latestProfile?.profession || '未知职业'})`)
+        addLog(`→ 角色画像 ${currentCount}/${total}: ${profileName} (${latestProfile?.profession || '未知职业'})`)
         
         // 如果全部生成完成
         if (expectedTotal.value && currentCount >= expectedTotal.value) {
-          addLog(`✓ 全部 ${currentCount} 个Agent人设生成完成`)
+          addLog(`✓ 全部 ${currentCount} 个角色画像生成完成`)
           isContinueGenerating.value = false
         }
       } else if (isContinueGenerating.value && isProfilesIncomplete.value) {
@@ -1090,23 +1090,23 @@ const fetchConfigRealtime = async () => {
       if (data.generation_stage && data.generation_stage !== lastLoggedConfigStage) {
         lastLoggedConfigStage = data.generation_stage
         if (data.generation_stage === 'generating_profiles') {
-          addLog('正在生成Agent人设配置...')
+          addLog('正在生成群体角色画像配置...')
         } else if (data.generation_stage === 'generating_config') {
-          addLog('正在调用LLM生成模拟配置参数...')
+          addLog('正在生成推演参数配置...')
         }
       }
       
       // 如果配置已生成
       if (data.config_generated && data.config) {
         simulationConfig.value = data.config
-        addLog('✓ 模拟配置生成完成')
+        addLog('✓ 推演参数配置完成')
         
         // 显示详细配置摘要
         if (data.summary) {
-          addLog(`  ├─ Agent数量: ${data.summary.total_agents}个`)
-          addLog(`  ├─ 模拟时长: ${data.summary.simulation_hours}小时`)
-          addLog(`  ├─ 初始帖子: ${data.summary.initial_posts_count}条`)
-          addLog(`  ├─ 热点话题: ${data.summary.hot_topics_count}个`)
+          addLog(`  ├─ 角色数量: ${data.summary.total_agents}个`)
+          addLog(`  ├─ 推演时长: ${data.summary.simulation_hours}小时`)
+          addLog(`  ├─ 首轮发言: ${data.summary.initial_posts_count}条`)
+          addLog(`  ├─ 触发议题: ${data.summary.hot_topics_count}个`)
           addLog(`  └─ 平台配置: Twitter ${data.summary.has_twitter_config ? '✓' : '✗'}, Reddit ${data.summary.has_reddit_config ? '✓' : '✗'}`)
         }
         
@@ -1119,12 +1119,12 @@ const fetchConfigRealtime = async () => {
         // 显示事件配置
         if (data.config.event_config?.narrative_direction) {
           const narrative = data.config.event_config.narrative_direction
-          addLog(`叙事方向: ${narrative.length > 50 ? narrative.substring(0, 50) + '...' : narrative}`)
+          addLog(`舆情主线: ${narrative.length > 50 ? narrative.substring(0, 50) + '...' : narrative}`)
         }
         
         stopConfigPolling()
         phase.value = 4
-        addLog('✓ 环境搭建完成，可以开始模拟')
+        addLog('✓ 群体环境建模完成，可以启动推演')
         emit('update-status', 'completed')
       }
     }
@@ -1136,18 +1136,18 @@ const fetchConfigRealtime = async () => {
 const loadPreparedData = async () => {
   phase.value = 2
   isContinueGenerating.value = false
-  addLog('正在加载已有配置数据...')
+  addLog('正在加载已有推演配置...')
 
   // 最后获取一次 Profiles
   await fetchProfilesRealtime()
-  addLog(`已加载 ${profiles.value.length} 个Agent人设`)
+  addLog(`已加载 ${profiles.value.length} 个角色画像`)
 
   // 获取配置（使用实时接口）
   try {
     const res = await getSimulationConfigRealtime(props.simulationId)
     if (res.success && res.data) {
       if (res.data.status === 'failed') {
-        const message = res.data.error || '环境搭建失败，请检查图谱构建结果'
+        const message = res.data.error || '群体环境建模失败，请检查事件图谱生成结果'
         addLog(`加载配置失败: ${message}`)
         emit('update-status', 'error')
         return
@@ -1155,29 +1155,29 @@ const loadPreparedData = async () => {
 
       if (res.data.config_generated && res.data.config) {
         simulationConfig.value = res.data.config
-        addLog('✓ 模拟配置加载成功')
+        addLog('✓ 推演参数配置加载成功')
         
         // 显示详细配置摘要
         if (res.data.summary) {
-          addLog(`  ├─ Agent数量: ${res.data.summary.total_agents}个`)
-          addLog(`  ├─ 模拟时长: ${res.data.summary.simulation_hours}小时`)
-          addLog(`  └─ 初始帖子: ${res.data.summary.initial_posts_count}条`)
+          addLog(`  ├─ 角色数量: ${res.data.summary.total_agents}个`)
+          addLog(`  ├─ 推演时长: ${res.data.summary.simulation_hours}小时`)
+          addLog(`  └─ 首轮发言: ${res.data.summary.initial_posts_count}条`)
         }
         
-        addLog('✓ 环境搭建完成，可以开始模拟')
+        addLog('✓ 群体环境建模完成，可以启动推演')
         phase.value = 4
         emit('update-status', 'completed')
         
         // 如果 profiles 不完整，检查后台是否有正在运行的生成任务
         if (isProfilesIncomplete.value) {
-          addLog(`Agent数未达预期（${profiles.value.length}/${expectedTotal.value}），检查后台任务...`)
+          addLog(`角色数未达预期（${profiles.value.length}/${expectedTotal.value}），检查后台任务...`)
           try {
             const statusRes = await getPrepareStatus({ simulation_id: props.simulationId })
             if (statusRes.success && statusRes.data && statusRes.data.status === 'preparing') {
               // 后台正在生成中，显示"生成中..."状态
               isContinueGenerating.value = true
               taskId.value = statusRes.data.task_id || taskId.value
-              addLog('检测到后台正在生成Agent人设，继续监听...')
+              addLog('检测到后台正在生成角色画像，继续监听...')
               startPolling()
             }
           } catch (_) {}
@@ -1185,7 +1185,7 @@ const loadPreparedData = async () => {
         }
       } else {
         // 配置尚未生成，开始轮询
-        addLog('配置生成中，开始轮询等待...')
+        addLog('推演参数生成中，开始轮询等待...')
         startConfigPolling()
       }
     }
@@ -1208,7 +1208,7 @@ watch(() => props.systemLogs?.length, () => {
 onMounted(() => {
   // 自动开始准备流程
   if (props.simulationId) {
-    addLog('Step2 环境搭建初始化')
+    addLog('Step2 群体环境建模初始化')
     startPrepareSimulation()
   }
 })
@@ -2832,4 +2832,5 @@ onUnmounted(() => {
   transform: scale(0.95) translateY(10px);
   opacity: 0;
 }
+
 </style>

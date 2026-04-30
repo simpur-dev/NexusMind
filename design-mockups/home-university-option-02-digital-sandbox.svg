@@ -1,0 +1,73 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1600" y2="900"><stop stop-color="#F7FBFF"/><stop offset="0.55" stop-color="#EEF7FB"/><stop offset="1" stop-color="#E6F2F7"/></linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#73A8B9"/><stop offset="1" stop-color="#3A5A6A"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="20" stdDeviation="22" flood-color="#3A5A6A" flood-opacity="0.12"/></filter>
+    <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse"><path d="M36 0H0V36" stroke="#73A8B9" stroke-opacity="0.08"/></pattern>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <rect width="1600" height="900" fill="url(#grid)"/>
+  <circle cx="1260" cy="140" r="320" fill="#73A8B9" opacity="0.12"/>
+  <circle cx="260" cy="780" r="360" fill="#8EBDCB" opacity="0.16"/>
+
+  <rect x="36" y="28" width="1528" height="76" rx="24" fill="white" fill-opacity="0.78" stroke="#C9E2EA" filter="url(#shadow)"/>
+  <image href="../frontend/src/assets/logo/NexusMind Logo.png" x="58" y="45" width="42" height="42"/>
+  <text x="116" y="62" fill="#203949" font-size="24" font-weight="900" font-family="Inter, Microsoft YaHei" letter-spacing="2">NexusMind</text>
+  <text x="117" y="84" fill="#6F91A0" font-size="13" font-family="Microsoft YaHei">高校舆情数字沙盘</text>
+  <rect x="1030" y="48" width="144" height="36" rx="18" fill="#EFF8FA" stroke="#D3E8EE"/>
+  <text x="1053" y="71" fill="#3A5A6A" font-size="14" font-family="Microsoft YaHei" font-weight="700">实时态势在线</text>
+  <circle cx="1232" cy="66" r="19" fill="#73A8B9"/><text x="1226" y="72" fill="white" font-size="14" font-weight="900" font-family="Inter">A</text>
+  <text x="1262" y="72" fill="#3A5A6A" font-size="14" font-weight="700" font-family="Inter">admin</text>
+  <rect x="1402" y="48" width="130" height="36" rx="18" fill="#F7FBFF" stroke="#D3E8EE"/><text x="1426" y="71" fill="#3A5A6A" font-size="13" font-weight="700" font-family="Microsoft YaHei">访问 GitHub ↗</text>
+
+  <g filter="url(#shadow)">
+    <rect x="72" y="138" width="420" height="698" rx="34" fill="white" fill-opacity="0.86" stroke="#D3E8EE"/>
+  </g>
+  <text x="108" y="194" fill="#73A8B9" font-size="14" font-weight="900" font-family="Inter" letter-spacing="2">READY TO FORECAST</text>
+  <text x="108" y="244" fill="#243D4C" font-size="46" font-weight="900" font-family="Microsoft YaHei">准备就绪</text>
+  <text x="110" y="282" fill="#6F91A0" font-size="16" font-family="Microsoft YaHei">围绕高校突发舆情，滚动接入材料并生成下一步处置参考。</text>
+  <rect x="108" y="326" width="148" height="96" rx="24" fill="#EFF8FA" stroke="#D3E8EE"/><text x="136" y="372" fill="#3A5A6A" font-size="32" font-weight="900" font-family="Microsoft YaHei">早期</text><text x="137" y="399" fill="#7898A5" font-size="13" font-family="Microsoft YaHei">信息门控推演</text>
+  <rect x="276" y="326" width="148" height="96" rx="24" fill="#EFF8FA" stroke="#D3E8EE"/><text x="304" y="372" fill="#3A5A6A" font-size="32" font-weight="900" font-family="Microsoft YaHei">滚动</text><text x="305" y="399" fill="#7898A5" font-size="13" font-family="Microsoft YaHei">材料增量更新</text>
+
+  <rect x="108" y="466" width="316" height="300" rx="28" fill="#F8FCFD" stroke="#D3E8EE"/>
+  <text x="136" y="508" fill="#3A5A6A" font-size="17" font-weight="900" font-family="Microsoft YaHei">五阶段决策闭环</text>
+  <g font-family="Microsoft YaHei">
+    <rect x="136" y="538" width="260" height="36" rx="18" fill="#FFFFFF" stroke="#D3E8EE"/><circle cx="154" cy="556" r="8" fill="#73A8B9"/><text x="176" y="562" fill="#3A5A6A" font-size="14" font-weight="700">图谱构建：事件、群体、关系抽取</text>
+    <rect x="136" y="586" width="260" height="36" rx="18" fill="#FFFFFF" stroke="#D3E8EE"/><circle cx="154" cy="604" r="8" fill="#73A8B9"/><text x="176" y="610" fill="#3A5A6A" font-size="14" font-weight="700">环境搭建：Agent 角色与立场生成</text>
+    <rect x="136" y="634" width="260" height="36" rx="18" fill="#FFFFFF" stroke="#D3E8EE"/><circle cx="154" cy="652" r="8" fill="#73A8B9"/><text x="176" y="658" fill="#3A5A6A" font-size="14" font-weight="700">世界模型：信任/风险/极化追踪</text>
+    <rect x="136" y="682" width="260" height="36" rx="18" fill="#FFFFFF" stroke="#D3E8EE"/><circle cx="154" cy="700" r="8" fill="#73A8B9"/><text x="176" y="706" fill="#3A5A6A" font-size="14" font-weight="700">报告生成：处置建议与路径解释</text>
+    <rect x="136" y="730" width="260" height="36" rx="18" fill="#FFFFFF" stroke="#D3E8EE"/><circle cx="154" cy="748" r="8" fill="#73A8B9"/><text x="176" y="754" fill="#3A5A6A" font-size="14" font-weight="700">深度互动：追问角色与风险源</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="530" y="138" width="548" height="698" rx="34" fill="white" fill-opacity="0.88" stroke="#D3E8EE"/>
+  </g>
+  <text x="570" y="194" fill="#243D4C" font-size="24" font-weight="900" font-family="Microsoft YaHei">校园舆情数字沙盘</text>
+  <text x="570" y="224" fill="#6F91A0" font-size="14" font-family="Microsoft YaHei">将高校关系网络、传播节点和干预策略放入同一张可观察沙盘。</text>
+  <rect x="570" y="258" width="468" height="342" rx="28" fill="#F4FAFC" stroke="#D3E8EE"/>
+  <path d="M612 522 C682 410 730 448 792 360 C850 276 930 326 1008 288" stroke="#73A8B9" stroke-width="12" stroke-linecap="round" opacity="0.18"/>
+  <path d="M612 522 C682 410 730 448 792 360 C850 276 930 326 1008 288" stroke="#73A8B9" stroke-width="4" stroke-linecap="round"/>
+  <g fill="white" stroke="#73A8B9" stroke-width="3">
+    <circle cx="628" cy="500" r="26"/><circle cx="716" cy="438" r="20"/><circle cx="792" cy="360" r="30"/><circle cx="900" cy="318" r="22"/><circle cx="998" cy="292" r="18"/>
+  </g>
+  <g font-family="Microsoft YaHei" font-size="12" fill="#3A5A6A" font-weight="700"><text x="601" y="550">学生群体</text><text x="686" y="474">校友</text><text x="761" y="405">校方</text><text x="868" y="354">媒体</text><text x="970" y="326">公众</text></g>
+  <rect x="596" y="286" width="138" height="38" rx="19" fill="white" stroke="#D3E8EE"/><text x="618" y="310" fill="#3A5A6A" font-size="13" font-family="Microsoft YaHei" font-weight="700">热度 82%</text>
+  <rect x="596" y="334" width="138" height="38" rx="19" fill="white" stroke="#D3E8EE"/><text x="618" y="358" fill="#3A5A6A" font-size="13" font-family="Microsoft YaHei" font-weight="700">信任 41%</text>
+  <rect x="596" y="382" width="138" height="38" rx="19" fill="white" stroke="#D3E8EE"/><text x="618" y="406" fill="#C06045" font-size="13" font-family="Microsoft YaHei" font-weight="700">风险 67%</text>
+  <rect x="570" y="628" width="218" height="148" rx="24" fill="#F4FAFC" stroke="#D3E8EE"/><text x="596" y="666" fill="#243D4C" font-size="17" font-weight="900" font-family="Microsoft YaHei">处置窗口</text><text x="596" y="698" fill="#6F91A0" font-size="13" font-family="Microsoft YaHei">建议在 4-8 小时内完成首轮回应，降低二次传播概率。</text>
+  <rect x="820" y="628" width="218" height="148" rx="24" fill="#F4FAFC" stroke="#D3E8EE"/><text x="846" y="666" fill="#243D4C" font-size="17" font-weight="900" font-family="Microsoft YaHei">分支对比</text><path d="M852 724 C886 682 930 752 1006 684" stroke="#73A8B9" stroke-width="4" fill="none"/><path d="M852 746 C904 710 930 728 1006 730" stroke="#FFAA55" stroke-width="4" fill="none"/>
+
+  <g filter="url(#shadow)">
+    <rect x="1116" y="138" width="412" height="698" rx="34" fill="white" fill-opacity="0.9" stroke="#D3E8EE"/>
+  </g>
+  <text x="1154" y="194" fill="#243D4C" font-size="24" font-weight="900" font-family="Microsoft YaHei">推演启动台</text>
+  <rect x="1154" y="226" width="336" height="52" rx="18" fill="#EFF8FA" stroke="#D3E8EE"/>
+  <rect x="1160" y="232" width="162" height="40" rx="14" fill="url(#brand)"/><text x="1208" y="257" fill="white" font-size="15" font-weight="900" font-family="Microsoft YaHei">文件上传</text><text x="1370" y="257" fill="#6F91A0" font-size="15" font-family="Microsoft YaHei">网络抓取</text>
+  <text x="1156" y="314" fill="#6F91A0" font-size="13" font-family="Microsoft YaHei">现实种子材料</text>
+  <rect x="1154" y="332" width="336" height="160" rx="22" fill="#F8FCFD" stroke="#C4DEE7" stroke-dasharray="9 9"/><text x="1306" y="395" fill="#73A8B9" font-size="34" font-family="Inter">↑</text><text x="1256" y="436" fill="#3A5A6A" font-size="16" font-weight="900" font-family="Microsoft YaHei">拖拽或点击上传</text><text x="1246" y="462" fill="#8AA7B3" font-size="12" font-family="Microsoft YaHei">通报 / 评论 / 新闻 / 校内材料</text>
+  <rect x="1154" y="512" width="336" height="50" rx="16" fill="#F8FCFD" stroke="#D3E8EE"/><circle cx="1180" cy="537" r="8" fill="#73A8B9" opacity="0.18" stroke="#73A8B9"/><text x="1202" y="542" fill="#3A5A6A" font-size="14" font-family="Microsoft YaHei">同时启用网络抓取增强</text>
+  <text x="1154" y="602" fill="#6F91A0" font-size="13" font-family="Microsoft YaHei">模拟提示词</text>
+  <rect x="1154" y="620" width="336" height="126" rx="20" fill="#F8FCFD" stroke="#D3E8EE"/><text x="1180" y="656" fill="#8AA7B3" font-size="13" font-family="Microsoft YaHei">// 输入事件背景与决策问题</text><text x="1180" y="682" fill="#8AA7B3" font-size="13" font-family="Microsoft YaHei">// 评估群体反应、风险和信任修复</text><text x="1180" y="708" fill="#8AA7B3" font-size="13" font-family="Microsoft YaHei">// 输出分阶段处置建议</text><text x="1376" y="730" fill="#73A8B9" font-size="12" font-family="Inter">NexusMind</text>
+  <rect x="1154" y="772" width="336" height="56" rx="20" fill="url(#brand)"/><text x="1268" y="807" fill="white" font-size="18" font-weight="900" font-family="Microsoft YaHei">启动引擎 ↗</text>
+  <text x="72" y="874" fill="#6F91A0" font-size="13" font-family="Inter">OPTION 02 · Digital Sandbox / 高校舆情数字沙盘 · 适合比赛演示首页</text>
+</svg>

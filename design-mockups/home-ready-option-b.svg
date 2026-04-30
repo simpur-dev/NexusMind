@@ -1,0 +1,69 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1600" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F9FCFF"/>
+      <stop offset="0.45" stop-color="#EEF8FF"/>
+      <stop offset="1" stop-color="#F1FAF8"/>
+    </linearGradient>
+    <linearGradient id="navy" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#213948"/><stop offset="1" stop-color="#4F9AAD"/></linearGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#DDF7FF"/><stop offset="1" stop-color="#FFFFFF"/></linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="22" stdDeviation="30" flood-color="#1D4ED8" flood-opacity="0.13"/></filter>
+    <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse"><path d="M36 0H0V36" stroke="#93C5FD" stroke-opacity="0.13"/></pattern>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/><rect width="1600" height="900" fill="url(#grid)"/>
+  <circle cx="1100" cy="450" r="420" fill="#60A5FA" opacity="0.09"/><circle cx="520" cy="160" r="280" fill="#73A8B9" opacity="0.08"/>
+
+  <g transform="translate(34 28)">
+    <circle cx="24" cy="24" r="24" fill="#DDF3FA" stroke="#93C5FD"/>
+    <path d="M14 26C20 14 30 14 36 26C30 38 20 38 14 26Z" fill="url(#navy)"/>
+    <text x="62" y="22" font-family="Space Grotesk, Arial" font-size="22" font-weight="800" fill="#3A5A6A" letter-spacing="1.6">NexusMind</text>
+    <text x="62" y="42" font-family="Noto Sans SC, Arial" font-size="12" fill="#7A95A3">群体智能引擎</text>
+  </g>
+  <g transform="translate(1310 30)">
+    <circle cx="24" cy="22" r="18" fill="#73A8B9"/><text x="18" y="27" font-family="JetBrains Mono, monospace" font-size="14" fill="white" font-weight="700">A</text><text x="54" y="27" font-family="JetBrains Mono, monospace" font-size="14" fill="#3A5A6A">admin</text>
+    <rect x="126" y="0" width="160" height="44" rx="14" fill="white" fill-opacity="0.72" stroke="#C7DDF2"/><text x="155" y="27" font-family="Noto Sans SC, Arial" font-size="14" fill="#3A5A6A">访问 GitHub ↗</text>
+  </g>
+
+  <text x="80" y="126" font-family="JetBrains Mono, monospace" font-size="18" fill="#73A8B9" letter-spacing="2">OPTION B · LAUNCHPAD HUB</text>
+  <g filter="url(#shadow)">
+    <rect x="80" y="158" width="1440" height="150" rx="38" fill="white" fill-opacity="0.78" stroke="#C7DDF2"/>
+    <rect x="108" y="190" width="116" height="44" rx="22" fill="#E3F2FF" stroke="#BBD9F2"/>
+    <circle cx="132" cy="212" r="7" fill="#73A8B9"/><text x="150" y="218" font-family="JetBrains Mono, monospace" font-size="14" fill="#3A5A6A">系统就绪</text>
+    <text x="108" y="270" font-family="Noto Sans SC, Arial" font-size="54" font-weight="900" fill="#243F4D">准备就绪</text>
+    <text x="510" y="224" font-family="Noto Sans SC, Arial" font-size="24" font-weight="700" fill="#3A5A6A">上传现实材料，启动事件未来推演</text>
+    <text x="510" y="260" font-family="Noto Sans SC, Arial" font-size="17" fill="#6C8795">系统将自动完成图谱构建、环境搭建、世界模型推演、报告生成与深度互动。</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="80" y="340" width="520" height="470" rx="34" fill="white" fill-opacity="0.78" stroke="#C7DDF2"/>
+    <text x="118" y="390" font-family="JetBrains Mono, monospace" font-size="16" fill="#73A8B9">CAPABILITY SNAPSHOT</text>
+    <rect x="118" y="420" width="200" height="98" rx="24" fill="url(#cyan)" stroke="#D4E8F7"/>
+    <text x="146" y="463" font-family="Noto Sans SC, Arial" font-size="30" font-weight="900" fill="#3A5A6A">零试错</text><text x="146" y="494" font-family="Noto Sans SC, Arial" font-size="14" fill="#6C8795">推演未来处置路径</text>
+    <rect x="344" y="420" width="200" height="98" rx="24" fill="url(#cyan)" stroke="#D4E8F7"/>
+    <text x="372" y="463" font-family="Noto Sans SC, Arial" font-size="30" font-weight="900" fill="#3A5A6A">高可扩</text><text x="372" y="494" font-family="Noto Sans SC, Arial" font-size="14" fill="#6C8795">百万 Agent 平行世界</text>
+    <text x="118" y="566" font-family="JetBrains Mono, monospace" font-size="16" fill="#73A8B9">WORKFLOW</text>
+    <g font-family="Noto Sans SC, Arial">
+      <rect x="118" y="590" width="426" height="42" rx="21" fill="#F1FAFF" stroke="#D4E8F7"/><text x="142" y="617" font-size="15" font-weight="800" fill="#3A5A6A">01 图谱构建</text><text x="300" y="617" font-size="14" fill="#7A95A3">GraphRAG 知识图谱</text>
+      <rect x="118" y="642" width="426" height="42" rx="21" fill="#F1FAFF" stroke="#D4E8F7"/><text x="142" y="669" font-size="15" font-weight="800" fill="#3A5A6A">02 环境搭建</text><text x="300" y="669" font-size="14" fill="#7A95A3">Agent 设定与参数</text>
+      <rect x="118" y="694" width="426" height="42" rx="21" fill="#F1FAFF" stroke="#D4E8F7"/><text x="142" y="721" font-size="15" font-weight="800" fill="#3A5A6A">03 世界模型推演</text><text x="300" y="721" font-size="14" fill="#7A95A3">状态循环写回</text>
+      <rect x="118" y="746" width="426" height="42" rx="21" fill="#F1FAFF" stroke="#D4E8F7"/><text x="142" y="773" font-size="15" font-weight="800" fill="#3A5A6A">04 报告生成</text><text x="300" y="773" font-size="14" fill="#7A95A3">解释性结论输出</text>
+    </g>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="640" y="340" width="880" height="470" rx="36" fill="white" fill-opacity="0.84" stroke="#BBD9F2"/>
+    <rect x="684" y="384" width="792" height="56" rx="28" fill="#E8F5FF" stroke="#C7DDF2"/>
+    <rect x="692" y="392" width="386" height="40" rx="20" fill="white" stroke="#9FC8E8"/><text x="885" y="417" text-anchor="middle" font-family="Noto Sans SC, Arial" font-size="15" font-weight="800" fill="#3A5A6A">文件上传</text>
+    <text x="1280" y="417" text-anchor="middle" font-family="Noto Sans SC, Arial" font-size="15" fill="#7A95A3">网络抓取</text>
+    <rect x="684" y="468" width="500" height="190" rx="30" fill="#F7FCFF" stroke="#93C5FD" stroke-dasharray="9 8"/>
+    <circle cx="934" cy="535" r="38" fill="#E3F2FF" stroke="#C7DDF2"/><text x="934" y="546" text-anchor="middle" font-family="Arial" font-size="34" fill="#3A5A6A">↑</text>
+    <text x="934" y="596" text-anchor="middle" font-family="Noto Sans SC, Arial" font-size="20" font-weight="900" fill="#3A5A6A">拖拽文件上传</text><text x="934" y="624" text-anchor="middle" font-family="Noto Sans SC, Arial" font-size="14" fill="#7A95A3">PDF / MD / TXT</text>
+    <rect x="1210" y="468" width="266" height="190" rx="30" fill="#F1FAFF" stroke="#D4E8F7"/>
+    <text x="1240" y="514" font-family="JetBrains Mono, monospace" font-size="15" fill="#73A8B9">02 / 模拟提示词</text>
+    <text x="1240" y="552" font-family="Noto Sans SC, Arial" font-size="15" fill="#6C8795">描述事件背景与决策问题</text>
+    <line x1="1240" y1="584" x2="1444" y2="584" stroke="#C7DDF2"/>
+    <line x1="1240" y1="616" x2="1408" y2="616" stroke="#C7DDF2"/>
+    <rect x="684" y="682" width="792" height="52" rx="18" fill="#EAF6FF" stroke="#D4E8F7"/><text x="714" y="714" font-family="Noto Sans SC, Arial" font-size="15" fill="#3A5A6A">□ 同时启用网络抓取</text><text x="884" y="714" font-family="Noto Sans SC, Arial" font-size="13" fill="#7A95A3">补充公开舆情信息</text>
+    <rect x="684" y="758" width="792" height="66" rx="24" fill="url(#navy)"/><text x="720" y="799" font-family="JetBrains Mono, monospace" font-size="20" font-weight="900" fill="white">启动引擎</text><text x="1438" y="799" text-anchor="end" font-family="Arial" font-size="24" fill="white">↗</text>
+  </g>
+</svg>

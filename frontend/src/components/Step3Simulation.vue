@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="simulation-panel">
     <!-- Top Control Bar -->
     <div class="control-bar">
@@ -91,14 +91,14 @@
       </div>
 
       <div class="action-controls">
-        <!-- 返回环境搭建：任意 phase 都允许返回 Step 2 -->
+        <!-- 返回群体环境建模：任意 phase 都允许返回 Step 2 -->
         <button
           class="action-btn secondary"
           :disabled="phase === 1 && isStopping"
           @click="$emit('go-back')"
-          title="返回环境搭建（Step 2）"
+          title="返回群体环境建模（Step 2）"
         >
-          ← 返回环境搭建
+          ← 返回群体环境建模
         </button>
         <!-- 启动 / 重新启动：仅在 phase=0 且非 starting 时可见 -->
         <button
@@ -581,7 +581,7 @@ const doStartSimulation = async () => {
     
     if (res.success && res.data) {
       if (res.data.force_restarted) {
-        addLog('✓ 已清理旧的模拟日志，重新开始模拟')
+        addLog('✓ 已清理旧的模拟日志，重新启动推演')
       }
       addLog('✓ 模拟引擎启动成功')
       addLog(`  ├─ PID: ${res.data.process_pid || '-'}`)
@@ -680,7 +680,7 @@ const openEvaluation = () => {
 // 重新模拟：先停止当前（如在运行），再强制启动
 const doRestartSimulation = async () => {
   if (!props.simulationId) return
-  const confirmed = window.confirm('确定要重新开始模拟吗？当前数据将被覆盖。')
+  const confirmed = window.confirm('确定要重新启动推演吗？当前数据将被覆盖。')
   if (!confirmed) return
 
   // 如果正在运行，先停止
@@ -818,16 +818,16 @@ const fetchRunStatus = async () => {
 
       const isCompleted = data.runner_status === 'completed'
       
-      // 额外检查：如果后端还没来得及更新 runner_status，但平台已经报告完成
+      // 额外检查：如果后端还没来得及更新 runner_status，但平台已经决策简报已生成
       
       if (isCompleted || platformsCompleted) {
         if (platformsCompleted && !isCompleted) {
           addLog('✓ 检测到所有平台模拟已结束')
         }
-        addLog('✓ 模拟已完成')
+        addLog('✓ 推演已完成')
         phase.value = 2
         stopPolling()
-        // 模拟完成时拉取一次完整的世界模型数据
+        // 推演完成时拉取一次完整的世界模型数据
         fetchWorldModelData({ initial: true })
         emit('update-status', 'completed')
       }
@@ -1029,12 +1029,12 @@ const handleNextStep = async () => {
   }
   
   if (isGeneratingReport.value) {
-    addLog('报告生成请求已发送，请稍候...')
+    addLog('决策简报生成请求已发送，请稍候...')
     return
   }
   
   isGeneratingReport.value = true
-  addLog('正在启动报告生成...')
+  addLog('正在启动决策简报生成...')
   
   try {
     const res = await generateReport({
@@ -1044,16 +1044,16 @@ const handleNextStep = async () => {
     
     if (res.success && res.data) {
       const reportId = res.data.report_id
-      addLog(`✓ 报告生成任务已启动: ${reportId}`)
+      addLog(`✓ 决策简报生成任务已启动: ${reportId}`)
 
-      // 通知父组件跳转报告生成步骤
+      // 通知父组件跳转决策简报生成步骤
       emit('next-step', { reportId })
     } else {
-      addLog(`✗ 启动报告生成失败: ${res.error || '未知错误'}`)
+      addLog(`✗ 启动决策简报生成失败: ${res.error || '未知错误'}`)
       isGeneratingReport.value = false
     }
   } catch (err) {
-    addLog(`✗ 启动报告生成异常: ${err.message}`)
+    addLog(`✗ 启动决策简报生成异常: ${err.message}`)
     isGeneratingReport.value = false
   }
 }
@@ -1134,7 +1134,7 @@ const bootstrap = async () => {
       startDetailPolling()
       emit('update-status', 'processing')
     } else if (status === 'completed') {
-      addLog('✓ 检测到模拟已完成，加载历史数据')
+      addLog('✓ 检测到推演已完成，加载历史数据')
       runStatus.value = data
       phase.value = 2
       await fetchRunStatusDetail()
@@ -1761,4 +1761,5 @@ onUnmounted(() => {
   animation: spin 0.8s linear infinite;
   margin-right: 6px;
 }
+
 </style>

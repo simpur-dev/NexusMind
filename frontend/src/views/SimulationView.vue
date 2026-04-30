@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="main-view">
     <!-- 极光渐变背景层 -->
     <div class="aurora-bg">
@@ -34,7 +34,7 @@
       <div class="header-right">
         <div class="workflow-step">
           <span class="step-num">Step 2/5</span>
-          <span class="step-name">环境搭建</span>
+          <span class="step-name">群体环境建模</span>
         </div>
         <div class="step-divider"></div>
         <span class="status-indicator" :class="statusClass">
@@ -57,7 +57,7 @@
         />
       </div>
 
-      <!-- Right Panel: Step2 环境搭建 -->
+      <!-- Right Panel: Step2 群体环境建模 -->
       <div class="panel-wrapper right" :style="rightPanelStyle">
         <Step2EnvSetup
           :simulationId="currentSimulationId"
@@ -161,7 +161,7 @@ const handleGoBack = () => {
 }
 
 const handleNextStep = (params = {}) => {
-  addLog('进入 Step 3: 开始模拟')
+  addLog('进入 Step 3: 舆情态势推演')
   
   // 记录模拟轮数配置
   if (params.maxRounds) {

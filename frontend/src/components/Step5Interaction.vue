@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="interaction-panel">
     <!-- Main Split Layout -->
     <div class="main-split-layout">
@@ -8,7 +8,7 @@
           <!-- Report Header -->
           <div class="report-header-block">
             <div class="report-meta">
-              <span class="report-tag">Prediction Report</span>
+              <span class="report-tag">决策预测报告</span>
               <span class="report-id">ID: {{ reportId || 'REF-2024-X92' }}</span>
             </div>
             <h1 class="main-title">{{ reportOutline.title }}</h1>
@@ -46,21 +46,23 @@
                 </svg>
               </div>
               
-              <div class="section-body" v-show="!collapsedSections.has(idx)">
-                <!-- Completed Content -->
-                <div v-if="generatedSections[idx + 1]" class="generated-content" v-html="renderMarkdown(generatedSections[idx + 1])"></div>
-                
-                <!-- Loading State -->
-                <div v-else-if="currentSectionIndex === idx + 1" class="loading-state">
-                  <div class="loading-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <circle cx="12" cy="12" r="10" stroke-width="4" stroke="#E5E7EB"></circle>
-                      <path d="M12 2a10 10 0 0 1 10 10" stroke-width="4" stroke="#4B5563" stroke-linecap="round"></path>
-                    </svg>
+              <Transition name="section-slide">
+                <div class="section-body" v-show="!collapsedSections.has(idx)">
+                  <!-- Completed Content -->
+                  <div v-if="generatedSections[idx + 1]" class="generated-content" v-html="renderMarkdown(generatedSections[idx + 1])"></div>
+
+                  <!-- Loading State -->
+                  <div v-else-if="currentSectionIndex === idx + 1" class="loading-state">
+                    <div class="loading-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <circle cx="12" cy="12" r="10" stroke-width="4" stroke="#E5E7EB"></circle>
+                        <path d="M12 2a10 10 0 0 1 10 10" stroke-width="4" stroke="#4B5563" stroke-linecap="round"></path>
+                      </svg>
+                    </div>
+                    <span class="loading-text">正在生成{{ section.title }}...</span>
                   </div>
-                  <span class="loading-text">正在生成{{ section.title }}...</span>
                 </div>
-              </div>
+              </Transition>
             </div>
           </div>
         </div>
@@ -72,7 +74,7 @@
             <div class="waiting-ring"></div>
             <div class="waiting-ring"></div>
           </div>
-          <span class="waiting-text">Waiting for Report Agent...</span>
+          <span class="waiting-text">等待决策简报生成...</span>
         </div>
       </div>
 
@@ -85,8 +87,8 @@
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
           </svg>
           <div class="action-bar-text">
-            <span class="action-bar-title">Interactive Tools</span>
-            <span class="action-bar-subtitle mono">{{ profiles.length }} agents available</span>
+            <span class="action-bar-title">智能研判工作台</span>
+            <span class="action-bar-subtitle mono">{{ profiles.length || 25 }} 个角色可访谈</span>
           </div>
         </div>
           <div class="action-bar-tabs">
@@ -98,7 +100,7 @@
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
               </svg>
-              <span>与Report Agent对话</span>
+              <span>追问决策简报</span>
             </button>
             <div class="agent-dropdown" v-if="profiles.length > 0">
               <button 
@@ -110,7 +112,7 @@
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                   <circle cx="12" cy="7" r="4"></circle>
                 </svg>
-                <span>{{ selectedAgent ? selectedAgent.username : '与世界中任意个体对话' }}</span>
+                <span>{{ selectedAgent ? selectedAgent.username : '访谈模拟角色' }}</span>
                 <svg class="dropdown-arrow" :class="{ open: showAgentDropdown }" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="6 9 12 15 18 9"></polyline>
                 </svg>
@@ -141,7 +143,7 @@
                 <path d="M9 11l3 3L22 4"></path>
                 <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
               </svg>
-              <span>发送问卷调查到世界中</span>
+              <span>发布群体问卷</span>
             </button>
           </div>
         </div>
@@ -154,8 +156,8 @@
             <div class="tools-card-header">
               <div class="tools-card-avatar">R</div>
               <div class="tools-card-info">
-                <div class="tools-card-name">Report Agent - Chat</div>
-                <div class="tools-card-subtitle">报告生成智能体的快速对话版本，可调用 4 种专业工具，拥有NexusMind的完整记忆</div>
+                <div class="tools-card-name">ReportAgent 决策追问</div>
+                <div class="tools-card-subtitle">围绕报告结论追问因果、证据与处置建议，自动调用图谱检索与虚拟访谈工具</div>
               </div>
               <button class="tools-card-toggle" @click="showToolsDetail = !showToolsDetail">
                 <svg :class="{ 'is-expanded': showToolsDetail }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
@@ -165,6 +167,18 @@
             </div>
             <div v-if="showToolsDetail" class="tools-card-body">
               <div class="tools-grid">
+                <div class="tool-item tool-agent tool-active">
+                  <div class="tool-icon-wrapper">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 3l7 4v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V7l7-4z"></path>
+                      <path d="M9 12l2 2 4-5"></path>
+                    </svg>
+                  </div>
+                  <div class="tool-content">
+                    <div class="tool-name">ReportAgent 决策追问</div>
+                    <div class="tool-desc">围绕报告结论、证据来源与处置建议进行多轮追问</div>
+                  </div>
+                </div>
                 <div class="tool-item tool-purple">
                   <div class="tool-icon-wrapper">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
@@ -172,8 +186,8 @@
                     </svg>
                   </div>
                   <div class="tool-content">
-                    <div class="tool-name">InsightForge 深度归因</div>
-                    <div class="tool-desc">对齐现实世界种子数据与模拟环境状态，结合Global/Local Memory机制，提供跨时空的深度归因分析</div>
+                    <div class="tool-name">InsightForge 因果归因</div>
+                    <div class="tool-desc">对齐种子材料与推演状态，定位关键转折、风险诱因与处置窗口</div>
                   </div>
                 </div>
                 <div class="tool-item tool-blue">
@@ -184,8 +198,8 @@
                     </svg>
                   </div>
                   <div class="tool-content">
-                    <div class="tool-name">PanoramaSearch 全景追踪</div>
-                    <div class="tool-desc">基于图结构的广度遍历算法，重构事件传播路径，捕获全量信息流动的拓扑结构</div>
+                    <div class="tool-name">PanoramaSearch 传播追踪</div>
+                    <div class="tool-desc">沿事件图谱追踪信息扩散链路，复盘议题聚合与放大路径</div>
                   </div>
                 </div>
                 <div class="tool-item tool-orange">
@@ -195,8 +209,8 @@
                     </svg>
                   </div>
                   <div class="tool-content">
-                    <div class="tool-name">QuickSearch 快速检索</div>
-                    <div class="tool-desc">基于 GraphRAG 的即时查询接口，优化索引效率，用于快速提取具体的节点属性与离散事实</div>
+                    <div class="tool-name">QuickSearch 证据检索</div>
+                    <div class="tool-desc">快速提取图谱节点、事实片段与报告依据，支撑可解释追问</div>
                   </div>
                 </div>
                 <div class="tool-item tool-green">
@@ -208,8 +222,8 @@
                     </svg>
                   </div>
                   <div class="tool-content">
-                    <div class="tool-name">InterviewSubAgent 虚拟访谈</div>
-                    <div class="tool-desc">自主式访谈，能够并行与模拟世界中个体进行多轮对话，采集非结构化的观点数据与心理状态</div>
+                    <div class="tool-name">InterviewSubAgent 群体访谈</div>
+                    <div class="tool-desc">并行访谈模拟角色，采集立场变化、关注议题与潜在反应</div>
                   </div>
                 </div>
               </div>
@@ -250,7 +264,7 @@
                 </svg>
               </div>
               <p class="empty-text">
-                {{ chatTarget === 'report_agent' ? '与 Report Agent 对话，深入了解报告内容' : '与模拟个体对话，了解他们的观点' }}
+                {{ chatTarget === 'report_agent' ? '追问报告结论、证据来源与下一步处置建议' : '访谈模拟角色，了解群体立场与情绪变化' }}
               </p>
             </div>
             <div 
@@ -292,7 +306,7 @@
             <textarea 
               v-model="chatInput"
               class="chat-input"
-              placeholder="输入您的问题..."
+              placeholder="输入追问，例如：当前最值得优先处置的风险点是什么？"
               @keydown.enter.exact.prevent="sendMessage"
               :disabled="isSending || (!selectedAgent && chatTarget === 'agent')"
               rows="1"
@@ -1122,7 +1136,7 @@ const handleClickOutside = (e) => {
 
 // Lifecycle
 onMounted(() => {
-  addLog('Step5 深度互动初始化')
+  addLog('Step5 智能追问研判初始化')
   restoreFromStorage()
   loadReportData()
   loadProfiles()
@@ -1154,7 +1168,9 @@ watch(() => props.simulationId, (newId) => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: #F8F9FA;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(37, 99, 235, 0.08), transparent 30%),
+    linear-gradient(135deg, #F5F8FC 0%, #ECF4F8 100%);
   font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
   overflow: hidden;
 }
@@ -1169,18 +1185,23 @@ watch(() => props.simulationId, (newId) => {
   flex: 1;
   display: flex;
   overflow: hidden;
+  gap: 12px;
+  padding: 12px;
 }
 
 /* Left Panel - Report Style (与 Step4Report.vue 完全一致) */
 .left-panel.report-style {
-  width: 45%;
-  min-width: 450px;
-  background: #FFFFFF;
-  border-right: 1px solid #E5E7EB;
+  width: 38%;
+  min-width: 420px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 252, 255, 0.98));
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 24px;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  padding: 30px 50px 60px 50px;
+  padding: 34px 46px 56px 46px;
 }
 
 .left-panel::-webkit-scrollbar {
@@ -1207,13 +1228,15 @@ watch(() => props.simulationId, (newId) => {
 
 /* Report Header */
 .report-content-wrapper {
-  max-width: 800px;
+  max-width: 760px;
   margin: 0 auto;
   width: 100%;
 }
 
 .report-header-block {
-  margin-bottom: 30px;
+  position: relative;
+  margin-bottom: 28px;
+  padding: 0 0 8px;
 }
 
 .report-meta {
@@ -1224,13 +1247,14 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .report-tag {
-  background: #000000;
+  background: linear-gradient(135deg, #0F766E, #2563EB);
   color: #FFFFFF;
   font-size: 11px;
   font-weight: 700;
-  padding: 4px 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
   letter-spacing: 0.05em;
-  text-transform: uppercase;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.16);
 }
 
 .report-id {
@@ -1241,28 +1265,28 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .main-title {
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 36px;
+  font-family: 'Inter', 'Noto Serif SC', 'Noto Sans SC', system-ui, sans-serif;
+  font-size: 34px;
   font-weight: 700;
-  color: #111827;
+  color: #0F172A;
   line-height: 1.2;
   margin: 0 0 16px 0;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
 }
 
 .sub-title {
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 16px;
-  color: #6B7280;
-  font-style: italic;
-  line-height: 1.6;
-  margin: 0 0 30px 0;
+  font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  font-size: 14px;
+  color: #64748B;
+  line-height: 1.75;
+  margin: 0 0 24px 0;
   font-weight: 400;
 }
 
 .header-divider {
-  height: 1px;
-  background: #E5E7EB;
+  height: 3px;
+  background: linear-gradient(90deg, #2563EB, rgba(20, 184, 166, 0.45), transparent);
+  border-radius: 999px;
   width: 100%;
 }
 
@@ -1270,23 +1294,28 @@ watch(() => props.simulationId, (newId) => {
 .sections-list {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 18px;
 }
 
 .report-section-item {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  padding: 18px 18px 20px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.04);
 }
 
 .section-header-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 12px;
   transition: background-color 0.2s ease;
-  padding: 8px 12px;
-  margin: -8px -12px;
-  border-radius: 8px;
+  padding: 0;
+  margin: 0;
+  border-radius: 14px;
 }
 
 .section-header-row.clickable {
@@ -1311,17 +1340,24 @@ watch(() => props.simulationId, (newId) => {
 
 .section-number {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 16px;
-  color: #E5E7EB;
-  font-weight: 500;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  font-size: 13px;
+  color: #2563EB;
+  background: rgba(37, 99, 235, 0.08);
+  font-weight: 800;
   transition: color 0.3s ease;
 }
 
 .section-title {
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 24px;
-  font-weight: 600;
-  color: #111827;
+  font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  font-size: 19px;
+  font-weight: 800;
+  color: #0F172A;
   margin: 0;
   transition: color 0.3s ease;
 }
@@ -1336,7 +1372,7 @@ watch(() => props.simulationId, (newId) => {
 
 .report-section-item.is-active .section-number,
 .report-section-item.is-completed .section-number {
-  color: #9CA3AF;
+  color: #2563EB;
 }
 
 .report-section-item.is-active .section-title,
@@ -1345,7 +1381,7 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .section-body {
-  padding-left: 28px;
+  padding-left: 46px;
   overflow: hidden;
 }
 
@@ -1353,8 +1389,8 @@ watch(() => props.simulationId, (newId) => {
 .generated-content {
   font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
   font-size: 14px;
-  line-height: 1.8;
-  color: #374151;
+  line-height: 1.85;
+  color: #334155;
 }
 
 .generated-content :deep(p) {
@@ -1493,9 +1529,14 @@ watch(() => props.simulationId, (newId) => {
 /* Right Panel - Interaction */
 .right-panel {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  background: #FFFFFF;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.96));
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 24px;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
   overflow: hidden;
 }
 
@@ -1504,9 +1545,10 @@ watch(() => props.simulationId, (newId) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 20px;
-  border-bottom: 1px solid #E5E7EB;
-  background: linear-gradient(180deg, #FFFFFF 0%, #FAFBFC 100%);
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+  background:
+    linear-gradient(135deg, rgba(239, 246, 255, 0.85), rgba(240, 253, 250, 0.62));
   gap: 16px;
 }
 
@@ -1518,7 +1560,7 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .action-bar-icon {
-  color: #1F2937;
+  color: #2563EB;
   flex-shrink: 0;
 }
 
@@ -1529,9 +1571,9 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .action-bar-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #1F2937;
+  font-size: 15px;
+  font-weight: 800;
+  color: #0F172A;
   letter-spacing: -0.01em;
 }
 
@@ -1556,12 +1598,12 @@ watch(() => props.simulationId, (newId) => {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
+  padding: 9px 14px;
   font-size: 12px;
-  font-weight: 500;
-  color: #6B7280;
-  background: #F3F4F6;
-  border: 1px solid transparent;
+  font-weight: 700;
+  color: #475569;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(226, 232, 240, 0.95);
   border-radius: 20px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1574,9 +1616,9 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .tab-pill.active {
-  background: #1F2937;
+  background: linear-gradient(135deg, #0F172A, #2563EB);
   color: #FFFFFF;
-  box-shadow: 0 2px 8px rgba(31, 41, 55, 0.15);
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.18);
 }
 
 .tab-pill svg {
@@ -1669,22 +1711,41 @@ watch(() => props.simulationId, (newId) => {
 /* Chat Container */
 .chat-container {
   flex: 1;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "side messages"
+    "side input";
+  gap: 14px;
+  padding: 14px;
   overflow: hidden;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(20, 184, 166, 0.08), transparent 30%),
+    linear-gradient(180deg, rgba(248, 250, 252, 0.35), rgba(255, 255, 255, 0.86));
 }
 
 /* Report Agent Tools Card */
 .report-agent-tools-card {
-  border-bottom: 1px solid #E5E7EB;
-  background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%);
+  grid-area: side;
+  margin: 0;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(37, 99, 235, 0.08), transparent 34%),
+    linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .tools-card-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 20px;
+  padding: 16px;
 }
 
 .tools-card-avatar {
@@ -1692,7 +1753,7 @@ watch(() => props.simulationId, (newId) => {
   height: 44px;
   min-width: 44px;
   min-height: 44px;
-  background: linear-gradient(135deg, #1F2937 0%, #374151 100%);
+  background: linear-gradient(135deg, #0F172A 0%, #2563EB 100%);
   color: #FFFFFF;
   border-radius: 50%;
   display: flex;
@@ -1711,14 +1772,15 @@ watch(() => props.simulationId, (newId) => {
 
 .tools-card-name {
   font-size: 15px;
-  font-weight: 600;
-  color: #1F2937;
+  font-weight: 800;
+  color: #0F172A;
   margin-bottom: 2px;
 }
 
 .tools-card-subtitle {
   font-size: 12px;
-  color: #6B7280;
+  color: #64748B;
+  line-height: 1.45;
 }
 
 .tools-card-toggle {
@@ -1750,27 +1812,29 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .tools-card-body {
-  padding: 0 20px 16px 20px;
+  padding: 0 14px 14px;
+  overflow-y: auto;
 }
 
 .tools-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+  grid-template-columns: 1fr;
+  gap: 12px;
 }
 
 .tool-item {
   display: flex;
   gap: 10px;
-  padding: 12px;
+  padding: 13px;
   background: #FFFFFF;
-  border-radius: 10px;
-  border: 1px solid #E5E7EB;
+  border-radius: 14px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
   transition: all 0.2s ease;
 }
 
 .tool-item:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
 }
 
 .tool-icon-wrapper {
@@ -1828,8 +1892,16 @@ watch(() => props.simulationId, (newId) => {
 
 /* Agent Profile Card */
 .agent-profile-card {
-  border-bottom: 1px solid #E5E7EB;
-  background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%);
+  grid-area: side;
+  min-height: 0;
+  align-self: stretch;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(20, 184, 166, 0.1), transparent 32%),
+    linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
 }
 
 .profile-card-header {
@@ -2098,12 +2170,17 @@ watch(() => props.simulationId, (newId) => {
 
 /* Chat Messages */
 .chat-messages {
+  grid-area: messages;
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: 26px 30px;
   display: flex;
   flex-direction: column;
   gap: 20px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .chat-empty {
@@ -2113,7 +2190,7 @@ watch(() => props.simulationId, (newId) => {
   align-items: center;
   justify-content: center;
   gap: 16px;
-  color: #9CA3AF;
+  color: #94A3B8;
 }
 
 .empty-icon {
@@ -2161,7 +2238,7 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .message-content {
-  max-width: 70%;
+  max-width: 82%;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2193,21 +2270,23 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .message-text {
-  padding: 10px 14px;
-  border-radius: 12px;
+  padding: 12px 15px;
+  border-radius: 16px;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.65;
 }
 
 .chat-message.user .message-text {
-  background: #1F2937;
+  background: linear-gradient(135deg, #0F172A, #1E40AF);
   color: #FFFFFF;
   border-bottom-right-radius: 4px;
 }
 
 .chat-message.assistant .message-text {
-  background: #F3F4F6;
-  color: #374151;
+  background: #FFFFFF;
+  color: #334155;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
   border-bottom-left-radius: 4px;
 }
 
@@ -2284,19 +2363,21 @@ watch(() => props.simulationId, (newId) => {
 
 /* Chat Input */
 .chat-input-area {
-  padding: 16px 24px;
-  border-top: 1px solid #E5E7EB;
+  grid-area: input;
+  padding: 0;
+  border-top: none;
   display: flex;
   gap: 12px;
   align-items: flex-end;
+  background: transparent;
 }
 
 .chat-input {
   flex: 1;
-  padding: 12px 16px;
+  padding: 13px 16px;
   font-size: 14px;
-  border: 1px solid #E5E7EB;
-  border-radius: 8px;
+  border: 1px solid rgba(203, 213, 225, 0.85);
+  border-radius: 16px;
   resize: none;
   font-family: inherit;
   line-height: 1.5;
@@ -2305,7 +2386,8 @@ watch(() => props.simulationId, (newId) => {
 
 .chat-input:focus {
   outline: none;
-  border-color: #1F2937;
+  border-color: #2563EB;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08);
 }
 
 .chat-input:disabled {
@@ -2316,19 +2398,20 @@ watch(() => props.simulationId, (newId) => {
 .send-btn {
   width: 44px;
   height: 44px;
-  background: #1F2937;
+  background: linear-gradient(135deg, #0F172A, #2563EB);
   color: #FFFFFF;
   border: none;
-  border-radius: 8px;
+  border-radius: 15px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
 .send-btn:hover:not(:disabled) {
-  background: #374151;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.2);
 }
 
 .send-btn:disabled {
@@ -2798,4 +2881,675 @@ watch(() => props.simulationId, (newId) => {
   border-top: 1px solid #E5E7EB;
   margin: 24px 0;
 }
+
+.interaction-panel {
+  position: relative;
+  background:
+    radial-gradient(circle at 8% 10%, rgba(22, 93, 255, 0.12), transparent 28%),
+    radial-gradient(circle at 92% 8%, rgba(37, 99, 235, 0.07), transparent 26%),
+    radial-gradient(circle at 78% 92%, rgba(100, 116, 139, 0.08), transparent 30%),
+    linear-gradient(135deg, #F5F7FA 0%, #ECF4FF 48%, #F7FBFF 100%);
+}
+
+.interaction-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(22, 93, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(22, 93, 255, 0.045) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.95), rgba(0, 0, 0, 0.32));
+  pointer-events: none;
+  z-index: -2;
+}
+
+.interaction-panel::after {
+  content: '';
+  position: absolute;
+  right: 38px;
+  top: 34px;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(22, 93, 255, 0.12) 0 2px, transparent 3px),
+    radial-gradient(circle, rgba(100, 116, 139, 0.1) 0 1px, transparent 2px);
+  background-size: 26px 26px, 18px 18px;
+  filter: blur(0.2px);
+  animation: particleDrift 9s ease-in-out infinite alternate;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.main-split-layout {
+  display: grid;
+  grid-template-columns: minmax(380px, 30%) minmax(0, 1fr);
+  gap: 24px;
+  padding: 24px;
+}
+
+.left-panel.report-style {
+  width: auto;
+  min-width: 0;
+  padding: 24px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(22, 93, 255, 0.12);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05), 0 20px 48px rgba(22, 93, 255, 0.08);
+  backdrop-filter: blur(22px) saturate(1.16);
+}
+
+.left-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.left-panel::-webkit-scrollbar-thumb {
+  background: rgba(22, 93, 255, 0);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.left-panel:hover::-webkit-scrollbar-thumb {
+  background: rgba(22, 93, 255, 0.28);
+  background-clip: content-box;
+}
+
+.report-content-wrapper {
+  max-width: none;
+}
+
+.report-header-block {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+}
+
+.report-meta {
+  margin-bottom: 16px;
+}
+
+.report-tag {
+  background: linear-gradient(135deg, #2563EB, #1D4ED8);
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.16);
+}
+
+.report-id {
+  font-size: 12px;
+  line-height: 18px;
+  color: #86909C;
+}
+
+.main-title {
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+  color: #1D2129;
+  letter-spacing: -0.02em;
+}
+
+.sub-title {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+  color: #4E5969;
+  margin-bottom: 20px;
+}
+
+.header-divider {
+  height: 2px;
+  background: linear-gradient(90deg, #2563EB, rgba(37, 99, 235, 0.22) 58%, transparent);
+}
+
+.sections-list {
+  gap: 16px;
+}
+
+.report-section-item {
+  position: relative;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(229, 230, 235, 0.86);
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  transition: transform 0.24s ease, border-color 0.24s ease, box-shadow 0.24s ease, background 0.24s ease;
+  overflow: hidden;
+}
+
+.report-section-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 3px;
+  border-radius: 999px;
+  background: transparent;
+  transition: background 0.24s ease, box-shadow 0.24s ease;
+}
+
+.report-section-item.is-active,
+.report-section-item.is-completed {
+  background: rgba(255, 255, 255, 0.76);
+  border-color: rgba(22, 93, 255, 0.18);
+}
+
+.report-section-item.is-active::before {
+  background: linear-gradient(180deg, #2563EB, #1D4ED8);
+  box-shadow: 0 0 16px rgba(37, 99, 235, 0.22);
+}
+
+.section-header-row {
+  gap: 10px;
+}
+
+.section-header-row.clickable:hover {
+  background: rgba(22, 93, 255, 0.05);
+}
+
+.section-number {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  font-size: 12px;
+  color: #2563EB;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.section-title {
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 500;
+  color: #1D2129;
+}
+
+.collapse-icon {
+  color: #86909C;
+  transition: transform 0.24s ease, color 0.24s ease;
+}
+
+.section-header-row:hover .collapse-icon {
+  color: #2563EB;
+}
+
+.section-body {
+  padding-left: 40px;
+}
+
+.section-slide-enter-active,
+.section-slide-leave-active {
+  transition: max-height 0.28s ease, opacity 0.24s ease, transform 0.24s ease;
+  max-height: 960px;
+}
+
+.section-slide-enter-from,
+.section-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+  max-height: 0;
+}
+
+.generated-content {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+  color: #4E5969;
+}
+
+.generated-content :deep(.md-h2) {
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+  color: #1D2129;
+}
+
+.generated-content :deep(.md-h3),
+.generated-content :deep(.md-h4) {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  color: #1D2129;
+}
+
+.right-panel {
+  border-radius: 24px;
+  border: 1px solid rgba(22, 93, 255, 0.12);
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05), 0 22px 56px rgba(22, 93, 255, 0.08);
+  backdrop-filter: blur(24px) saturate(1.18);
+}
+
+.action-bar {
+  padding: 16px 20px;
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(15, 23, 42, 0.03)),
+    rgba(255, 255, 255, 0.52);
+  border-bottom: 1px solid rgba(37, 99, 235, 0.1);
+}
+
+.action-bar-icon {
+  color: #2563EB;
+  filter: drop-shadow(0 8px 16px rgba(37, 99, 235, 0.14));
+}
+
+.action-bar-title {
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 700;
+  color: #1D2129;
+}
+
+.action-bar-subtitle {
+  font-size: 12px;
+  line-height: 18px;
+  color: #86909C;
+}
+
+.action-bar-tabs {
+  gap: 8px;
+}
+
+.tab-pill {
+  min-height: 36px;
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(22, 93, 255, 0.12);
+  background: rgba(255, 255, 255, 0.7);
+  color: #4E5969;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.tab-pill:hover {
+  background: rgba(37, 99, 235, 0.06);
+  color: #2563EB;
+  border-color: rgba(37, 99, 235, 0.24);
+  transform: translateY(-1px);
+}
+
+.tab-pill:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.tab-pill.active {
+  background: linear-gradient(135deg, #2563EB, #1D4ED8);
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22);
+}
+
+.survey-pill {
+  color: #0F766E;
+  background: rgba(20, 184, 166, 0.08);
+  border-color: rgba(20, 184, 166, 0.18);
+}
+
+.survey-pill.active {
+  background: linear-gradient(135deg, #0F766E, #0D9488);
+  box-shadow: 0 10px 24px rgba(15, 118, 110, 0.2);
+}
+
+.chat-container {
+  grid-template-columns: minmax(288px, 340px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 16px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.06), transparent 30%),
+    linear-gradient(180deg, rgba(245, 247, 250, 0.6), rgba(255, 255, 255, 0.72));
+}
+
+.report-agent-tools-card,
+.agent-profile-card {
+  border-radius: 22px;
+  border: 1px solid rgba(22, 93, 255, 0.12);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(18px);
+}
+
+.tools-card-header,
+.profile-card-header {
+  padding: 16px;
+}
+
+.tools-card-avatar,
+.profile-card-avatar,
+.agent-avatar,
+.message-avatar,
+.result-avatar {
+  background: linear-gradient(135deg, #2563EB, #1D4ED8);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
+}
+
+.tools-card-name,
+.profile-card-name {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 700;
+  color: #1D2129;
+}
+
+.tools-card-subtitle {
+  font-size: 12px;
+  line-height: 18px;
+  color: #86909C;
+}
+
+.tools-card-toggle,
+.profile-card-toggle {
+  border-radius: 10px;
+  border-color: rgba(22, 93, 255, 0.12);
+  color: #4E5969;
+}
+
+.tools-card-toggle:hover,
+.profile-card-toggle:hover {
+  color: #2563EB;
+  border-color: rgba(37, 99, 235, 0.24);
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.tools-card-body {
+  padding: 0 14px 14px;
+}
+
+.tools-grid {
+  gap: 12px;
+}
+
+.tool-item {
+  position: relative;
+  padding: 13px;
+  border-radius: 16px;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.86)) padding-box,
+    linear-gradient(135deg, rgba(37, 99, 235, 0.22), rgba(148, 163, 184, 0.2)) border-box;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.tool-item:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 28px rgba(37, 99, 235, 0.1), 0 0 0 1px rgba(37, 99, 235, 0.08);
+}
+
+.tool-active {
+  background:
+    linear-gradient(rgba(37, 99, 235, 0.1), rgba(255, 255, 255, 0.94)) padding-box,
+    linear-gradient(135deg, #2563EB, rgba(37, 99, 235, 0.28)) border-box;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.08), 0 12px 28px rgba(37, 99, 235, 0.1);
+}
+
+.tool-icon-wrapper {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  border-radius: 12px;
+}
+
+.tool-agent .tool-icon-wrapper {
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563EB;
+}
+
+.tool-purple .tool-icon-wrapper {
+  background: rgba(99, 102, 241, 0.1);
+  color: #4F46E5;
+}
+
+.tool-blue .tool-icon-wrapper {
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563EB;
+}
+
+.tool-orange .tool-icon-wrapper {
+  background: rgba(255, 125, 0, 0.12);
+  color: #FF7D00;
+}
+
+.tool-green .tool-icon-wrapper {
+  background: rgba(20, 184, 166, 0.1);
+  color: #0F766E;
+}
+
+.tool-name {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 700;
+  color: #1D2129;
+}
+
+.tool-desc {
+  font-size: 12px;
+  line-height: 18px;
+  color: #86909C;
+  -webkit-line-clamp: 3;
+}
+
+.chat-messages {
+  border-radius: 22px;
+  border: 1px solid rgba(22, 93, 255, 0.1);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(22, 93, 255, 0.05), transparent 34%),
+    rgba(255, 255, 255, 0.76);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78), 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.chat-message {
+  animation: messageIn 0.28s ease both;
+}
+
+.chat-message.user .message-avatar {
+  background: linear-gradient(135deg, #2563EB, #1D4ED8);
+}
+
+.chat-message.assistant .message-avatar {
+  background: linear-gradient(135deg, #334155, #2563EB);
+  color: #FFFFFF;
+}
+
+.message-text {
+  font-size: 14px;
+  line-height: 22px;
+  border-radius: 18px;
+}
+
+.chat-message.user .message-text {
+  background: linear-gradient(135deg, #2563EB, #1D4ED8);
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.16);
+}
+
+.chat-message.assistant .message-text {
+  border-color: rgba(22, 93, 255, 0.1);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 10px 24px rgba(29, 33, 41, 0.06);
+}
+
+.chat-empty {
+  color: #86909C;
+}
+
+.empty-icon {
+  opacity: 0.34;
+  color: #2563EB;
+}
+
+.empty-text {
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.typing-indicator {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(22, 93, 255, 0.1);
+  box-shadow: 0 8px 18px rgba(29, 33, 41, 0.05);
+}
+
+.typing-indicator span {
+  background: #2563EB;
+}
+
+.chat-input-area {
+  position: relative;
+}
+
+.chat-input {
+  min-height: 48px;
+  padding: 14px 16px;
+  font-size: 14px;
+  line-height: 22px;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  background:
+    linear-gradient(#FFFFFF, #FFFFFF) padding-box,
+    linear-gradient(135deg, rgba(37, 99, 235, 0.22), rgba(148, 163, 184, 0.16)) border-box;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  color: #1D2129;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.chat-input:focus {
+  border-color: transparent;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1), 0 12px 30px rgba(37, 99, 235, 0.1);
+}
+
+.send-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #2563EB, #1D4ED8);
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.22);
+  animation: sendPulse 2.4s ease-in-out infinite;
+}
+
+.send-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.26);
+}
+
+.send-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.96);
+}
+
+.send-btn:disabled {
+  animation: none;
+  background: #E5E6EB;
+  box-shadow: none;
+}
+
+.dropdown-menu {
+  border: 1px solid rgba(22, 93, 255, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(18px);
+}
+
+.dropdown-item:hover {
+  background: rgba(22, 93, 255, 0.06);
+  border-left-color: #2563EB;
+}
+
+.survey-container {
+  padding: 16px;
+  gap: 12px;
+  background: linear-gradient(180deg, rgba(245, 247, 250, 0.62), rgba(255, 255, 255, 0.74));
+}
+
+.survey-panel {
+  border-radius: 18px;
+  border: 1px solid rgba(22, 93, 255, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.resize-divider {
+  height: 8px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.divider-line {
+  background: rgba(22, 93, 255, 0.18);
+}
+
+.agent-checkbox,
+.result-card {
+  border-radius: 14px;
+  border-color: rgba(22, 93, 255, 0.1);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.agent-checkbox:hover {
+  border-color: rgba(22, 93, 255, 0.24);
+  transform: translateY(-1px);
+}
+
+.agent-checkbox.checked {
+  background: rgba(20, 184, 166, 0.08);
+  border-color: rgba(20, 184, 166, 0.3);
+}
+
+.survey-input {
+  border-radius: 16px;
+  border-color: rgba(22, 93, 255, 0.12);
+}
+
+.survey-input:focus {
+  border-color: #2563EB;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08);
+}
+
+.survey-submit-btn {
+  border-radius: 16px;
+  background: linear-gradient(135deg, #2563EB, #1D4ED8);
+}
+
+.survey-submit-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1D4ED8, #1E40AF);
+  transform: translateY(-1px);
+}
+
+@keyframes particleDrift {
+  from {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 0.58;
+  }
+  to {
+    transform: translate3d(-18px, 16px, 0) rotate(10deg);
+    opacity: 0.9;
+  }
+}
+
+@keyframes messageIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sendPulse {
+  0%, 100% {
+    box-shadow: 0 12px 28px rgba(22, 93, 255, 0.24);
+  }
+  50% {
+    box-shadow: 0 12px 28px rgba(22, 93, 255, 0.26), 0 0 0 7px rgba(22, 93, 255, 0.08);
+  }
+}
+
+@media (max-width: 1280px) {
+  .main-split-layout {
+    grid-template-columns: minmax(340px, 34%) minmax(0, 1fr);
+    gap: 16px;
+    padding: 16px;
+  }
+
+  .chat-container {
+    grid-template-columns: minmax(248px, 300px) minmax(0, 1fr);
+  }
+}
+
 </style>

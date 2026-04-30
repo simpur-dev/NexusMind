@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="workbench-panel">
     <div class="scroll-container">
       <!-- Step 01: Ontology -->
@@ -6,7 +6,7 @@
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">01</span>
-            <span class="step-title">本体生成</span>
+            <span class="step-title">事件要素建模</span>
           </div>
           <div class="step-status">
             <span v-if="currentPhase > 0" class="badge success">已完成</span>
@@ -18,7 +18,7 @@
         <div class="card-content">
           <p class="api-note">POST /api/graph/ontology/generate</p>
           <p class="description">
-            LLM分析文档内容与模拟需求，提取出现实种子，自动生成合适的本体结构
+            解析种子材料与推演目标，抽取角色、机构、议题与行动关系，生成面向舆情推演的事件本体。
           </p>
 
           <!-- Loading / Progress -->
@@ -75,7 +75,7 @@
 
           <!-- Generated Entity Tags -->
           <div v-if="projectData?.ontology?.entity_types" class="tags-container" :class="{ 'dimmed': selectedOntologyItem }">
-            <span class="tag-label">GENERATED ENTITY TYPES</span>
+            <span class="tag-label">识别的关键对象</span>
             <div class="tags-list">
               <span 
                 v-for="entity in projectData.ontology.entity_types" 
@@ -83,14 +83,14 @@
                 class="entity-tag clickable"
                 @click="selectOntologyItem(entity, 'entity')"
               >
-                {{ entity.name }}
+                {{ translateEntityType(entity.name) }}
               </span>
             </div>
           </div>
 
           <!-- Generated Relation Tags -->
           <div v-if="projectData?.ontology?.edge_types" class="tags-container" :class="{ 'dimmed': selectedOntologyItem }">
-            <span class="tag-label">GENERATED RELATION TYPES</span>
+            <span class="tag-label">识别的行动关系</span>
             <div class="tags-list">
               <span 
                 v-for="rel in projectData.ontology.edge_types" 
@@ -98,7 +98,7 @@
                 class="entity-tag clickable"
                 @click="selectOntologyItem(rel, 'relation')"
               >
-                {{ rel.name }}
+                {{ translateRelationType(rel.name) }}
               </span>
             </div>
           </div>
@@ -110,7 +110,7 @@
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">02</span>
-            <span class="step-title">GraphRAG构建</span>
+            <span class="step-title">事件记忆图谱构建</span>
           </div>
           <div class="step-status">
             <span v-if="currentPhase > 1" class="badge success">已完成</span>
@@ -122,23 +122,35 @@
         <div class="card-content">
           <p class="api-note">POST /api/graph/build</p>
           <p class="description">
-            基于生成的本体，将文档自动分块后调用 Graphiti +Neo4j 构建知识图谱，提取实体和关系，并形成时序记忆与社区摘要
+            将材料切分并写入 Graphiti + Neo4j，沉淀对象关系、时序记忆与社区摘要，为后续推演提供可追溯依据。
           </p>
           
           <!-- Stats Cards -->
           <div class="stats-grid">
             <div class="stat-card">
               <span class="stat-value">{{ graphStats.nodes }}</span>
-              <span class="stat-label">实体节点</span>
+              <span class="stat-label">对象节点</span>
             </div>
             <div class="stat-card">
               <span class="stat-value">{{ graphStats.edges }}</span>
-              <span class="stat-label">关系边</span>
+              <span class="stat-label">关系链路</span>
             </div>
             <div class="stat-card">
               <span class="stat-value">{{ graphStats.types }}</span>
-              <span class="stat-label">SCHEMA类型</span>
+              <span class="stat-label">要素类型</span>
             </div>
+          </div>
+          <!-- 数据为空时显示重建按钮 -->
+          <button
+            v-if="currentPhase >= 1 && graphStats.nodes === 0 && !rebuildingGraph"
+            class="action-btn rebuild-btn"
+            @click="$emit('rebuild-graph')"
+          >
+            ↻ 重新构建记忆图谱
+          </button>
+          <div v-if="rebuildingGraph" class="rebuild-hint">
+            <span class="spinner-sm"></span>
+            <span>正在重新构建记忆图谱...</span>
           </div>
         </div>
       </div>
@@ -148,7 +160,7 @@
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">03</span>
-            <span class="step-title">构建完成</span>
+            <span class="step-title">推演底座就绪</span>
           </div>
           <div class="step-status">
             <span v-if="currentPhase >= 2" class="badge accent">进行中</span>
@@ -157,14 +169,14 @@
         
         <div class="card-content">
           <p class="api-note">POST /api/simulation/create</p>
-          <p class="description">图谱构建已完成，请进入下一步进行模拟环境搭建</p>
+          <p class="description">事件记忆图谱已完成，可进入群体环境建模，生成面向舆情演化的智能体场域。</p>
           <button 
             class="action-btn" 
             :disabled="currentPhase < 2 || creatingSimulation"
             @click="handleEnterEnvSetup"
           >
             <span v-if="creatingSimulation" class="spinner-sm"></span>
-            {{ creatingSimulation ? '创建中...' : '进入环境搭建 ➝' }}
+            {{ creatingSimulation ? '创建中...' : '进入群体环境建模 ➝' }}
           </button>
           <button 
             class="action-btn action-btn-workspace" 
@@ -238,10 +250,11 @@ const props = defineProps({
   ontologyProgress: Object,
   buildProgress: Object,
   graphData: Object,
-  systemLogs: { type: Array, default: () => [] }
+  systemLogs: { type: Array, default: () => [] },
+  rebuildingGraph: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['next-step', 'simulation-created'])
+const emit = defineEmits(['next-step', 'simulation-created', 'rebuild-graph'])
 
 const selectedOntologyItem = ref(null)
 const logContent = ref(null)
@@ -281,7 +294,7 @@ const terminalLogs = computed(() =>
   })
 )
 
-// 进入环境搭建 - 创建 simulation 并通知父组件
+// 进入群体环境建模 - 创建 simulation 并通知父组件
 const handleEnterEnvSetup = async () => {
   if (!props.projectData?.project_id || !props.projectData?.graph_id) {
     console.error('缺少项目或图谱信息')
@@ -312,6 +325,42 @@ const handleEnterEnvSetup = async () => {
     creatingSimulation.value = false
   }
 }
+
+const entityTypeChinese = {
+  'Student': '学生', 'GraduateStudent': '研究生', 'FacultyMember': '教职人员',
+  'UniversityAdministrator': '校方管理者', 'AcademicAdvisor': '导师',
+  'University': '学校', 'College': '学院', 'Court': '法院',
+  'ExpertPanel': '专家委员会', 'Organization': '组织机构',
+  'GovernmentAgency': '政府机构', 'RegulatoryAgency': '监管机构',
+  'AcademicAssociation': '学术团体', 'Person': '人物',
+  'Media': '媒体', 'MediaOutlet': '媒体机构', 'OnlineInfluencer': '网络大V',
+  'Event': '事件', 'Policy': '政策', 'PublicFigure': '公众人物',
+  'Platform': '平台', 'Company': '企业', 'Location': '地点',
+  'Document': '文件', 'Entity': '实体',
+}
+const relationTypeChinese = {
+  'SUBMITTED_COMPLAINT_AGAINST': '投诉',
+  'SUPERVISES': '指导',
+  'BELONGS_TO_COLLEGE': '所属学院',
+  'AFFILIATED_WITH_UNIVERSITY': '所属学校',
+  'REPORTS_ON': '报道',
+  'INVESTIGATES': '调查',
+  'ISSUES_GUIDANCE_TO': '发布指导',
+  'AMPLIFIES_DISCUSSION_OF': '扩大讨论',
+  'RELATED_TO': '相关',
+  'WORKS_AT': '工作于',
+  'STUDIES_AT': '就读于',
+  'MANAGES': '管理',
+  'SUPPORTS': '支持',
+  'OPPOSES': '反对',
+  'COMMENTS_ON': '评论',
+  'PUBLISHES': '发布',
+  'FOLLOWS': '关注',
+  'MEMBER_OF': '成员',
+  'PARTICIPATES_IN': '参与',
+}
+const translateEntityType = (name) => entityTypeChinese[name] || name
+const translateRelationType = (name) => relationTypeChinese[name] || name.replace(/_/g, ' ')
 
 const selectOntologyItem = (item, type) => {
   selectedOntologyItem.value = { ...item, itemType: type }
@@ -753,6 +802,30 @@ watch(() => props.systemLogs.length, () => {
   box-shadow: 0 8px 20px rgba(99, 179, 237, 0.15);
 }
 
+.rebuild-btn {
+  margin-top: 12px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(234, 88, 12, 0.1) 100%);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  box-shadow: none;
+}
+.rebuild-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.25) 0%, rgba(234, 88, 12, 0.18) 100%);
+  box-shadow: 0 8px 20px rgba(245, 158, 11, 0.15);
+}
+.rebuild-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: #d97706;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(254, 243, 199, 0.6);
+  border: 1px solid rgba(245, 158, 11, 0.14);
+}
+
 .progress-section {
   display: flex;
   align-items: center;
@@ -986,4 +1059,5 @@ watch(() => props.systemLogs.length, () => {
     min-width: 68px;
   }
 }
+
 </style>

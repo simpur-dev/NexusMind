@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="report-panel">
     <div class="step4-shell">
       <aside class="step4-sidebar" aria-label="阶段导航">
@@ -161,31 +161,11 @@
             </div>
           </div>
 
-          <div class="workflow-steps" v-if="workflowSteps.length > 0">
-            <div
-              v-for="(step, sidx) in workflowSteps"
-              :key="step.key"
-              class="wf-step"
-              :class="`wf-step--${step.status}`"
-            >
-              <div class="wf-step-connector">
-                <div class="wf-step-dot"></div>
-                <div class="wf-step-line" v-if="sidx < workflowSteps.length - 1"></div>
-              </div>
-
-              <div class="wf-step-content">
-                <div class="wf-step-title-row">
-                  <span class="wf-step-index mono">{{ step.noLabel }}</span>
-                  <span class="wf-step-title">{{ step.title }}</span>
-                  <span class="wf-step-meta mono" v-if="step.meta">{{ step.meta }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <!-- workflow steps hidden: progress shown via metrics bar -->
 
           <!-- Next Step Button - 在完成后显示 -->
           <button v-if="isComplete" class="next-step-btn" @click="goToInteraction">
-            <span>进入深度互动</span>
+            <span>进入智能追问研判</span>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="5" y1="12" x2="19" y2="12"></line>
               <polyline points="12 5 19 12 12 19"></polyline>
@@ -221,13 +201,8 @@
                   
                   <!-- Report Start -->
                   <template v-if="log.action === 'report_start'">
-                    <div class="info-row">
-                      <span class="info-key">模拟</span>
-                      <span class="info-val mono">{{ log.details?.simulation_id }}</span>
-                    </div>
                     <div class="info-row" v-if="log.details?.simulation_requirement">
-                      <span class="info-key">需求</span>
-                      <span class="info-val">{{ log.details.simulation_requirement }}</span>
+                      <span class="info-val">{{ log.details.simulation_requirement.length > 60 ? log.details.simulation_requirement.slice(0, 60) + '...' : log.details.simulation_requirement }}</span>
                     </div>
                   </template>
 
@@ -432,7 +407,7 @@
                         <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                         <polyline points="22 4 12 14.01 9 11.01"></polyline>
                       </svg>
-                      <span>报告生成完成</span>
+                      <span>决策简报生成完成</span>
                     </div>
                   </template>
                 </div>
@@ -1995,7 +1970,11 @@ const formatElapsedTime = computed(() => {
 })
 
 const displayLogs = computed(() => {
-  return agentLogs.value
+  return agentLogs.value.filter(log => [
+    'report_start', 'planning_start', 'planning_complete',
+    'section_start', 'section_content', 'section_complete',
+    'report_complete'
+  ].includes(log.action))
 })
 
 // Workflow steps overview (status-based, no nested cards)
@@ -2068,7 +2047,7 @@ const workflowSteps = computed(() => {
   steps.push({
     key: 'complete',
     noLabel: 'OK',
-    title: '报告完成',
+    title: '决策简报已生成',
     status: completeStatus,
     meta: completeStatus === 'active' ? '收尾' : ''
   })
@@ -2528,19 +2507,19 @@ onMounted(async () => {
     initReport(props.reportId)
   } else if (props.simulationId && !props.reportId) {
     // 从事件工作台跳转过来，没有 reportId，自动触发生成
-    addLog('从事件工作台进入，自动启动报告生成...')
+    addLog('从事件工作台进入，自动启动决策简报生成...')
     try {
       const payload = { simulation_id: props.simulationId, force_regenerate: true }
       if (props.baselineId) payload.baseline_id = props.baselineId
       const res = await generateReport(payload)
       if (res?.success && res.data?.report_id) {
-        addLog(`报告生成任务已启动: ${res.data.report_id}`)
+        addLog(`决策简报生成任务已启动: ${res.data.report_id}`)
         initReport(res.data.report_id)
       } else {
-        addLog(`报告生成启动失败: ${res?.error || '未知错误'}`)
+        addLog(`决策简报生成启动失败: ${res?.error || '未知错误'}`)
       }
     } catch (e) {
-      addLog(`报告生成启动异常: ${e.message}`)
+      addLog(`决策简报生成启动异常: ${e.message}`)
     }
   }
 })
@@ -5964,4 +5943,5 @@ watch(() => props.reportId, (newId, oldId) => {
 :deep(.wm-section-body strong) {
   color: #1F2937;
 }
+
 </style>

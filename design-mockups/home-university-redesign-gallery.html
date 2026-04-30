@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NexusMind 高校舆情首页重构方案</title>
+  <style>
+    body { margin: 0; font-family: Inter, 'Microsoft YaHei', system-ui, sans-serif; background: #0b1724; color: #eaf7ff; }
+    header { padding: 28px 36px; border-bottom: 1px solid rgba(255,255,255,.12); position: sticky; top: 0; background: rgba(11,23,36,.88); backdrop-filter: blur(14px); z-index: 10; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    p { margin: 0; color: #9db8c8; }
+    main { padding: 28px 36px 60px; display: grid; gap: 34px; }
+    .card { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 20px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+    .card h2 { margin: 0; padding: 18px 22px; font-size: 18px; border-bottom: 1px solid rgba(255,255,255,.1); display: flex; justify-content: space-between; align-items: center; }
+    .card span { color: #79e7ff; font-size: 13px; }
+    iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; display: block; background: #fff; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>NexusMind 高校舆情推演与决策系统：首页重构候选图</h1>
+    <p>这些是静态 SVG 视觉稿，不改任何前端功能连接。选中后再迁移到 Home.vue，并保留现有 v-model、事件、路由和 API 流程。</p>
+  </header>
+  <main>
+    <section class="card"><h2>Option 01 · 高校舆情战情驾驶舱 <span>command center</span></h2><iframe src="home-university-option-01-command-center.svg"></iframe></section>
+    <section class="card"><h2>Option 02 · 高校舆情数字沙盘 <span>digital sandbox</span></h2><iframe src="home-university-option-02-digital-sandbox.svg"></iframe></section>
+    <section class="card"><h2>Option 03 · 早期输入 + 滚动预测 <span>rolling forecast</span></h2><iframe src="home-university-option-03-rolling-forecast.svg"></iframe></section>
+    <section class="card"><h2>Option 04 · 管理者决策简报风 <span>executive brief</span></h2><iframe src="home-university-option-04-executive-brief.svg"></iframe></section>
+  </main>
+</body>
+</html>

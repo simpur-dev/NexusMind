@@ -1,49 +1,42 @@
-<template>
+﻿<template>
   <div class="process-page">
-    <!-- 极光渐变背景层 -->
-    <div class="aurora-bg">
-      <div class="aurora-orb aurora-orb-1"></div>
-      <div class="aurora-orb aurora-orb-2"></div>
-      <div class="aurora-orb aurora-orb-3"></div>
-      <div class="aurora-orb aurora-orb-4"></div>
-    </div>
-    
-    <!-- 十字星点阵背景层 -->
-    <canvas ref="starCanvas" class="star-canvas"></canvas>
-    
     <!-- 顶部导航栏 -->
     <nav class="navbar">
       <div class="nav-brand-group">
-        <div class="nav-brand" @click="goHome">NexusMind</div>
-        <button class="home-btn" @click="goHome" title="返回首页">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-            <polyline points="9 22 9 12 15 12 15 22"/>
-          </svg>
-        </button>
-        <button v-if="fromIncidentWorkspace" class="home-btn incident-back-btn" @click="goBackToWorkspace" title="返回事件工作台">
+        <div class="nav-brand" @click="goHome">
+          <img class="nav-logo" src="/NexusMind_Logo.png" alt="NexusMind" />
+          <span>NexusMind</span>
+        </div>
+        <button class="home-btn incident-back-btn" @click="goBackToWorkspace" title="返回事件工作台">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="15 18 9 12 15 6"/>
           </svg>
-          <span style="font-size:11px;margin-left:2px">事件工作台</span>
+          <span>事件工作台</span>
         </button>
       </div>
       
       <!-- 中间步骤指示器 -->
       <div class="nav-center">
         <div class="step-badge">STEP {{ String(currentStep).padStart(2, '0') }}</div>
-        <div class="step-name">{{ stepNames[currentStep - 1] }}</div>
-        <!-- 顶部同步 dot -->
-        <div class="nav-step-dots">
+        <div class="immersive-stepper">
           <div
-            v-for="(n, idx) in stepNames"
+            v-for="(name, idx) in stepNames"
             :key="idx"
-            class="nav-dot"
+            class="flow-step"
             :class="{
               active: currentStep === idx + 1,
-              completed: currentStep > idx + 1
+              completed: currentStep > idx + 1,
+              pending: currentStep < idx + 1,
+              clickable: maxReachedStep >= idx + 1 && currentStep !== idx + 1
             }"
-          ></div>
+            @click="maxReachedStep >= idx + 1 && currentStep !== idx + 1 && (currentStep = idx + 1)"
+          >
+            <span class="flow-step-node">
+              <span v-if="currentStep > idx + 1">✓</span>
+              <span v-else>{{ idx + 1 }}</span>
+            </span>
+            <span class="flow-step-label">{{ name }}</span>
+          </div>
         </div>
       </div>
 
@@ -52,6 +45,15 @@
         <span class="status-text">{{ statusText }}</span>
       </div>
     </nav>
+
+    <!-- 分支上下文条（从事件工作台跳转时显示） -->
+    <div class="branch-context-bar" v-if="branchContext">
+      <span class="branch-ctx-icon">⑂</span>
+      <span class="branch-ctx-type" :class="branchContext.type">{{ branchContext.typeLabel }}</span>
+      <span class="branch-ctx-label">{{ branchContext.label }}</span>
+      <span class="branch-ctx-sep">|</span>
+      <span class="branch-ctx-baseline">基线 {{ branchContext.baselineId?.slice(-6) || '—' }}</span>
+    </div>
 
     <!-- 主内容区 -->
     <div class="main-content">
@@ -92,21 +94,6 @@
         <div class="graph-container" ref="graphContainer">
           <!-- 图谱可视化（只要有数据就显示） -->
           <div v-if="graphData" class="graph-view">
-            <div class="graph-symbol-decor" aria-hidden="true">
-              <span
-                v-for="(s, i) in GRAPH_DECOR_SYMBOLS"
-                :key="i"
-                class="sym-chip"
-                :class="'sym-drift-' + s.drift"
-                :style="{
-                  left: s.left,
-                  top: s.top,
-                  fontSize: s.size + 'px',
-                  animationDuration: s.f + 's, ' + s.d + 's',
-                  animationDelay: s.fd + 's, ' + s.dd + 's'
-                }"
-              >{{ s.kind === 'plus' ? '+' : '×' }}</span>
-            </div>
             <svg ref="graphSvg" class="graph-svg"></svg>
             <!-- 构建中提示 -->
             <div v-if="currentPhase === 1" class="graph-building-hint">
@@ -117,9 +104,9 @@
             <!-- 节点/边详情面板 -->
             <div v-if="selectedItem" class="detail-panel">
               <div class="detail-panel-header">
-                <span class="detail-title">{{ selectedItem.type === 'node' ? 'Node Details' : 'Relationship' }}</span>
+                <span class="detail-title">{{ selectedItem.type === 'node' ? '节点详情' : '关系详情' }}</span>
                 <span v-if="selectedItem.type === 'node'" class="detail-badge" :style="{ background: selectedItem.color }">
-                  {{ selectedItem.entityType }}
+                  {{ translateType(selectedItem.entityType) }}
                 </span>
                 <button class="detail-close" @click="closeDetailPanel">×</button>
               </div>
@@ -127,21 +114,21 @@
               <!-- 节点详情 -->
               <div v-if="selectedItem.type === 'node'" class="detail-content">
                 <div class="detail-row">
-                  <span class="detail-label">Name:</span>
+                  <span class="detail-label">名称:</span>
                   <span class="detail-value highlight">{{ selectedItem.data.name }}</span>
                 </div>
                 <div class="detail-row">
-                  <span class="detail-label">UUID:</span>
+                  <span class="detail-label">标识:</span>
                   <span class="detail-value uuid">{{ selectedItem.data.uuid }}</span>
                 </div>
                 <div class="detail-row" v-if="selectedItem.data.created_at">
-                  <span class="detail-label">Created:</span>
+                  <span class="detail-label">创建时间:</span>
                   <span class="detail-value">{{ formatDate(selectedItem.data.created_at) }}</span>
                 </div>
                 
                 <!-- Properties / Attributes -->
                 <div class="detail-section" v-if="selectedItem.data.attributes && Object.keys(selectedItem.data.attributes).length > 0">
-                  <span class="detail-label">Properties:</span>
+                  <span class="detail-label">属性:</span>
                   <div class="properties-list">
                     <div v-for="(value, key) in selectedItem.data.attributes" :key="key" class="property-item">
                       <span class="property-key">{{ key }}:</span>
@@ -152,15 +139,15 @@
                 
                 <!-- Summary -->
                 <div class="detail-section" v-if="selectedItem.data.summary">
-                  <span class="detail-label">Summary:</span>
+                  <span class="detail-label">摘要:</span>
                   <p class="detail-summary">{{ selectedItem.data.summary }}</p>
                 </div>
                 
                 <!-- Labels -->
                 <div class="detail-row" v-if="selectedItem.data.labels?.length">
-                  <span class="detail-label">Labels:</span>
+                  <span class="detail-label">标签:</span>
                   <div class="detail-labels">
-                    <span v-for="label in selectedItem.data.labels" :key="label" class="label-tag">{{ label }}</span>
+                    <span v-for="label in selectedItem.data.labels" :key="label" class="label-tag">{{ translateType(label) }}</span>
                   </div>
                 </div>
               </div>
@@ -176,49 +163,49 @@
                   <span class="edge-target">{{ selectedItem.data.target_name || selectedItem.data.target_node_name }}</span>
                 </div>
                 
-                <div class="detail-subtitle">Relationship</div>
+                <div class="detail-subtitle">关系信息</div>
                 
                 <div class="detail-row">
-                  <span class="detail-label">UUID:</span>
+                  <span class="detail-label">标识:</span>
                   <span class="detail-value uuid">{{ selectedItem.data.uuid }}</span>
                 </div>
                 <div class="detail-row">
-                  <span class="detail-label">Label:</span>
+                  <span class="detail-label">关系名:</span>
                   <span class="detail-value">{{ selectedItem.data.name || selectedItem.data.fact_type || 'RELATED_TO' }}</span>
                 </div>
                 <div class="detail-row" v-if="selectedItem.data.fact_type">
-                  <span class="detail-label">Type:</span>
+                  <span class="detail-label">类型:</span>
                   <span class="detail-value">{{ selectedItem.data.fact_type }}</span>
                 </div>
                 
                 <!-- Fact -->
                 <div class="detail-section" v-if="selectedItem.data.fact">
-                  <span class="detail-label">Fact:</span>
+                  <span class="detail-label">事实:</span>
                   <p class="detail-summary">{{ selectedItem.data.fact }}</p>
                 </div>
                 
                 <!-- Episodes -->
                 <div class="detail-section" v-if="selectedItem.data.episodes?.length">
-                  <span class="detail-label">Episodes:</span>
+                  <span class="detail-label">事件片段:</span>
                   <div class="episodes-list">
                     <span v-for="ep in selectedItem.data.episodes" :key="ep" class="episode-tag">{{ ep }}</span>
                   </div>
                 </div>
                 
                 <div class="detail-row" v-if="selectedItem.data.created_at">
-                  <span class="detail-label">Created:</span>
+                  <span class="detail-label">创建时间:</span>
                   <span class="detail-value">{{ formatDate(selectedItem.data.created_at) }}</span>
                 </div>
                 <div class="detail-row" v-if="selectedItem.data.valid_at">
-                  <span class="detail-label">Valid From:</span>
+                  <span class="detail-label">生效时间:</span>
                   <span class="detail-value">{{ formatDate(selectedItem.data.valid_at) }}</span>
                 </div>
                 <div class="detail-row" v-if="selectedItem.data.invalid_at">
-                  <span class="detail-label">Invalid At:</span>
+                  <span class="detail-label">失效时间:</span>
                   <span class="detail-value">{{ formatDate(selectedItem.data.invalid_at) }}</span>
                 </div>
                 <div class="detail-row" v-if="selectedItem.data.expired_at">
-                  <span class="detail-label">Expired At:</span>
+                  <span class="detail-label">过期时间:</span>
                   <span class="detail-value">{{ formatDate(selectedItem.data.expired_at) }}</span>
                 </div>
               </div>
@@ -291,8 +278,8 @@
                 </g>
               </svg>
             </div>
-            <p class="waiting-text">等待本体生成</p>
-            <p class="waiting-hint">生成完成后将自动开始构建图谱</p>
+            <p class="waiting-text">等待事件要素建模</p>
+            <p class="waiting-hint">完成后将自动构建事件记忆图谱</p>
           </div>
           
           <!-- 构建中但还没有数据 -->
@@ -302,7 +289,7 @@
               <div class="loading-ring"></div>
               <div class="loading-ring"></div>
             </div>
-            <p class="waiting-text">图谱构建中</p>
+            <p class="waiting-text">事件图谱生成中</p>
             <p class="waiting-hint">数据即将显示...</p>
           </div>
           
@@ -317,12 +304,28 @@
         <div v-if="graphData" class="graph-legend">
           <div class="legend-item" v-for="type in entityTypes" :key="type.name">
             <span class="legend-dot" :style="{ background: type.color }"></span>
-            <span class="legend-label">{{ type.name }}</span>
+            <span class="legend-label">{{ type.label || type.name }}</span>
             <span class="legend-count">{{ type.count }}</span>
           </div>
         </div>
       </div>
     </Transition>
+
+      <!-- 可拖拽分隔条 -->
+      <div
+        v-if="currentStep <= 2 && !isFullScreen"
+        class="resize-handle"
+        :class="{ 'dragging': isDragging }"
+        @mousedown="startResize"
+        @dblclick="resetLayout"
+        title="拖拽调整比例 / 双击重置为 7:3"
+      >
+        <div class="handle-indicator">
+          <span class="handle-dot"></span>
+          <span class="handle-dot"></span>
+          <span class="handle-dot"></span>
+        </div>
+      </div>
 
       <!-- 右侧: Step 组件容器 -->
       <div
@@ -332,47 +335,17 @@
           'full-screen-step': currentStep >= 3
         }"
       >
-        <!-- 顶部导航条（Step 1-2 仅在右侧显示） -->
-        <div class="panel-header dark-header">
-          <div class="header-left">
-            <span class="header-icon">▣</span>
-            <span class="header-title">构建流程</span>
-          </div>
-          <!-- Step dot 指示器 -->
-          <div class="step-dots">
-            <div
-              v-for="(name, idx) in stepNames"
-              :key="idx"
-              class="step-dot-wrap"
-              :title="name"
-              @click="maxReachedStep >= idx + 1 && currentStep !== idx + 1 && (currentStep = idx + 1)"
-              :style="{ cursor: maxReachedStep >= idx + 1 && currentStep !== idx + 1 ? 'pointer' : 'default' }"
-            >
-              <div
-                class="step-dot"
-                :class="{
-                  active: currentStep === idx + 1,
-                  completed: maxReachedStep > idx + 1 && currentStep !== idx + 1,
-                  pending: maxReachedStep < idx + 1
-                }"
-              >
-                <span v-if="maxReachedStep > idx + 1 && currentStep !== idx + 1" class="dot-check">✓</span>
-                <span v-else class="dot-num">{{ idx + 1 }}</span>
-              </div>
-              <span class="step-dot-label">{{ name }}</span>
-            </div>
-          </div>
-        </div>
+        <!-- 顶部导航条已移至顶部 immersive-stepper -->
 
         <!-- 本体/图谱进度条（仅 Step 1 时显示） -->
         <div class="progress-strip" v-if="currentStep === 1">
           <div class="strip-ontology" v-if="currentPhase === 0">
             <div class="strip-spinner"></div>
-            <span class="strip-text">{{ ontologyProgress?.message || '本体生成中...' }}</span>
+            <span class="strip-text">{{ ontologyProgress?.message || '事件要素建模中...' }}</span>
           </div>
           <div class="strip-graph" v-else-if="currentPhase >= 1 && currentPhase < 2">
             <div class="strip-label">
-              <span>图谱构建</span>
+              <span>事件图谱生成</span>
               <span class="strip-pct">{{ buildProgress?.progress || 0 }}%</span>
             </div>
             <div class="strip-bar">
@@ -381,11 +354,10 @@
           </div>
           <div class="strip-done" v-else-if="currentPhase >= 2">
             <span class="strip-done-icon">◆</span>
-            <span class="strip-done-text">图谱构建完成 · {{ graphData?.node_count || graphData?.nodes?.length || 0 }} 节点 · {{ graphData?.edge_count || graphData?.edges?.length || 0 }} 关系</span>
+            <span class="strip-done-text">事件图谱生成完成 · {{ graphData?.node_count || graphData?.nodes?.length || 0 }} 节点 · {{ graphData?.edge_count || graphData?.edges?.length || 0 }} 关系</span>
           </div>
         </div>
 
-        <!-- Step 内容区 -->
         <div class="step-area">
           <Transition name="step-slide" mode="out-in">
             <div :key="currentStep" class="step-area-inner">
@@ -397,8 +369,10 @@
                 :buildProgress="buildProgress"
                 :graphData="graphData"
                 :systemLogs="systemLogs"
+                :rebuildingGraph="rebuildingGraph"
                 @next-step="handleNextStep"
                 @simulation-created="handleSimulationCreated"
+                @rebuild-graph="handleRebuildGraph"
               />
               <!-- Step 2 用和 Step 1 相同的外层包裹 -->
               <div v-else-if="currentStep === 2" class="workbench-wrapper">
@@ -471,10 +445,6 @@ import * as d3 from 'd3'
 const route = useRoute()
 const router = useRouter()
 
-// 十字星点阵画布引用
-const starCanvas = ref(null)
-let starAnimationId = null
-
 // 当前项目ID（可能从'new'变为实际ID）
 const currentProjectId = ref(route.params.projectId)
 
@@ -486,14 +456,15 @@ const projectData = ref(null)
 const graphData = ref(null)
 const buildProgress = ref(null)
 const ontologyProgress = ref(null) // 本体生成进度
-const currentPhase = ref(-1) // -1: 上传中, 0: 本体生成中, 1: 图谱构建, 2: 完成
+const currentPhase = ref(-1) // -1: 上传中, 0: 本体生成中, 1: 事件图谱生成, 2: 完成
+const rebuildingGraph = ref(false) // 重新构建图谱中
 const selectedItem = ref(null) // 选中的节点或边
 const isFullScreen = ref(false)
 
 // Step 导航状态
-const currentStep = ref(1) // 1: 图谱构建, 2: 环境搭建, 3: 开始模拟, 4: 报告生成, 5: 深度互动
+const currentStep = ref(1) // 1: 事件图谱生成, 2: 群体环境建模, 3: 舆情态势推演, 4: 决策简报生成, 5: 智能追问研判
 const maxReachedStep = ref(1) // 已到达过的最高步骤，允许在已访问步骤间自由跳转
-const stepNames = ['图谱构建', '环境搭建', '世界模型推演', '报告生成', '深度互动']
+const stepNames = ['事件图谱生成', '群体环境建模', '舆情态势推演', '决策简报生成', '智能追问研判']
 const currentSimulationId = ref(null)
 const currentReportId = ref(null)
 const maxRounds = ref(null) // 从 Step2 传入的模拟轮数配置
@@ -502,46 +473,104 @@ const pendingFreshStart = ref(false) // Step2 点击"开始推演"时置 true，
 const stepStatus = ref('') // 子组件通过 emit('update-status') 上报的状态: processing / completed / error
 const systemLogs = ref([])
 
+// 响应式布局状态
+const leftPanelWidth = ref(70) // 默认 70%
+const isDragging = ref(false)
+let resizeStartX = 0
+let resizeStartWidth = 70
+
+// 开始拖拽调整布局
+const startResize = (e) => {
+  if (isFullScreen.value || currentStep.value > 2) return
+  isDragging.value = true
+  resizeStartX = e.clientX
+  resizeStartWidth = leftPanelWidth.value
+  // 拖拽时禁用过渡效果以实现即时响应
+  document.body.classList.add('is-resizing')
+  document.addEventListener('mousemove', handleResize)
+  document.addEventListener('mouseup', stopResize)
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+}
+
+// 处理拖拽 - 使用 requestAnimationFrame 优化性能
+let resizeRafId = null
+const handleResize = (e) => {
+  if (!isDragging.value) return
+  
+  if (resizeRafId) return
+  resizeRafId = requestAnimationFrame(() => {
+    resizeRafId = null
+    
+    const containerWidth = document.querySelector('.main-content')?.offsetWidth || window.innerWidth
+    const deltaX = e.clientX - resizeStartX
+    const deltaPercent = (deltaX / containerWidth) * 100
+    
+    // 限制范围在 20% - 80% 之间
+    let newWidth = resizeStartWidth + deltaPercent
+    newWidth = Math.max(20, Math.min(80, newWidth))
+    
+    // 同时更新 Vue 响应式状态和 CSS 变量实现即时同步
+    leftPanelWidth.value = newWidth
+    document.documentElement.style.setProperty('--left-panel-width', newWidth + '%')
+  })
+}
+
+// 停止拖拽
+const stopResize = () => {
+  isDragging.value = false
+  if (resizeRafId) {
+    cancelAnimationFrame(resizeRafId)
+    resizeRafId = null
+  }
+  document.body.classList.remove('is-resizing')
+  document.removeEventListener('mousemove', handleResize)
+  document.removeEventListener('mouseup', stopResize)
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+}
+
+// 重置布局为默认 7:3
+const resetLayout = () => {
+  leftPanelWidth.value = 70
+  document.documentElement.style.setProperty('--left-panel-width', '70%')
+}
+
 // DOM引用
 const graphContainer = ref(null)
 const graphSvg = ref(null)
-
-// 停止十字星画布动画
-const stopStarAnimation = () => {
-  if (starAnimationId) {
-    cancelAnimationFrame(starAnimationId)
-    starAnimationId = null
-  }
-}
 
 // 轮询定时器
 let pollTimer = null
 
 const statusText = computed(() => {
-  if (error.value) return '构建失败'
+  if (rebuildingGraph.value || currentPhase.value === 1) {
+    return '事件图谱生成中'
+  }
+  if (error.value && currentStep.value === 1) return '构建失败'
   if (stepStatus.value === 'error') return '出错'
   switch (currentStep.value) {
     case 1:
       if (currentPhase.value >= 2) return '构建完成'
-      if (currentPhase.value === 1) return '图谱构建中'
-      if (currentPhase.value === 0) return '本体生成中'
+      if (currentPhase.value === 0) return '事件要素建模中'
       return '初始化中'
     case 2:
-      return stepStatus.value === 'completed' ? '环境搭建完成' : '环境搭建中'
+      return stepStatus.value === 'completed' ? '群体环境建模完成' : '群体环境建模中'
     case 3:
-      return stepStatus.value === 'completed' ? '模拟完成' : '模拟运行中'
+      return stepStatus.value === 'completed' ? '推演完成' : '舆情态势推演中'
     case 4:
-      return stepStatus.value === 'completed' ? '报告完成' : '报告生成中'
+      return stepStatus.value === 'completed' ? '决策简报已生成' : '决策简报生成中'
     case 5:
-      return '深度互动就绪'
+      return '事件图谱生成中'
     default:
       return ''
   }
 })
 
 const statusClass = computed(() => {
-  if (error.value || stepStatus.value === 'error') return 'error'
-  // Step 1: 图谱构建
+  if (rebuildingGraph.value || currentPhase.value === 1) return 'processing'
+  if ((error.value && currentStep.value === 1) || stepStatus.value === 'error') return 'error'
+  // Step 1: 事件图谱生成
   if (currentStep.value === 1) {
     if (currentPhase.value >= 2) return 'completed'
     return 'processing'
@@ -553,6 +582,20 @@ const statusClass = computed(() => {
   return 'processing'
 })
 
+const entityTypeChinese = {
+  'Student': '学生', 'GraduateStudent': '研究生', 'FacultyMember': '教职人员',
+  'UniversityAdministrator': '校方管理者', 'AcademicAdvisor': '导师',
+  'University': '学校', 'College': '学院', 'Court': '法院',
+  'ExpertPanel': '专家委员会', 'Organization': '组织机构',
+  'GovernmentAgency': '政府机构', 'RegulatoryAgency': '监管机构',
+  'AcademicAssociation': '学术团体', 'Person': '人物',
+  'Media': '媒体', 'MediaOutlet': '媒体机构', 'OnlineInfluencer': '网络大V',
+  'Event': '事件', 'Policy': '政策', 'PublicFigure': '公众人物',
+  'Platform': '平台', 'Company': '企业', 'Location': '地点',
+  'Document': '文件', 'Entity': '实体',
+}
+const translateType = (type) => entityTypeChinese[type] || type
+
 const entityTypes = computed(() => {
   if (!graphData.value?.nodes) return []
   
@@ -562,7 +605,7 @@ const entityTypes = computed(() => {
   graphData.value.nodes.forEach(node => {
     const type = node.labels?.find(l => l !== 'Entity') || 'Entity'
     if (!typeMap[type]) {
-      typeMap[type] = { name: type, count: 0, color: colors[Object.keys(typeMap).length % colors.length] }
+      typeMap[type] = { name: type, label: translateType(type), count: 0, color: colors[Object.keys(typeMap).length % colors.length] }
     }
     typeMap[type].count++
   })
@@ -572,6 +615,20 @@ const entityTypes = computed(() => {
 
 // 是否从事件工作台跳转过来
 const fromIncidentWorkspace = computed(() => !!route.query.sim)
+
+const branchTypeCN = { base: '基准', recalibrated: '校准', intervention_a: '干预A', intervention_b: '干预B', intervention_c: '干预C' }
+const branchContext = computed(() => {
+  const bl = route.query.baseline_id
+  const label = route.query.branch_label
+  const type = route.query.branch_type
+  if (!bl && !label) return null
+  return {
+    baselineId: bl || '',
+    label: label || '—',
+    type: type || 'base',
+    typeLabel: branchTypeCN[type] || type || '基准',
+  }
+})
 
 const goBackToWorkspace = () => {
   router.push(`/incident/${currentProjectId.value}`)
@@ -657,7 +714,7 @@ const handleSimulationCreated = ({ simulationId }) => {
   currentSimulationId.value = simulationId
   currentStep.value = 2
   if (2 > maxReachedStep.value) maxReachedStep.value = 2
-  addLog(`模拟实例已创建: ${simulationId}`)
+  addLog(`推演场景已初始化: ${simulationId}`)
   addLog(`进入 ${stepNames[1]} (Step 2/5)`)
 }
 
@@ -838,10 +895,10 @@ const handleNewProject = async () => {
       
       ontologyProgress.value = null
       
-      // 自动开始图谱构建
+      // 自动开始事件图谱生成
       await startBuildGraph()
     } else {
-      error.value = response.error || '本体生成失败'
+      error.value = response.error || '事件要素建模失败'
     }
   } catch (err) {
     console.error('Handle new project error:', err)
@@ -855,6 +912,7 @@ const handleNewProject = async () => {
 const loadProject = async () => {
   try {
     loading.value = true
+    error.value = ''
     const response = await getProject(currentProjectId.value)
     
     if (response.success) {
@@ -866,16 +924,48 @@ const loadProject = async () => {
       // 事件工作台跳转时可通过 ?sim= 指定 simulation_id
       const querySim = route.query.sim
 
+      // 辅助：从 baseline / simulation / project 中解析正确的 graph_id
+      // 优先级：baseline_graph_id（路由参数）> simulation graph_id > project graph_id
+      const queryBaselineGraphId = route.query.baseline_graph_id
+      const resolveGraphId = async (simId) => {
+        // 1. 事件工作台传入的基线 graph_id（最可靠）
+        if (queryBaselineGraphId) return queryBaselineGraphId
+        // 2. 从模拟分支获取
+        if (simId) {
+          try {
+            const { getSimulation } = await import('../api/simulation')
+            const simRes = await getSimulation(simId)
+            const simGraphId = simRes?.data?.graph_id
+            if (simGraphId && simGraphId !== response.data.graph_id) {
+              const checkRes = await getGraphData(simGraphId)
+              const nodeCount = checkRes?.data?.node_count || checkRes?.data?.nodes?.length || 0
+              if (nodeCount > 0) return simGraphId
+            }
+          } catch (_) { /* fallback */ }
+        }
+        // 3. 回退到项目全局 graph_id
+        return response.data.graph_id
+      }
+
       // 从项目数据恢复 Step 导航状态
       if (response.data.report_id) {
         // 报告已生成，恢复关联数据
         currentSimulationId.value = querySim || response.data.simulation_id
         currentReportId.value = response.data.report_id
         maxReachedStep.value = 5
-        if (response.data.graph_id) {
+        const graphIdToLoad = await resolveGraphId(currentSimulationId.value)
+        if (graphIdToLoad) {
           currentPhase.value = 2
-          await loadGraph(response.data.graph_id)
+          await loadGraph(graphIdToLoad)
         }
+        // 从后端恢复模拟轮数配置
+        try {
+          const { getRunStatus } = await import('../api/simulation')
+          const statusRes = await getRunStatus(currentSimulationId.value)
+          if (statusRes?.data?.total_rounds) {
+            maxRounds.value = statusRes.data.total_rounds
+          }
+        } catch (_) { /* 模拟状态不可用 */ }
         // 优先使用 URL 指定的步骤，否则默认 Step 4
         const targetStep = (requestedStep >= 1 && requestedStep <= maxReachedStep.value) ? requestedStep : 4
         currentStep.value = targetStep
@@ -884,16 +974,25 @@ const loadProject = async () => {
         // 模拟已创建，恢复关联数据（querySim 来自事件工作台跳转）
         currentSimulationId.value = querySim || response.data.simulation_id
         maxReachedStep.value = 5
-        if (response.data.graph_id) {
+        const graphIdToLoad = await resolveGraphId(currentSimulationId.value)
+        if (graphIdToLoad) {
           currentPhase.value = 2
-          await loadGraph(response.data.graph_id)
+          await loadGraph(graphIdToLoad)
         }
+        // 从后端恢复模拟轮数配置
+        try {
+          const { getRunStatus } = await import('../api/simulation')
+          const statusRes = await getRunStatus(currentSimulationId.value)
+          if (statusRes?.data?.total_rounds) {
+            maxRounds.value = statusRes.data.total_rounds
+          }
+        } catch (_) { /* 模拟状态不可用，保持默认 */ }
         // 优先使用 URL 指定的步骤，否则默认 Step 2
         const targetStep = (requestedStep >= 1 && requestedStep <= maxReachedStep.value) ? requestedStep : 2
         currentStep.value = targetStep
         addLog(`从历史记录恢复项目，进入 Step ${targetStep} (${stepNames[targetStep - 1]})，模拟ID: ${currentSimulationId.value}`)
       } else if (response.data.status === 'graph_completed' && response.data.graph_id) {
-        // 图谱构建完成，默认在 Step 1
+        // 事件图谱生成完成，默认在 Step 1
         currentPhase.value = 2
         currentStep.value = 1
         await loadGraph(response.data.graph_id)
@@ -947,13 +1046,13 @@ const startBuildGraph = async () => {
     // 设置初始进度
     buildProgress.value = {
       progress: 0,
-      message: '正在启动图谱构建...'
+      message: '正在启动事件图谱生成...'
     }
     
     const response = await buildGraph({ project_id: currentProjectId.value })
     
     if (response.success) {
-      buildProgress.value.message = '图谱构建任务已启动...'
+      buildProgress.value.message = '事件图谱生成任务已启动...'
       
       // 保存 task_id 用于轮询
       const taskId = response.data.task_id
@@ -964,13 +1063,29 @@ const startBuildGraph = async () => {
       // 启动任务状态轮询
       startPollingTask(taskId)
     } else {
-      error.value = response.error || '启动图谱构建失败'
+      error.value = response.error || '启动事件图谱生成失败'
       buildProgress.value = null
     }
   } catch (err) {
     console.error('Build graph error:', err)
-    error.value = '启动图谱构建失败: ' + (err.message || '未知错误')
+    error.value = '启动事件图谱生成失败: ' + (err.message || '未知错误')
     buildProgress.value = null
+  }
+}
+
+// 重新构建图谱（用户手动触发）
+const handleRebuildGraph = async () => {
+  if (rebuildingGraph.value) return
+  rebuildingGraph.value = true
+  error.value = ''
+  addLog('用户手动触发图谱重建...')
+  try {
+    await startBuildGraph()
+    // rebuildingGraph 由 pollTaskStatus 在任务完成/失败时关闭
+  } catch (e) {
+    console.error('handleRebuildGraph error:', e)
+    error.value = '重建图谱失败: ' + (e.message || '未知错误')
+    rebuildingGraph.value = false
   }
 }
 
@@ -991,7 +1106,7 @@ const startGraphPolling = () => {
 // 手动刷新图谱
 const refreshGraph = async () => {
   graphLoading.value = true
-  await fetchGraphData()
+  await fetchGraphData(true)
   graphLoading.value = false
 }
 
@@ -1004,15 +1119,19 @@ const stopGraphPolling = () => {
 }
 
 // 获取图谱数据
-const fetchGraphData = async () => {
+const fetchGraphData = async (forceRender = false) => {
   try {
-    // 先获取项目信息以获取 graph_id
+    // 先获取项目信息
     const projectResponse = await getProject(currentProjectId.value)
     
-    if (projectResponse.success && projectResponse.data.graph_id) {
-      const graphId = projectResponse.data.graph_id
-      projectData.value = projectResponse.data
-      
+    // 优先使用路由中传入的基线 graph_id，其次使用项目全局 graph_id
+    const blGid = route.query.baseline_graph_id
+    const projGid = projectResponse.success ? projectResponse.data.graph_id : null
+    const graphId = blGid || projGid
+    
+    if (projectResponse.success) projectData.value = projectResponse.data
+    
+    if (graphId) {
       // 获取图谱数据
       const graphResponse = await getGraphData(graphId)
       
@@ -1023,8 +1142,8 @@ const fetchGraphData = async () => {
         
         console.log('Fetching graph data, nodes:', newNodeCount, 'edges:', newData.edge_count || newData.edges?.length || 0)
         
-        // 数据有变化时更新渲染
-        if (newNodeCount !== oldNodeCount || !graphData.value) {
+        // 手动刷新时强制重新渲染；轮询时仅在数据变化时渲染
+        if (forceRender || newNodeCount !== oldNodeCount || !graphData.value) {
           graphData.value = newData
           await nextTick()
           renderGraph()
@@ -1064,11 +1183,12 @@ const pollTaskStatus = async (taskId) => {
       console.log('Task status:', task.status, 'Progress:', task.progress)
       
       if (task.status === 'completed') {
-        console.log('✅ 图谱构建完成，正在加载完整数据...')
+        console.log('✅ 事件图谱生成完成，正在加载完整数据...')
         
         stopPolling()
         stopGraphPolling()
         currentPhase.value = 2
+        rebuildingGraph.value = false
         
         // 更新进度显示为完成状态
         buildProgress.value = {
@@ -1094,7 +1214,8 @@ const pollTaskStatus = async (taskId) => {
       } else if (task.status === 'failed') {
         stopPolling()
         stopGraphPolling()
-        error.value = '图谱构建失败: ' + (task.error || '未知错误')
+        rebuildingGraph.value = false
+        error.value = '事件图谱生成失败: ' + (task.error || '未知错误')
         buildProgress.value = null
       }
     }
@@ -1207,34 +1328,34 @@ const renderGraph = () => {
   // ── 视觉主题 ──
   const PALETTE = {
     // 鲜明、高饱和度、深色背景友好的配色
-    'Person':          { fill: '#6366f1', glow: '#818cf8' },
-    'Organization':    { fill: '#f59e0b', glow: '#fbbf24' },
-    'Government':      { fill: '#ef4444', glow: '#f87171' },
-    'Location':        { fill: '#10b981', glow: '#34d399' },
-    'Event':           { fill: '#f43f5e', glow: '#fb7185' },
-    'Policy':          { fill: '#8b5cf6', glow: '#a78bfa' },
-    'MediaOutlet':     { fill: '#ec4899', glow: '#f472b6' },
-    'AcademicLead':    { fill: '#14b8a6', glow: '#2dd4bf' },
-    'University':      { fill: '#0ea5e9', glow: '#38bdf8' },
-    'Entity':          { fill: '#38bdf8', glow: '#7dd3fc' },
+    'Person':          { fill: '#6366f1', glow: '#818cf8', icon: '👤' },
+    'Organization':    { fill: '#f59e0b', glow: '#fbbf24', icon: '🏢' },
+    'Government':      { fill: '#ef4444', glow: '#f87171', icon: '🏛️' },
+    'Location':        { fill: '#10b981', glow: '#34d399', icon: '📍' },
+    'Event':           { fill: '#f43f5e', glow: '#fb7185', icon: '📢' },
+    'Policy':          { fill: '#8b5cf6', glow: '#a78bfa', icon: '📋' },
+    'MediaOutlet':     { fill: '#ec4899', glow: '#f472b6', icon: '📺' },
+    'AcademicLead':    { fill: '#14b8a6', glow: '#2dd4bf', icon: '🎓' },
+    'University':      { fill: '#0ea5e9', glow: '#38bdf8', icon: '🏛️' },
+    'Entity':          { fill: '#38bdf8', glow: '#7dd3fc', icon: '◆' },
   }
   const FALLBACK_COLORS = [
-    { fill: '#6366f1', glow: '#818cf8' },
-    { fill: '#f59e0b', glow: '#fbbf24' },
-    { fill: '#8b5cf6', glow: '#a78bfa' },
-    { fill: '#10b981', glow: '#34d399' },
-    { fill: '#ef4444', glow: '#f87171' },
-    { fill: '#ec4899', glow: '#f472b6' },
-    { fill: '#0ea5e9', glow: '#38bdf8' },
-    { fill: '#14b8a6', glow: '#2dd4bf' },
+    { fill: '#6366f1', glow: '#818cf8', icon: '●' },
+    { fill: '#f59e0b', glow: '#fbbf24', icon: '●' },
+    { fill: '#8b5cf6', glow: '#a78bfa', icon: '●' },
+    { fill: '#10b981', glow: '#34d399', icon: '●' },
+    { fill: '#ef4444', glow: '#f87171', icon: '●' },
+    { fill: '#ec4899', glow: '#f472b6', icon: '●' },
+    { fill: '#0ea5e9', glow: '#38bdf8', icon: '●' },
+    { fill: '#14b8a6', glow: '#2dd4bf', icon: '●' },
   ]
   // 度数分级配色：当所有节点同一类型时，按连接度分层着色
   const DEGREE_TIER_COLORS = [
-    { fill: '#38bdf8', glow: '#7dd3fc' },  // 低度数：天蓝
-    { fill: '#6366f1', glow: '#818cf8' },  // 中度数：靛蓝
-    { fill: '#a855f7', glow: '#c084fc' },  // 中高度数：紫
-    { fill: '#f43f5e', glow: '#fb7185' },  // 高度数：玫红
-    { fill: '#f59e0b', glow: '#fbbf24' },  // 最高度数：琥珀
+    { fill: '#38bdf8', glow: '#7dd3fc', icon: '○' },  // 低度数：天蓝
+    { fill: '#6366f1', glow: '#818cf8', icon: '◐' },  // 中度数：靛蓝
+    { fill: '#a855f7', glow: '#c084fc', icon: '◑' },  // 中高度数：紫
+    { fill: '#f43f5e', glow: '#fb7185', icon: '◉' },  // 高度数：玫红
+    { fill: '#f59e0b', glow: '#fbbf24', icon: '●' },  // 最高度数：琥珀
   ]
   const types = [...new Set(nodes.map(n => n.type))]
   const typeColorMap = {}
@@ -1269,6 +1390,12 @@ const renderGraph = () => {
   }
   const getColorId = (d) => isSingleType && d._colorId ? d._colorId : d.type.replace(/\s+/g, '_')
   
+  // 获取节点图标
+  const getNodeIcon = (d) => {
+    const colorInfo = getColor(d)
+    return colorInfo.icon || '●'
+  }
+  
   // ── 节点半径：基于度数，高连接度的节点更大更醒目 ──
   const maxDeg = Math.max(...nodes.map(n => n.degree), 1)
   const nodeRadius = (d) => {
@@ -1280,25 +1407,59 @@ const renderGraph = () => {
   // ── SVG Defs: 径向渐变 + 辉光 + 箭头 ──
   const defs = svg.append('defs')
   
+  // 创建增强辉光滤镜（多层叠加效果）
+  const createEnhancedGlow = (id, c) => {
+    // 外层大范围柔和大辉光
+    const filterOuter = defs.append('filter')
+      .attr('id', `glow-outer-${id}`)
+      .attr('x', '-100%').attr('y', '-100%').attr('width', '300%').attr('height', '300%')
+    filterOuter.append('feGaussianBlur')
+      .attr('in', 'SourceGraphic')
+      .attr('stdDeviation', '8')
+      .attr('result', 'blur1')
+    const mergeOuter = filterOuter.append('feMerge')
+    mergeOuter.append('feMergeNode').attr('in', 'blur1')
+    mergeOuter.append('feMergeNode').attr('in', 'SourceGraphic')
+    
+    // 内层精细辉光
+    const filterInner = defs.append('filter')
+      .attr('id', `glow-inner-${id}`)
+      .attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%')
+    filterInner.append('feGaussianBlur')
+      .attr('in', 'SourceGraphic')
+      .attr('stdDeviation', '3')
+      .attr('result', 'blur2')
+    filterInner.append('feColorMatrix')
+      .attr('in', 'blur2')
+      .attr('type', 'matrix')
+      .attr('values', `0 0 0 0 ${parseInt(c.glow.slice(1, 3), 16) / 255}  0 0 0 0 ${parseInt(c.glow.slice(3, 5), 16) / 255}  0 0 0 0 ${parseInt(c.glow.slice(5, 7), 16) / 255}  0 0 0 0.7 0`)
+      .attr('result', 'colorBlur')
+    const mergeInner = filterInner.append('feMerge')
+    mergeInner.append('feMergeNode').attr('in', 'colorBlur')
+    mergeInner.append('feMergeNode').attr('in', 'SourceGraphic')
+  }
+  
   // 创建渐变和辉光的辅助函数
   const createGradientAndGlow = (id, c) => {
+    // 外层辉光
+    createEnhancedGlow(id, c)
+    
+    // 主渐变（带高光效果，更通透）
     const grad = defs.append('radialGradient')
       .attr('id', `grad-${id}`)
-      .attr('cx', '35%').attr('cy', '35%').attr('r', '65%')
-    grad.append('stop').attr('offset', '0%').attr('stop-color', '#fff').attr('stop-opacity', 0.45)
-    grad.append('stop').attr('offset', '50%').attr('stop-color', c.fill).attr('stop-opacity', 1)
-    grad.append('stop').attr('offset', '100%').attr('stop-color', d3.color(c.fill).darker(0.6)).attr('stop-opacity', 1)
+      .attr('cx', '35%').attr('cy', '30%').attr('r', '65%')
+    grad.append('stop').attr('offset', '0%').attr('stop-color', '#ffffff').attr('stop-opacity', 0.95)
+    grad.append('stop').attr('offset', '25%').attr('stop-color', c.glow).attr('stop-opacity', 0.85)
+    grad.append('stop').attr('offset', '60%').attr('stop-color', c.fill).attr('stop-opacity', 0.9)
+    grad.append('stop').attr('offset', '100%').attr('stop-color', d3.color(c.fill).darker(0.5)).attr('stop-opacity', 0.85)
     
-    const filter = defs.append('filter')
-      .attr('id', `glow-${id}`)
-      .attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%')
-    filter.append('feGaussianBlur').attr('in', 'SourceGraphic').attr('stdDeviation', '4').attr('result', 'blur')
-    filter.append('feColorMatrix').attr('in', 'blur').attr('type', 'matrix')
-      .attr('values', `0 0 0 0 ${parseInt(c.glow.slice(1, 3), 16) / 255}  0 0 0 0 ${parseInt(c.glow.slice(3, 5), 16) / 255}  0 0 0 0 ${parseInt(c.glow.slice(5, 7), 16) / 255}  0 0 0 0.65 0`)
-      .attr('result', 'colorBlur')
-    const merge = filter.append('feMerge')
-    merge.append('feMergeNode').attr('in', 'colorBlur')
-    merge.append('feMergeNode').attr('in', 'SourceGraphic')
+    // 内环发光渐变（用于节点边缘光晕，更通透）
+    const gradRing = defs.append('radialGradient')
+      .attr('id', `grad-ring-${id}`)
+      .attr('cx', '50%').attr('cy', '50%').attr('r', '50%')
+    gradRing.append('stop').attr('offset', '70%').attr('stop-color', c.fill).attr('stop-opacity', 0)
+    gradRing.append('stop').attr('offset', '90%').attr('stop-color', c.glow).attr('stop-opacity', 0.4)
+    gradRing.append('stop').attr('offset', '100%').attr('stop-color', c.glow).attr('stop-opacity', 0.15)
   }
   // 每种类型创建渐变和辉光
   types.forEach(t => {
@@ -1328,14 +1489,14 @@ const renderGraph = () => {
       .distance(d => {
         const sr = nodeRadius({ degree: degreeMap[typeof d.source === 'object' ? d.source.id : d.source] || 0 })
         const tr = nodeRadius({ degree: degreeMap[typeof d.target === 'object' ? d.target.id : d.target] || 0 })
-        return sr + tr + 60
+        return sr + tr + 200
       })
-      .strength(0.4))
-    .force('charge', d3.forceManyBody().strength(d => -120 - d.degree * 30))
-    .force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
-    .force('collision', d3.forceCollide().radius(d => nodeRadius(d) + 16).strength(0.7))
-    .force('x', d3.forceX(width / 2).strength(0.03))
-    .force('y', d3.forceY(height / 2).strength(0.03))
+      .strength(0.25))
+    .force('charge', d3.forceManyBody().strength(d => -400 - d.degree * 80))
+    .force('center', d3.forceCenter(width / 2, height / 2).strength(0.02))
+    .force('collision', d3.forceCollide().radius(d => nodeRadius(d) + 45).strength(0.9))
+    .force('x', d3.forceX(width / 2).strength(0.015))
+    .force('y', d3.forceY(height / 2).strength(0.015))
     .alphaDecay(0.028)
     .velocityDecay(0.35)
   
@@ -1348,22 +1509,49 @@ const renderGraph = () => {
       g.attr('transform', event.transform)
     }))
   
-  // ── 绘制边：曲线 + 可选箭头 ──
+  // ── 绘制边：曲线 + 发光动画 ──
   const linkGroup = g.append('g').attr('class', 'links')
     .selectAll('g').data(edges).enter().append('g')
     .style('cursor', 'pointer')
     .on('click', (event, d) => { event.stopPropagation(); selectEdge(d.rawData) })
   
-  // 曲线路径
-  const linkPath = linkGroup.append('path')
+  // 边外层辉光（模糊的粗线）
+  linkGroup.append('path')
+    .attr('class', 'link-glow')
     .attr('fill', 'none')
     .attr('stroke', d => {
       const srcNode = typeof d.source === 'object' ? nodes.find(n => n.id === d.source.id) : null
       const c = getColor(srcNode || 'Entity')
       return c.glow || '#7dd3fc'
     })
-    .attr('stroke-width', 1.4)
-    .attr('stroke-opacity', 0.3)
+    .attr('stroke-width', 6)
+    .attr('stroke-opacity', 0.15)
+    .attr('stroke-linecap', 'round')
+  
+  // 边发光尾迹（用于动画）
+  linkGroup.append('path')
+    .attr('class', 'link-trail')
+    .attr('fill', 'none')
+    .attr('stroke', d => {
+      const srcNode = typeof d.source === 'object' ? nodes.find(n => n.id === d.source.id) : null
+      const c = getColor(srcNode || 'Entity')
+      return c.glow || '#7dd3fc'
+    })
+    .attr('stroke-width', 2.5)
+    .attr('stroke-opacity', 0.5)
+    .attr('stroke-linecap', 'round')
+  
+  // 曲线路径（主线条）
+  const linkPath = linkGroup.append('path')
+    .attr('class', 'link-main')
+    .attr('fill', 'none')
+    .attr('stroke', d => {
+      const srcNode = typeof d.source === 'object' ? nodes.find(n => n.id === d.source.id) : null
+      const c = getColor(srcNode || 'Entity')
+      return c.glow || '#7dd3fc'
+    })
+    .attr('stroke-width', 1.5)
+    .attr('stroke-opacity', 0.4)
     .attr('marker-end', 'url(#arrow)')
   
   // 透明宽路径用于点击
@@ -1398,24 +1586,63 @@ const renderGraph = () => {
       .on('drag', dragged)
       .on('end', dragended))
   
+  // 主圆：径向渐变 + 辉光滤镜
+  node.append('circle')
+    .attr('r', nodeRadius)
+    .attr('fill', d => `url(#grad-${getColorId(d)})`)
+    .attr('filter', d => `url(#glow-outer-${getColorId(d)})`)
+    .attr('stroke', d => d3.color(getColor(d).fill).brighter(0.5))
+    .attr('stroke-width', d => d.degree >= 5 ? 2.5 : d.degree >= 2 ? 1.8 : 1.2)
+    .attr('stroke-opacity', 0.8)
+    .attr('class', 'node-circle')
+
+  // 外层大辉光环（所有节点，渐变透明度）
+  node.append('circle')
+    .attr('class', 'node-outer-glow')
+    .attr('r', d => nodeRadius(d) + 12)
+    .attr('fill', d => `url(#grad-ring-${getColorId(d)})`)
+    .attr('opacity', d => Math.min(0.3 + d.degree * 0.05, 0.7))
+
+  // 脉冲光环动画（仅高度数节点）
+  node.filter(d => d.degree >= 3)
+    .append('circle')
+    .attr('class', 'node-pulse')
+    .attr('r', d => nodeRadius(d) + 8)
+    .attr('fill', 'none')
+    .attr('stroke', d => getColor(d).glow)
+    .attr('stroke-width', 2)
+    .attr('stroke-opacity', 0)
+    .attr('stroke-dasharray', '4 4')
+
   // 外层辉光圈（仅高度数节点）
   node.filter(d => d.degree >= 3).append('circle')
     .attr('r', d => nodeRadius(d) + 6)
     .attr('fill', 'none')
     .attr('stroke', d => getColor(d).glow)
     .attr('stroke-width', 1.5)
-    .attr('stroke-opacity', 0.4)
+    .attr('stroke-opacity', 0.5)
     .attr('stroke-dasharray', '3 3')
-  
-  // 主圆：径向渐变 + 辉光滤镜
-  node.append('circle')
-    .attr('r', nodeRadius)
-    .attr('fill', d => `url(#grad-${getColorId(d)})`)
-    .attr('filter', d => d.degree >= 1 ? `url(#glow-${getColorId(d)})` : null)
-    .attr('stroke', d => d3.color(getColor(d).fill).brighter(0.3))
-    .attr('stroke-width', d => d.degree >= 5 ? 2 : 1.2)
-    .attr('stroke-opacity', 0.7)
-    .attr('class', 'node-circle')
+
+  // 节点内部图标
+  node.append('text')
+    .attr('class', 'node-icon')
+    .attr('text-anchor', 'middle')
+    .attr('dominant-baseline', 'central')
+    .attr('font-size', d => Math.max(8, nodeRadius(d) * 0.7))
+    .attr('fill', '#ffffff')
+    .attr('opacity', 0.9)
+    .attr('pointer-events', 'none')
+    .text(d => getNodeIcon(d))
+
+  // 内层光点（高度数节点增加中心亮点）
+  node.filter(d => d.degree >= 2)
+    .append('circle')
+    .attr('class', 'node-core')
+    .attr('r', 2)
+    .attr('cx', 0)
+    .attr('cy', 0)
+    .attr('fill', '#ffffff')
+    .attr('opacity', 0.8)
   
   // 节点标签：居中在节点下方，重要节点有背景药丸
   const labelG = g.append('g').attr('class', 'node-labels')
@@ -1445,7 +1672,7 @@ const renderGraph = () => {
       return d.name.length > maxLen ? d.name.substring(0, maxLen) + '...' : d.name
     })
   
-  // ── Hover 交互：高亮连通子图，边标签显示 ──
+  // ── Hover 交互：高亮连通子图，边动画加速 ──
   node.on('mouseover', (event, d) => {
     const connected = new Set([d.id])
     const connectedEdges = new Set()
@@ -1456,15 +1683,33 @@ const renderGraph = () => {
       if (tid === d.id) { connected.add(sid); connectedEdges.add(i) }
     })
     
-    // 节点淡入淡出
+    // 节点淡入淡出 + 放大效果
     node.select('.node-circle')
       .transition().duration(200)
       .attr('opacity', n => connected.has(n.id) ? 1 : 0.12)
+      .attr('r', n => connected.has(n.id) ? nodeRadius(n) * 1.15 : nodeRadius(n))
     
-    // 边高亮
-    linkPath.transition().duration(200)
-      .attr('stroke-opacity', (e, i) => connectedEdges.has(i) ? 0.7 : 0.04)
+    // 外层辉光增强
+    node.select('.node-outer-glow')
+      .transition().duration(200)
+      .attr('opacity', n => connected.has(n.id) ? Math.min(0.5 + n.degree * 0.08, 0.9) : 0)
+    
+    // 边高亮 + 增粗
+    linkGroup.select('.link-main')
+      .transition().duration(200)
+      .attr('stroke-opacity', (e, i) => connectedEdges.has(i) ? 0.9 : 0.04)
       .attr('stroke-width', (e, i) => connectedEdges.has(i) ? 2.5 : 1.2)
+    
+    // 辉光边增强
+    linkGroup.select('.link-glow')
+      .transition().duration(200)
+      .attr('stroke-opacity', (e, i) => connectedEdges.has(i) ? 0.35 : 0.05)
+    
+    // 尾迹边增强
+    linkGroup.select('.link-trail')
+      .transition().duration(200)
+      .attr('stroke-opacity', (e, i) => connectedEdges.has(i) ? 0.8 : 0.2)
+      .attr('stroke-width', (e, i) => connectedEdges.has(i) ? 4 : 2)
     
     // 标签显隐
     labelItem.select('text')
@@ -1473,13 +1718,38 @@ const renderGraph = () => {
     
     // 边标签：只显示关联的
     linkLabel.transition().duration(200)
-      .attr('opacity', (e, i) => connectedEdges.has(i) ? 0.85 : 0)
+      .attr('opacity', (e, i) => connectedEdges.has(i) ? 0.9 : 0)
   })
   .on('mouseout', () => {
-    node.select('.node-circle').transition().duration(300).attr('opacity', 1)
-    linkPath.transition().duration(300).attr('stroke-opacity', 0.3).attr('stroke-width', 1.4)
-    labelItem.select('text').transition().duration(300).attr('opacity', 1)
-    linkLabel.transition().duration(300).attr('opacity', 0)
+    node.select('.node-circle')
+      .transition().duration(300)
+      .attr('opacity', 1)
+      .attr('r', nodeRadius)
+    
+    node.select('.node-outer-glow')
+      .transition().duration(300)
+      .attr('opacity', d => Math.min(0.3 + d.degree * 0.05, 0.7))
+    
+    linkGroup.select('.link-main')
+      .transition().duration(300)
+      .attr('stroke-opacity', 0.4)
+      .attr('stroke-width', 1.5)
+    
+    linkGroup.select('.link-glow')
+      .transition().duration(300)
+      .attr('stroke-opacity', 0.15)
+    
+    linkGroup.select('.link-trail')
+      .transition().duration(300)
+      .attr('stroke-opacity', 0.5)
+      .attr('stroke-width', 2.5)
+    
+    labelItem.select('text')
+      .transition().duration(300)
+      .attr('opacity', 1)
+    
+    linkLabel.transition().duration(300)
+      .attr('opacity', 0)
   })
   
   // 点击空白关闭
@@ -1498,6 +1768,12 @@ const renderGraph = () => {
   simulation.on('tick', () => {
     linkPath.attr('d', linkArc)
     linkHit.attr('d', linkArc)
+    
+    // 更新辉光路径
+    linkGroup.select('.link-glow').attr('d', linkArc)
+    
+    // 更新尾迹路径
+    linkGroup.select('.link-trail').attr('d', linkArc)
     
     linkLabel
       .attr('x', d => (d.source.x + d.target.x) / 2)
@@ -1528,7 +1804,7 @@ const renderGraph = () => {
         color: c.fill,
         label: ['低连接度', '中连接度', '中高连接度', '高连接度', '核心节点'][i]
       }))
-    : types.map(t => ({ color: getColor(t).fill, label: t }))
+    : types.map(t => ({ color: getColor(t).fill, label: translateType(t) }))
 
   const legendG = svg.append('g')
     .attr('transform', `translate(16, ${height - legendItems.length * 22 - 16})`)
@@ -1577,13 +1853,14 @@ watch(currentStep, (newStep, oldStep) => {
 
 // 生命周期
 onMounted(() => {
+  // 初始化布局宽度 CSS 变量
+  document.documentElement.style.setProperty('--left-panel-width', leftPanelWidth.value + '%')
   initProject()
 })
 
 onUnmounted(() => {
   stopPolling()
   stopGraphPolling()
-  stopStarAnimation()
 })
 </script>
 
@@ -1604,6 +1881,9 @@ onUnmounted(() => {
   font-family: 'JetBrains Mono', 'Noto Sans SC', monospace;
   overflow: hidden; /* Prevent body scroll in fullscreen */
   position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
 }
 
 /* 导航栏 */
@@ -1612,31 +1892,92 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  height: 56px;
-  background: #E6F2F7;
-  backdrop-filter: blur(20px);
-  color: #3A5A6A;
+  height: 68px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.92), rgba(240, 247, 255, 0.86)),
+    radial-gradient(circle at 28% 0%, rgba(22, 93, 255, 0.12), transparent 38%);
+  backdrop-filter: blur(22px) saturate(1.25);
+  color: #1D2129;
   z-index: 100;
   position: relative;
+  border-bottom: 1px solid rgba(22, 93, 255, 0.12);
+  box-shadow: 0 8px 26px rgba(29, 33, 41, 0.05);
+}
+
+.branch-context-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 24px;
+  background: linear-gradient(90deg, #e6f4f3 0%, #eef7fb 30%, #eff3fc 60%, #f3f0f9 100%);
   border-bottom: 1px solid rgba(115, 168, 185, 0.2);
+  font-size: 12px;
+  color: #94a3b8;
+  z-index: 99;
+  position: relative;
+}
+
+.branch-ctx-icon {
+  font-size: 15px;
+  color: #60a5fa;
+}
+
+.branch-ctx-type {
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  background: rgba(59,130,246,0.15);
+  color: #60a5fa;
+}
+
+.branch-ctx-type.recalibrated { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.branch-ctx-type.intervention_a { background: rgba(16,185,129,0.15); color: #10b981; }
+.branch-ctx-type.intervention_b { background: rgba(139,92,246,0.15); color: #8b5cf6; }
+.branch-ctx-type.intervention_c { background: rgba(236,72,153,0.15); color: #ec4899; }
+
+.branch-ctx-label {
+  color: #64748b;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+
+.branch-ctx-sep {
+  color: rgba(148,163,184,0.3);
+}
+
+.branch-ctx-baseline {
+  color: #64748b;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
 }
 
 .nav-brand-group {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  min-width: 280px;
 }
 
 .nav-brand {
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.02rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
   cursor: pointer;
   transition: all 0.2s;
-  background: linear-gradient(135deg, #73A8B9, #3A5A6A);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #0B1220;
+}
+
+.nav-logo {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  border-radius: 10px;
+  box-shadow: 0 8px 18px rgba(22, 93, 255, 0.12);
 }
 
 .nav-brand:hover {
@@ -1648,35 +1989,43 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  border: 1px solid rgba(115, 168, 185, 0.3);
-  border-radius: 6px;
-  background: rgba(115, 168, 185, 0.1);
-  color: #3A5A6A;
+  min-width: 34px;
+  height: 34px;
+  border: 1px solid rgba(22, 93, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.62);
+  color: #4E5969;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .home-btn:hover {
-  background: rgba(115, 168, 185, 0.25);
-  border-color: rgba(115, 168, 185, 0.5);
+  background: rgba(22, 93, 255, 0.08);
+  border-color: rgba(22, 93, 255, 0.28);
+  color: #165DFF;
   transform: translateY(-1px);
 }
 
 .incident-back-btn {
-  width: auto; padding: 0 10px; gap: 2px; font-size: 11px;
-  background: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.3); color: #22c55e;
+  width: auto;
+  padding: 0 12px;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(54, 207, 201, 0.1);
+  border-color: rgba(54, 207, 201, 0.28);
+  color: #08979C;
 }
 
 .incident-back-btn:hover {
-  background: rgba(34, 197, 94, 0.25); border-color: rgba(34, 197, 94, 0.5);
+  background: rgba(54, 207, 201, 0.16);
+  border-color: rgba(54, 207, 201, 0.45);
 }
 
 .nav-center {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
@@ -1709,28 +2058,108 @@ onUnmounted(() => {
 }
 
 .step-badge {
-  background: linear-gradient(135deg, #73A8B9, #5C9EAF);
+  background: linear-gradient(135deg, #1D4ED8, #2563EB);
   color: #fff;
-  padding: 2px 8px;
-  font-size: 0.7rem;
-  font-weight: 600;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 800;
   letter-spacing: 0.05em;
-  border-radius: 2px;
-  box-shadow: 0 0 15px rgba(115, 168, 185, 0.4);
+  border-radius: 999px;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.18);
 }
 
-.step-name {
-  font-size: 0.85rem;
-  letter-spacing: 0.05em;
-  color: #3A5A6A;
-  font-weight: 500;
+.immersive-stepper {
+  display: flex;
+  align-items: center;
+  padding: 6px;
+  gap: 0;
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86), 0 8px 22px rgba(29, 33, 41, 0.04);
+}
+
+.flow-step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px 6px 8px;
+  color: #86909C;
+  border-radius: 999px;
+  transition: all 0.24s ease;
+}
+
+.flow-step + .flow-step::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  width: 10px;
+  height: 1px;
+  background: rgba(78, 89, 105, 0.18);
+}
+
+.flow-step-node {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 800;
+  background: rgba(242, 243, 245, 0.9);
+  color: #86909C;
+  transition: all 0.24s ease;
+}
+
+.flow-step-label {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.flow-step.completed {
+  color: #0F766E;
+}
+
+.flow-step.completed .flow-step-node {
+  background: linear-gradient(135deg, #14B8A6, #0F766E);
+  color: #FFFFFF;
+  box-shadow: 0 0 0 4px rgba(20, 184, 166, 0.12);
+}
+
+.flow-step.active {
+  color: #FFFFFF;
+  background: linear-gradient(135deg, #2563EB, #1D4ED8);
+  box-shadow: 0 8px 22px rgba(37, 99, 235, 0.22);
+}
+
+.flow-step.active .flow-step-node {
+  background: rgba(255, 255, 255, 0.22);
+  color: #FFFFFF;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.32);
+}
+
+.flow-step.clickable {
+  cursor: pointer;
+}
+.flow-step.clickable:hover {
+  background: rgba(37, 99, 235, 0.08);
 }
 
 .nav-status {
   display: flex;
   align-items: center;
-  color: #3A5A6A;
-  font-size: 0.8rem;
+  justify-content: flex-end;
+  min-width: 180px;
+  color: #4E5969;
+  font-size: 12px;
+  padding: 8px 12px;
+  border: 1px solid rgba(22, 93, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.56);
 }
 
 .status-dot {
@@ -1742,14 +2171,14 @@ onUnmounted(() => {
 }
 
 .status-dot.processing {
-  background: #73A8B9;
-  box-shadow: 0 0 10px rgba(115, 168, 185, 0.8);
+  background: #2563EB;
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.38);
   animation: pulse 1.5s infinite;
 }
 
 .status-dot.completed {
-  background: #5C9EAF;
-  box-shadow: 0 0 10px rgba(92, 158, 175, 0.8);
+  background: #14B8A6;
+  box-shadow: 0 0 10px rgba(20, 184, 166, 0.36);
 }
 
 .status-dot.error {
@@ -1762,31 +2191,135 @@ onUnmounted(() => {
   50% { opacity: 0.5; }
 }
 
+/* 节点脉冲动画 */
+.node-pulse {
+  animation: pulse-expand 2s ease-in-out infinite;
+}
+
+@keyframes pulse-expand {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.6;
+    stroke-width: 2;
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 0;
+    stroke-width: 0.5;
+  }
+}
+
+/* 节点图标悬浮发光效果 */
+.node-icon {
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.95));
+  transition: all 0.3s ease;
+}
+
+/* 边流动动画 */
+.link-main {
+  stroke-dasharray: 0;
+  animation: edge-glow 3s ease-in-out infinite;
+}
+
+@keyframes edge-glow {
+  0%, 100% {
+    stroke-opacity: 0.3;
+  }
+  50% {
+    stroke-opacity: 0.5;
+  }
+}
+
+/* 边尾迹动画 */
+.link-trail {
+  stroke-dasharray: 6 12;
+  animation: flow-dash 1.2s linear infinite;
+}
+
+@keyframes flow-dash {
+  0% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: -18;
+  }
+}
+
+/* 高度数节点外层辉光持续呼吸效果 */
+.node-outer-glow {
+  animation: outer-glow-breathe 3s ease-in-out infinite;
+}
+
+@keyframes outer-glow-breathe {
+  0%, 100% {
+    opacity: 0.2;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(1.05);
+  }
+}
+
+/* 节点hover时的放大效果 */
+.nodes g {
+  transition: transform 0.2s ease;
+}
+
+.nodes g:hover .node-circle {
+  filter: brightness(1.25) drop-shadow(0 0 10px currentColor);
+}
+
+.nodes g:hover .node-icon {
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 1));
+  transform: scale(1.1);
+}
+
+.nodes g:hover .node-outer-glow {
+  filter: brightness(1.3);
+}
+
+.nodes g:hover .link-main,
+.nodes g:hover .link-glow,
+.nodes g:hover .link-trail {
+  filter: brightness(1.2) drop-shadow(0 0 4px currentColor);
+}
+
 .status-text {
-  font-size: 0.75rem;
-  color: #3A5A6A;
-  opacity: 0.7;
+  font-size: 12px;
+  color: #4E5969;
+  opacity: 0.92;
+  font-weight: 600;
 }
 
 /* 主内容区 */
 .main-content {
   display: flex;
-  height: calc(100vh - 56px);
+  flex: 1;
+  min-height: 0;
   position: relative;
 }
 
 /* 左侧面板 - 50% default（冰蓝浅色底，与右侧工作台协调） */
+/* 使用 CSS 变量实现即时响应式更新 */
 .left-panel {
-  width: 50%;
-  flex: none; /* Fixed width initially */
+  flex: none;
   display: flex;
   flex-direction: column;
   border-right: 1px solid rgba(173, 196, 214, 0.45);
-  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  /* 正常状态有过渡效果 */
+  transition: opacity 0.35s ease;
   background: linear-gradient(165deg, #f4f9fb 0%, #eef5f8 45%, #e6f0f4 100%);
   z-index: 5;
   position: relative;
   overflow: hidden;
+  /* 使用 CSS 变量控制宽度，实现即时响应 */
+  width: var(--left-panel-width, 70%);
+}
+
+/* 拖拽时禁用宽度过渡以实现即时响应 */
+body.is-resizing .left-panel {
+  transition: none !important;
 }
 
 /* 左侧面板与右侧面板之间的柔和分隔 */
@@ -1815,71 +2348,73 @@ onUnmounted(() => {
   min-height: 280px;
   min-width: 240px;
   background:
-    radial-gradient(ellipse 60% 50% at 50% 46%, rgba(25, 35, 55, 0.6) 0%, transparent 70%),
-    linear-gradient(160deg, #0c1220 0%, #0e1629 45%, #101a2e 100%);
+    /* 星空粒子效果 */
+    radial-gradient(1px 1px at 20% 30%, rgba(255, 255, 255, 0.8) 0%, transparent 100%),
+    radial-gradient(1px 1px at 40% 70%, rgba(255, 255, 255, 0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 60% 20%, rgba(255, 255, 255, 0.7) 0%, transparent 100%),
+    radial-gradient(1px 1px at 80% 50%, rgba(255, 255, 255, 0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 10% 80%, rgba(255, 255, 255, 0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 90% 10%, rgba(255, 255, 255, 0.7) 0%, transparent 100%),
+    radial-gradient(1px 1px at 50% 90%, rgba(255, 255, 255, 0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 30% 50%, rgba(255, 255, 255, 0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 70% 80%, rgba(255, 255, 255, 0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 15% 60%, rgba(255, 255, 255, 0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 85% 35%, rgba(255, 255, 255, 0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 45% 15%, rgba(255, 255, 255, 0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 25% 95%, rgba(255, 255, 255, 0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 75% 45%, rgba(255, 255, 255, 0.4) 0%, transparent 100%),
+    /* 星云渐变 */
+    radial-gradient(ellipse 80% 60% at 50% 50%, rgba(30, 40, 70, 0.8) 0%, transparent 70%),
+    radial-gradient(ellipse 100% 80% at 20% 20%, rgba(60, 40, 90, 0.3) 0%, transparent 50%),
+    radial-gradient(ellipse 80% 100% at 80% 80%, rgba(40, 60, 90, 0.25) 0%, transparent 60%),
+    /* 主背景渐变 */
+    linear-gradient(180deg, #0a0a1a 0%, #0d1020 30%, #0a0e1f 60%, #080818 100%);
   border-radius: 0 0 12px 0;
-}
-
-.graph-symbol-decor {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
   overflow: hidden;
 }
 
-.graph-symbol-decor .sym-chip {
+/* 星空动画层 */
+.graph-view::before {
+  content: '';
   position: absolute;
-  margin: 0;
-  padding: 0;
-  transform: translate(-50%, -50%);
-  font-family: 'JetBrains Mono', 'Noto Sans SC', ui-monospace, monospace;
-  font-weight: 500;
-  line-height: 1;
-  color: rgba(95, 125, 150, 0.52);
-  user-select: none;
-  will-change: opacity, transform;
-  animation-name: graph-decor-flicker, graph-decor-drift-a;
-  animation-timing-function: ease-in-out, ease-in-out;
-  animation-iteration-count: infinite, infinite;
+  inset: 0;
+  background:
+    radial-gradient(2px 2px at 12% 42%, rgba(255, 255, 255, 0.9) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 67% 23%, rgba(200, 220, 255, 0.7) 0%, transparent 100%),
+    radial-gradient(2px 2px at 88% 67%, rgba(255, 255, 255, 0.8) 0%, transparent 100%),
+    radial-gradient(1px 1px at 33% 88%, rgba(180, 200, 255, 0.6) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 55% 12%, rgba(255, 255, 255, 0.7) 0%, transparent 100%),
+    radial-gradient(1px 1px at 78% 92%, rgba(200, 220, 255, 0.5) 0%, transparent 100%),
+    radial-gradient(2px 2px at 5% 75%, rgba(255, 255, 255, 0.8) 0%, transparent 100%),
+    radial-gradient(1px 1px at 92% 8%, rgba(180, 200, 255, 0.6) 0%, transparent 100%);
+  animation: twinkle 4s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
 }
 
-.graph-symbol-decor .sym-chip.sym-drift-b {
-  animation-name: graph-decor-flicker, graph-decor-drift-b;
+/* 星云光效 */
+.graph-view::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 40% 30% at 30% 40%, rgba(100, 80, 180, 0.15) 0%, transparent 70%),
+    radial-gradient(ellipse 35% 40% at 70% 60%, rgba(60, 100, 160, 0.12) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 25% at 50% 80%, rgba(80, 120, 180, 0.1) 0%, transparent 60%);
+  animation: nebula-drift 20s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
 }
 
-.graph-symbol-decor .sym-chip.sym-drift-c {
-  animation-name: graph-decor-flicker, graph-decor-drift-c;
+@keyframes twinkle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
-@keyframes graph-decor-flicker {
-  0%, 100% { opacity: 0.58; }
-  18% { opacity: 0.14; }
-  33% { opacity: 0.52; }
-  52% { opacity: 0.82; }
-  71% { opacity: 0.1; }
-  88% { opacity: 0.46; }
-}
-
-@keyframes graph-decor-drift-a {
-  0%, 100% { transform: translate(-50%, -50%) translate(0, 0); }
-  28% { transform: translate(-50%, -50%) translate(3px, -2px); }
-  55% { transform: translate(-50%, -50%) translate(-2px, 2px); }
-  82% { transform: translate(-50%, -50%) translate(2px, 1px); }
-}
-
-@keyframes graph-decor-drift-b {
-  0%, 100% { transform: translate(-50%, -50%) translate(0, 0); }
-  32% { transform: translate(-50%, -50%) translate(-3px, 2px); }
-  58% { transform: translate(-50%, -50%) translate(2px, -2px); }
-  84% { transform: translate(-50%, -50%) translate(-1px, -1px); }
-}
-
-@keyframes graph-decor-drift-c {
-  0%, 100% { transform: translate(-50%, -50%) translate(0, 0); }
-  24% { transform: translate(-50%, -50%) translate(2px, 3px); }
-  48% { transform: translate(-50%, -50%) translate(-2px, -1px); }
-  74% { transform: translate(-50%, -50%) translate(1px, -2px); }
+@keyframes nebula-drift {
+  0%, 100% { transform: scale(1) translate(0, 0); opacity: 1; }
+  33% { transform: scale(1.05) translate(5px, -5px); opacity: 0.9; }
+  66% { transform: scale(0.98) translate(-3px, 3px); opacity: 1; }
 }
 
 .left-panel.full-screen {
@@ -1974,75 +2509,6 @@ onUnmounted(() => {
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Cg fill='none' stroke='%2394a8b8' stroke-linecap='round' stroke-width='1.25'%3E%3Cpath d='M30 38h11M35.5 33v11' opacity='0.42'/%3E%3Cpath d='M54 22l7.5 7.5m0-7.5L54 29.5' opacity='0.3'/%3E%3Cpath d='M138 52h10M143 47v10' opacity='0.36'/%3E%3Cpath d='M172 78l8 8m0-8l-8 8' opacity='0.28'/%3E%3Cpath d='M22 128h9M26.5 123v10' opacity='0.32'/%3E%3Cpath d='M92 98l6.5 6.5m0-6.5L92 104.5' opacity='0.38'/%3E%3Cpath d='M158 134h9M162.5 129v10' opacity='0.34'/%3E%3Cpath d='M48 170l7 7m0-7l-7 7' opacity='0.26'/%3E%3Cpath d='M124 174h10M129 169v10' opacity='0.33'/%3E%3Cpath d='M12 88h8M16 84v8' opacity='0.25'/%3E%3Cpath d='M180 24l6 6m0-6l-6 6' opacity='0.22'/%3E%3C/g%3E%3C/svg%3E");
   background-size: auto, auto, auto, 200px 200px;
   background-repeat: no-repeat, no-repeat, no-repeat, repeat;
-}
-
-/* 左侧已改用面板内浅色氛围层，极光层关闭以免叠色 */
-.aurora-bg {
-  display: none;
-}
-
-.aurora-orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(100px);
-  opacity: 0.4;
-  animation: aurora-float 20s ease-in-out infinite;
-}
-
-.aurora-orb-1 {
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.5) 0%, rgba(59, 130, 246, 0) 70%);
-  top: -10%;
-  left: -15%;
-  animation-delay: 0s;
-}
-
-.aurora-orb-2 {
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, rgba(6, 182, 212, 0.5) 0%, rgba(6, 182, 212, 0) 70%);
-  bottom: -10%;
-  right: -10%;
-  animation-delay: -5s;
-}
-
-.aurora-orb-3 {
-  width: 400px;
-  height: 400px;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.4) 0%, rgba(139, 92, 246, 0) 70%);
-  top: 40%;
-  left: 30%;
-  animation-delay: -10s;
-}
-
-.aurora-orb-4 {
-  width: 350px;
-  height: 350px;
-  background: radial-gradient(circle, rgba(34, 211, 238, 0.35) 0%, rgba(34, 211, 238, 0) 70%);
-  top: 20%;
-  right: 20%;
-  animation-delay: -15s;
-}
-
-@keyframes aurora-float {
-  0%, 100% {
-    transform: translate(0, 0) scale(1);
-  }
-  25% {
-    transform: translate(30px, -30px) scale(1.05);
-  }
-  50% {
-    transform: translate(-20px, 20px) scale(0.95);
-  }
-  75% {
-    transform: translate(20px, 10px) scale(1.02);
-  }
-}
-
-/* 十字星画布已改为面板内 CSS 图案，固定画布关闭 */
-.star-canvas {
-  display: none;
 }
 
 .panel-header {
@@ -2600,17 +3066,25 @@ onUnmounted(() => {
 }
 
 /* 右侧面板 - 50% default */
+/* 使用 CSS 变量实现即时响应式更新 */
 .right-panel {
-  width: 50%;
   flex: none;
   display: flex;
   flex-direction: column;
   background: #F8FAFC;
   box-shadow: -4px 0 24px rgba(115, 168, 185, 0.08);
-  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, transform 0.3s ease;
+  /* 正常状态有过渡效果，但拖拽时禁用 */
+  transition: opacity 0.3s ease, transform 0.3s ease;
   overflow: hidden;
   opacity: 1;
   position: relative;
+  /* 使用 CSS 变量控制宽度，实现即时响应 */
+  width: calc(100% - var(--left-panel-width, 70%));
+}
+
+/* 拖拽时禁用宽度过渡以实现即时响应 */
+body.is-resizing .right-panel {
+  transition: none !important;
 }
 
 /* 右侧面板左侧渐变边框 - 与左侧深色面板过渡 */
@@ -2652,7 +3126,7 @@ onUnmounted(() => {
 }
 
 .right-panel .panel-header.dark-header {
-  background: #E6F2F7;
+  background: linear-gradient(90deg, #e6f4f3 0%, #eef7fb 30%, #eff3fc 60%, #f3f0f9 100%);
   backdrop-filter: blur(20px);
   color: #3A5A6A;
   border-bottom: 1px solid rgba(115, 168, 185, 0.2);
@@ -2857,7 +3331,10 @@ onUnmounted(() => {
   flex-direction: column;
   flex: 1;
   overflow: hidden;
-  background: #F8FAFC;
+  background:
+    radial-gradient(circle at top right, rgba(96, 165, 250, 0.14), transparent 28%),
+    radial-gradient(circle at bottom left, rgba(191, 219, 254, 0.4), transparent 34%),
+    linear-gradient(180deg, #f8fbff 0%, #f3f7fc 100%);
 }
 
 .workbench-wrapper .scroll-container {
@@ -2867,7 +3344,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   scrollbar-width: thin;
-  scrollbar-color: #73a8b9 #e6f2f7;
+  scrollbar-color: #93c5fd #e0effe;
 }
 
 .workbench-wrapper .scroll-container::-webkit-scrollbar {
@@ -2875,18 +3352,18 @@ onUnmounted(() => {
 }
 
 .workbench-wrapper .scroll-container::-webkit-scrollbar-track {
-  background: #e6f2f7;
+  background: #e0effe;
   border-radius: 999px;
 }
 
 .workbench-wrapper .scroll-container::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #8ebdcb, #73a8b9);
-  border: 2px solid #e6f2f7;
+  background: linear-gradient(180deg, #93c5fd, #60a5fa);
+  border: 2px solid #e0effe;
   border-radius: 999px;
 }
 
 .workbench-wrapper .scroll-container::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #73a8b9, #5c9eaf);
+  background: linear-gradient(180deg, #60a5fa, #3b82f6);
 }
 
 /* ── Step 内容区 ── */
@@ -2906,7 +3383,8 @@ onUnmounted(() => {
   overflow-y: auto;
   min-height: 0;
   scrollbar-width: thin;
-  scrollbar-color: #73a8b9 #e6f2f7;
+  scrollbar-color: #93c5fd #e0effe;
+  align-items: stretch;
 }
 
 .step-area-inner::-webkit-scrollbar {
@@ -2914,18 +3392,18 @@ onUnmounted(() => {
 }
 
 .step-area-inner::-webkit-scrollbar-track {
-  background: #e6f2f7;
+  background: #e0effe;
   border-radius: 999px;
 }
 
 .step-area-inner::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #8ebdcb, #73a8b9);
-  border: 2px solid #e6f2f7;
+  background: linear-gradient(180deg, #93c5fd, #60a5fa);
+  border: 2px solid #e0effe;
   border-radius: 999px;
 }
 
 .step-area-inner::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #73a8b9, #5c9eaf);
+  background: linear-gradient(180deg, #60a5fa, #3b82f6);
 }
 
 /* Step 3-5 全屏时：内容占满，隐藏内部终端 */
@@ -2972,5 +3450,68 @@ onUnmounted(() => {
 .panel-slide-leave-to {
   width: 0;
   opacity: 0;
+}
+
+/* 可拖拽分隔条 */
+.resize-handle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: -6px;
+  width: 12px;
+  height: 64px;
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.08) 0%, rgba(115, 168, 185, 0.15) 50%, rgba(59, 130, 246, 0.08) 100%);
+  border-radius: 6px;
+  cursor: col-resize;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: width 0.15s ease, background 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.1);
+  /* 使用 CSS 变量动态控制位置 */
+  left: var(--left-panel-width, 70%);
+}
+
+.resize-handle:hover,
+.resize-handle.dragging {
+  width: 14px;
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.25) 50%, rgba(59, 130, 246, 0.15) 100%);
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.2), 0 0 0 1px rgba(59, 130, 246, 0.2);
+}
+
+.resize-handle.dragging {
+  opacity: 0.9;
+}
+
+.handle-indicator {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.handle-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.4);
+  transition: all 0.2s ease;
+}
+
+.resize-handle:hover .handle-dot,
+.resize-handle.dragging .handle-dot {
+  background: rgba(59, 130, 246, 0.8);
+  transform: scale(1.2);
+}
+
+/* 拖拽时的视觉反馈 - 统一使用 body.is-resizing 类 */
+body.is-resizing .left-panel,
+body.is-resizing .right-panel {
+  pointer-events: none;
+}
+
+body.is-resizing .resize-handle {
+  pointer-events: auto;
 }
 </style>

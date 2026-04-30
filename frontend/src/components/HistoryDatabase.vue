@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div 
     class="history-database"
     :class="{ 'no-projects': projects.length === 0 && !loading }"
@@ -36,16 +36,16 @@
             <span 
               class="status-icon" 
               :class="{ available: project.project_id, unavailable: !project.project_id }"
-              title="图谱构建"
+              title="事件图谱生成"
             >◇</span>
             <span 
               class="status-icon available" 
-              title="环境搭建"
+              title="群体环境建模"
             >◈</span>
             <span 
               class="status-icon" 
               :class="{ available: project.report_id, unavailable: !project.report_id }"
-              title="分析报告"
+              title="决策简报生成"
             >◆</span>
             <span
               class="card-delete-btn"
@@ -169,7 +169,7 @@
               >
                 <span class="btn-step">Step1</span>
                 <span class="btn-icon">◇</span>
-                <span class="btn-text">图谱构建</span>
+                <span class="btn-text">事件图谱生成</span>
               </button>
               <button 
                 class="modal-btn btn-simulation" 
@@ -177,7 +177,7 @@
               >
                 <span class="btn-step">Step2</span>
                 <span class="btn-icon">◈</span>
-                <span class="btn-text">环境搭建</span>
+                <span class="btn-text">群体环境建模</span>
               </button>
               <button 
                 class="modal-btn btn-step3" 
@@ -185,7 +185,7 @@
               >
                 <span class="btn-step">Step3</span>
                 <span class="btn-icon">▶</span>
-                <span class="btn-text">开始模拟</span>
+                <span class="btn-text">舆情态势推演</span>
               </button>
               <button 
                 class="modal-btn btn-report" 
@@ -194,7 +194,7 @@
               >
                 <span class="btn-step">Step4</span>
                 <span class="btn-icon">◆</span>
-                <span class="btn-text">分析报告</span>
+                <span class="btn-text">决策简报生成</span>
               </button>
               <button 
                 class="modal-btn btn-step5" 
@@ -202,7 +202,7 @@
               >
                 <span class="btn-step">Step5</span>
                 <span class="btn-icon">💬</span>
-                <span class="btn-text">深度互动</span>
+                <span class="btn-text">智能追问研判</span>
               </button>
               <button 
                 class="modal-btn btn-incident" 
@@ -457,7 +457,7 @@ const closeModal = () => {
   selectedProject.value = null
 }
 
-// 导航到图谱构建页面（Project）
+// 导航到事件图谱生成页面（Project）
 const goToProject = () => {
   if (selectedProject.value?.project_id) {
     router.push({
@@ -481,7 +481,7 @@ const goToSimulation = () => {
   }
 }
 
-// 导航到开始模拟页面
+// 导航到启动推演页面
 const goToStep3 = () => {
   if (selectedProject.value?.project_id) {
     router.push({
@@ -493,7 +493,7 @@ const goToStep3 = () => {
   }
 }
 
-// 导航到分析报告页面
+// 导航到决策简报页面
 // 跳转到 Process 页面，通过 query.step=4 强制定位到 Step 4
 const goToReport = () => {
   if (selectedProject.value?.project_id) {
@@ -506,7 +506,7 @@ const goToReport = () => {
   }
 }
 
-// 导航到深度互动页面
+// 导航到智能追问研判页面
 const goToStep5 = () => {
   if (selectedProject.value?.project_id) {
     router.push({
@@ -830,9 +830,9 @@ onUnmounted(() => {
 }
 
 /* 不同功能的颜色 */
-.status-icon:nth-child(1).available { color: #3B82F6; } /* 图谱构建 - 蓝色 */
-.status-icon:nth-child(2).available { color: #F59E0B; } /* 环境搭建 - 橙色 */
-.status-icon:nth-child(3).available { color: #10B981; } /* 分析报告 - 绿色 */
+.status-icon:nth-child(1).available { color: #3B82F6; } /* 事件图谱生成 - 蓝色 */
+.status-icon:nth-child(2).available { color: #F59E0B; } /* 群体环境建模 - 橙色 */
+.status-icon:nth-child(3).available { color: #10B981; } /* 决策简报 - 绿色 */
 
 .status-icon.unavailable {
   color: #D1D5DB;

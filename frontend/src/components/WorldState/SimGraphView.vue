@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="sim-graph-section">
     <div class="section-header" @click="expanded = !expanded">
       <h3 class="section-title">
@@ -37,7 +37,7 @@
           <button class="retry-btn" @click="fetchGraph">重试</button>
         </div>
         <div v-else-if="!loaded" class="graph-empty">
-          <p>模拟完成后可查看知识图谱可视化</p>
+          <p>推演完成后可查看知识图谱可视化</p>
           <button class="load-btn" @click="fetchGraph">加载图谱</button>
         </div>
         <template v-else>
