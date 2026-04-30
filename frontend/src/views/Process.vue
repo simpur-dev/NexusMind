@@ -300,7 +300,7 @@
         <div v-if="graphData" class="graph-legend">
           <div class="legend-item" v-for="type in entityTypes" :key="type.name">
             <span class="legend-dot" :style="{ background: type.color }"></span>
-            <span class="legend-label">{{ type.name }}</span>
+            <span class="legend-label">{{ type.label || type.name }}</span>
             <span class="legend-count">{{ type.count }}</span>
           </div>
         </div>
@@ -606,6 +606,20 @@ const statusClass = computed(() => {
   return 'processing'
 })
 
+const entityTypeChinese = {
+  'Student': '学生', 'GraduateStudent': '研究生', 'FacultyMember': '教职人员',
+  'UniversityAdministrator': '校方管理者', 'AcademicAdvisor': '导师',
+  'University': '高校', 'College': '学院', 'Court': '法院',
+  'ExpertPanel': '专家委员会', 'Organization': '组织机构',
+  'GovernmentAgency': '政府机构', 'RegulatoryAgency': '监管机构',
+  'AcademicAssociation': '学术团体', 'Person': '人物',
+  'Media': '媒体', 'MediaOutlet': '媒体机构', 'OnlineInfluencer': '网络大V',
+  'Event': '事件', 'Policy': '政策', 'PublicFigure': '公众人物',
+  'Platform': '平台', 'Company': '企业', 'Location': '地点',
+  'Document': '文件', 'Entity': '实体',
+}
+const translateType = (type) => entityTypeChinese[type] || type
+
 const entityTypes = computed(() => {
   if (!graphData.value?.nodes) return []
   
@@ -615,7 +629,7 @@ const entityTypes = computed(() => {
   graphData.value.nodes.forEach(node => {
     const type = node.labels?.find(l => l !== 'Entity') || 'Entity'
     if (!typeMap[type]) {
-      typeMap[type] = { name: type, count: 0, color: colors[Object.keys(typeMap).length % colors.length] }
+      typeMap[type] = { name: type, label: translateType(type), count: 0, color: colors[Object.keys(typeMap).length % colors.length] }
     }
     typeMap[type].count++
   })
@@ -1812,7 +1826,7 @@ const renderGraph = () => {
         color: c.fill,
         label: ['低连接度', '中连接度', '中高连接度', '高连接度', '核心节点'][i]
       }))
-    : types.map(t => ({ color: getColor(t).fill, label: t }))
+    : types.map(t => ({ color: getColor(t).fill, label: translateType(t) }))
 
   const legendG = svg.append('g')
     .attr('transform', `translate(16, ${height - legendItems.length * 22 - 16})`)

@@ -811,8 +811,10 @@ class WorldStateEngine:
             elif self._baseline_context:
                 # 无匹配阶段但有基线风险信息，用风险数量调整 risk/trust
                 bl_risks = self._baseline_context.get("current_risks", [])
+                bl_stage = (self._baseline_context.get("current_stage") or "").strip()
+                stage_decay = 0.4 if "消退" in bl_stage else (0.7 if "平台" in bl_stage else 1.0)
                 if bl_risks:
-                    risk_boost = min(len(bl_risks) * 0.08, 0.3)
+                    risk_boost = min(len(bl_risks) * 0.08, 0.3) * stage_decay
                     obs_values["risk_level"] = self._clamp(obs_values["risk_level"] + risk_boost)
                     obs_values["trust_level"] = self._clamp(obs_values["trust_level"] - risk_boost * 0.5)
 
@@ -887,11 +889,13 @@ class WorldStateEngine:
         compound_erosion = max(0, panic_target - 0.3) * max(0, polarization_target - 0.3) * 0.3
         trust_target = self._clamp(trust_target - compound_erosion)
         
-        # 4) 基线已识别的风险数量提升 risk 下限
+        # 4) 基线已识别的风险数量提升 risk 下限（按阶段衰减）
         if self._baseline_context:
             bl_risk_count = len(self._baseline_context.get("current_risks", []))
+            bl_stage = (self._baseline_context.get("current_stage") or "").strip()
+            stage_decay = 0.4 if "消退" in bl_stage else (0.7 if "平台" in bl_stage else 1.0)
             if bl_risk_count > 0:
-                risk_floor = min(bl_risk_count * 0.06, 0.35)
+                risk_floor = min(bl_risk_count * 0.06, 0.35) * stage_decay
             else:
                 risk_floor = 0.0
         else:

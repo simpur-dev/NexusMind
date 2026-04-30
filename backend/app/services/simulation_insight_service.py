@@ -1171,11 +1171,18 @@ class SimulationInsightService:
                     reasons.append(reason)
                     break
 
-        # 基于基线识别的风险数量
+        # 基于基线识别的风险数量（按阶段衰减：消退期/平台期风险贡献降低）
         if baseline_risks:
             n = len(baseline_risks)
-            risk_score += min(0.2, n * 0.05)
-            if n >= 3:
+            stage_decay = 1.0
+            if stage:
+                if "消退" in stage:
+                    stage_decay = 0.4
+                elif "平台" in stage:
+                    stage_decay = 0.7
+            risk_contribution = min(0.2, n * 0.05) * stage_decay
+            risk_score += risk_contribution
+            if n >= 3 and stage_decay >= 0.7:
                 reasons.append(f"基线已识别 {n} 项风险，不作为将放任风险累积")
 
         risk_score = min(1.0, risk_score)

@@ -773,11 +773,17 @@ def _build_reality_patch(baseline, diff: dict) -> dict:
         "new_facts": [],
     }
 
-    # 从新基线的风险判断状态调整
+    # 从新基线的风险判断状态调整（考虑阶段衰减）
     if baseline.current_risks:
         risk_count = len(baseline.current_risks)
+        stage = (baseline.current_stage or "").strip()
+        stage_factor = 1.0
+        if "消退" in stage:
+            stage_factor = 0.5
+        elif "平台" in stage:
+            stage_factor = 0.75
         if risk_count >= 3:
-            patch["state_overrides"]["risk_level"] = min(1.0, 0.3 + risk_count * 0.1)
+            patch["state_overrides"]["risk_level"] = min(1.0, (0.3 + risk_count * 0.1) * stage_factor)
 
     # 新增的确认事实
     facts_diff = diff.get("confirmed_facts_diff", {})

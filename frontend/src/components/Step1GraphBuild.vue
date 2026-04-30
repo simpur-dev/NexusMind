@@ -75,7 +75,7 @@
 
           <!-- Generated Entity Tags -->
           <div v-if="projectData?.ontology?.entity_types" class="tags-container" :class="{ 'dimmed': selectedOntologyItem }">
-            <span class="tag-label">GENERATED ENTITY TYPES</span>
+            <span class="tag-label">生成的实体类型</span>
             <div class="tags-list">
               <span 
                 v-for="entity in projectData.ontology.entity_types" 
@@ -83,14 +83,14 @@
                 class="entity-tag clickable"
                 @click="selectOntologyItem(entity, 'entity')"
               >
-                {{ entity.name }}
+                {{ translateEntityType(entity.name) }}
               </span>
             </div>
           </div>
 
           <!-- Generated Relation Tags -->
           <div v-if="projectData?.ontology?.edge_types" class="tags-container" :class="{ 'dimmed': selectedOntologyItem }">
-            <span class="tag-label">GENERATED RELATION TYPES</span>
+            <span class="tag-label">生成的关系类型</span>
             <div class="tags-list">
               <span 
                 v-for="rel in projectData.ontology.edge_types" 
@@ -98,7 +98,7 @@
                 class="entity-tag clickable"
                 @click="selectOntologyItem(rel, 'relation')"
               >
-                {{ rel.name }}
+                {{ translateRelationType(rel.name) }}
               </span>
             </div>
           </div>
@@ -325,6 +325,42 @@ const handleEnterEnvSetup = async () => {
     creatingSimulation.value = false
   }
 }
+
+const entityTypeChinese = {
+  'Student': '学生', 'GraduateStudent': '研究生', 'FacultyMember': '教职人员',
+  'UniversityAdministrator': '校方管理者', 'AcademicAdvisor': '导师',
+  'University': '高校', 'College': '学院', 'Court': '法院',
+  'ExpertPanel': '专家委员会', 'Organization': '组织机构',
+  'GovernmentAgency': '政府机构', 'RegulatoryAgency': '监管机构',
+  'AcademicAssociation': '学术团体', 'Person': '人物',
+  'Media': '媒体', 'MediaOutlet': '媒体机构', 'OnlineInfluencer': '网络大V',
+  'Event': '事件', 'Policy': '政策', 'PublicFigure': '公众人物',
+  'Platform': '平台', 'Company': '企业', 'Location': '地点',
+  'Document': '文件', 'Entity': '实体',
+}
+const relationTypeChinese = {
+  'SUBMITTED_COMPLAINT_AGAINST': '投诉',
+  'SUPERVISES': '指导',
+  'BELONGS_TO_COLLEGE': '所属学院',
+  'AFFILIATED_WITH_UNIVERSITY': '所属高校',
+  'REPORTS_ON': '报道',
+  'INVESTIGATES': '调查',
+  'ISSUES_GUIDANCE_TO': '发布指导',
+  'AMPLIFIES_DISCUSSION_OF': '扩大讨论',
+  'RELATED_TO': '相关',
+  'WORKS_AT': '工作于',
+  'STUDIES_AT': '就读于',
+  'MANAGES': '管理',
+  'SUPPORTS': '支持',
+  'OPPOSES': '反对',
+  'COMMENTS_ON': '评论',
+  'PUBLISHES': '发布',
+  'FOLLOWS': '关注',
+  'MEMBER_OF': '成员',
+  'PARTICIPATES_IN': '参与',
+}
+const translateEntityType = (name) => entityTypeChinese[name] || name
+const translateRelationType = (name) => relationTypeChinese[name] || name.replace(/_/g, ' ')
 
 const selectOntologyItem = (item, type) => {
   selectedOntologyItem.value = { ...item, itemType: type }

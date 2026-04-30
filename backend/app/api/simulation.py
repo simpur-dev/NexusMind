@@ -3434,6 +3434,9 @@ def get_sim_graph(simulation_id):
             "stability_level": "稳定性",
         }
 
+        # Fallback max_round from events (in case Neo4j has no SimAction data)
+        event_max_round = max((evt.round_num for evt in recent_events), default=0) if recent_events else 0
+
         for key, label in variable_meta.items():
             current_value = getattr(current_state, key, 0.0) if current_state else 0.0
             prev_value = getattr(prev_state, key, current_value) if prev_state else current_value
@@ -3508,7 +3511,7 @@ def get_sim_graph(simulation_id):
                     "total_events": len(recent_events),
                     "total_variables": len(variable_meta),
                     "platforms": stats_result["platforms"] if stats_result else 0,
-                    "max_round": stats_result["max_round"] if stats_result else 0,
+                    "max_round": stats_result["max_round"] if stats_result and stats_result["max_round"] else event_max_round,
                     "causal_edges": len(causal_edges),
                 }
             }

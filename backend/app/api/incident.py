@@ -577,6 +577,9 @@ def _llm_analyze_materials(text: str, requirement: str = "") -> dict:
 【材料原文】
 {text[:4000]}
 
+注意：current_risks 只列出截至当前阶段**仍然有效、尚未被解决或缓解**的风险。
+如果事件处于消退期或平台期，已经被官方回应、制度修正或舆论淡化所缓解的风险不应再列入。
+
 请严格按以下 JSON 格式输出（不要输出任何其他内容）：
 {{
   "current_stage": "事件当前所处阶段（如：爆发期/发酵期/平台期/消退期）",
@@ -585,7 +588,7 @@ def _llm_analyze_materials(text: str, requirement: str = "") -> dict:
   "key_actors": ["关键主体1", "关键主体2", ...],
   "key_topics": ["核心话题1", "核心话题2", ...],
   "open_questions": ["待解答的关键问题1", ...],
-  "current_risks": ["当前主要风险1", ...],
+  "current_risks": ["当前仍有效的风险1", ...],
   "recommended_monitoring_signals": ["建议监测信号1", ...]
 }}"""
 
