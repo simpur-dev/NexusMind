@@ -1018,12 +1018,19 @@ async function onRebuildBaselineGraph() {
   try {
     const { rebuildBaselineGraph } = await import('../api/incident')
     const res = await rebuildBaselineGraph(projectId.value, activeBaseline.value.baseline_id)
-    if (!res?.success || !res.data?.task_id) {
+    if (!res?.success) {
       alert(res?.error || '启动图谱重建失败')
       baselineGraphRebuilding.value = false
       return
     }
-    const taskId = res.data.task_id
+    const taskId = res.data?.graph_task_id || res.data?.task_id
+    if (!taskId) {
+      // 图谱重建未启动（可能缺少 ontology），但基线已生成
+      baselineGraphRebuilding.value = false
+      await loadBaselines()
+      await loadBaselineGraphStats()
+      return
+    }
     const { getTaskStatus } = await import('../api/graph')
     const poll = setInterval(async () => {
       try {

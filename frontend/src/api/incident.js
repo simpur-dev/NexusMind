@@ -183,3 +183,20 @@ export const appendMaterialFromWeb = (projectId, data) => {
 export const getCausalGraph = (projectId, baselineId) => {
   return service.get(`/api/incident/project/${projectId}/baseline/${baselineId}/causal-graph`)
 }
+
+/**
+ * 删除预测分支
+ * @param {string} projectId
+ * @param {string} runId
+ */
+export const deleteForecastRun = (projectId, runId) => {
+  return service.delete(`/api/incident/project/${projectId}/forecast/${runId}`)
+}
+
+export const rebuildBaselineGraph = (projectId, baselineId) => {
+  return requestWithRetry(() =>
+    service.post('/api/graph/build', {
+      project_id: projectId,
+    })
+  )
+}

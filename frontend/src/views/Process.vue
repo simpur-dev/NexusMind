@@ -993,9 +993,11 @@ const loadProject = async () => {
         addLog(`从历史记录恢复项目，进入 Step ${targetStep} (${stepNames[targetStep - 1]})，模拟ID: ${currentSimulationId.value}`)
       } else if (response.data.status === 'graph_completed' && response.data.graph_id) {
         // 事件图谱生成完成，默认在 Step 1
+        // 优先使用基线 graph_id（事件工作台跳入时），其次用项目 graph_id
         currentPhase.value = 2
-        currentStep.value = 1
-        await loadGraph(response.data.graph_id)
+        currentStep.value = requestedStep || 1
+        const graphIdToLoad = queryBaselineGraphId || response.data.graph_id
+        await loadGraph(graphIdToLoad)
       } else if (response.data.status === 'graph_building' && response.data.graph_build_task_id) {
         currentPhase.value = 1
         currentStep.value = 1
