@@ -163,3 +163,23 @@ export const autoBootstrapMaterials = (projectId) => {
 export const getProjectOverview = (projectId) => {
   return service.get(`/api/incident/project/${projectId}/overview`)
 }
+
+/**
+ * 向项目追加网络抓取材料
+ * @param {string} projectId
+ * @param {Object} data - { query, ... }
+ */
+export const appendMaterialFromWeb = (projectId, data) => {
+  return requestWithRetry(() =>
+    service.post(`/api/incident/project/${projectId}/materials/append-web`, data)
+  )
+}
+
+/**
+ * 获取因果图谱
+ * @param {string} projectId
+ * @param {string} baselineId
+ */
+export const getCausalGraph = (projectId, baselineId) => {
+  return service.get(`/api/incident/project/${projectId}/baseline/${baselineId}/causal-graph`)
+}

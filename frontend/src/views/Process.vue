@@ -4,7 +4,7 @@
     <nav class="navbar">
       <div class="nav-brand-group">
         <div class="nav-brand" @click="goHome">
-          <img class="nav-logo" src="/NexusMind_Logo.png" alt="NexusMind" />
+          <img class="nav-logo" src="../assets/logo/NexusMind Logo.png" alt="NexusMind" />
           <span>NexusMind</span>
         </div>
         <button class="home-btn incident-back-btn" @click="goBackToWorkspace" title="返回事件工作台">
