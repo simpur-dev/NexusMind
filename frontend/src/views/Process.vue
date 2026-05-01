@@ -307,8 +307,8 @@
             <span class="legend-label">{{ type.label }}</span>
           </div>
         </div>
-        <!-- 底部摘要条 -->
-        <div v-if="graphData && entityTypes.length > 1" class="graph-bottom-bar">
+        <!-- 底部摘要条（仅多实体类型时显示） -->
+        <div v-if="graphData && entityTypes.length > 1 && !entityTypes[0]?.name?.startsWith('deg-')" class="graph-bottom-bar">
           <span v-for="type in entityTypes" :key="type.name" class="bottom-bar-item">
             <span class="bottom-bar-dot" :style="{ background: type.color }"></span>
             {{ type.label }} {{ type.count }}
@@ -641,7 +641,14 @@ const entityTypes = computed(() => {
     typeMap[type].count++
   })
   
-  return Object.values(typeMap)
+  const types = Object.values(typeMap)
+  // 当所有节点同一类型时，用度数分级图例替代单个"实体"条目
+  if (types.length <= 1) {
+    const DEGREE_COLORS = ['#38bdf8','#6366f1','#a855f7','#f43f5e','#f59e0b']
+    const DEGREE_LABELS = ['低连接度','中连接度','中高连接度','高连接度','核心节点']
+    return DEGREE_COLORS.map((c, i) => ({ name: `deg-${i}`, label: DEGREE_LABELS[i], count: '', color: c }))
+  }
+  return types
 })
 
 // 是否从事件工作台跳转过来
@@ -1834,39 +1841,7 @@ const renderGraph = () => {
     event.subject.fy = null
   }
   
-  // ── 内嵌图例（左下角） ──
-  const legendItems = isSingleType
-    ? DEGREE_TIER_COLORS.map((c, i) => ({
-        color: c.fill,
-        label: ['低连接度', '中连接度', '中高连接度', '高连接度', '核心节点'][i]
-      }))
-    : types.map(t => ({ color: getColor(t).fill, label: translateType(t) }))
-
-  const legendG = svg.append('g')
-    .attr('transform', `translate(16, ${height - legendItems.length * 22 - 16})`)
-  
-  legendG.append('rect')
-    .attr('x', -8).attr('y', -8)
-    .attr('width', 140)
-    .attr('height', legendItems.length * 22 + 12)
-    .attr('rx', 6)
-    .attr('fill', 'rgba(10,10,26,0.6)')
-    .attr('stroke', 'rgba(100,116,139,0.2)')
-    .attr('stroke-width', 1)
-  
-  legendItems.forEach((item, i) => {
-    const row = legendG.append('g').attr('transform', `translate(0, ${i * 22})`)
-    row.append('circle')
-      .attr('r', 5)
-      .attr('cx', 6).attr('cy', 0)
-      .attr('fill', item.color)
-    row.append('text')
-      .attr('x', 18).attr('dy', 4)
-      .attr('font-size', '10px')
-      .attr('fill', 'rgba(203,213,225,0.85)')
-      .attr('font-family', "'Noto Sans SC', sans-serif")
-      .text(item.label)
-  })
+  // 图例由 Vue 模板的 .graph-legend 统一渲染，不在 SVG 内重复创建
 }
 
 // 监听图谱数据变化
