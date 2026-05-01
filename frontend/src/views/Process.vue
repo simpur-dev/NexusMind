@@ -50,7 +50,7 @@
     <div class="branch-context-bar" v-if="branchContext">
       <span class="branch-ctx-icon">⑂</span>
       <span class="branch-ctx-type" :class="branchContext.type">{{ branchContext.typeLabel }}</span>
-      <span class="branch-ctx-label">{{ branchContext.label }}</span>
+      <span class="branch-ctx-label">{{ (projectData?.name && projectData.name !== 'Unnamed Project' ? projectData.name : null) || branchContext.label }}</span>
       <span class="branch-ctx-sep">|</span>
       <span class="branch-ctx-baseline">基线 {{ branchContext.baselineId?.slice(-6) || '—' }}</span>
     </div>
@@ -567,7 +567,7 @@ const statusText = computed(() => {
     case 4:
       return stepStatus.value === 'completed' ? '决策简报已生成' : '决策简报生成中'
     case 5:
-      return '事件图谱生成中'
+      return '智能追问研判中'
     default:
       return ''
   }

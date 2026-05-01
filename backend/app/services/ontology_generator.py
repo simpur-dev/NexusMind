@@ -83,6 +83,7 @@ ONTOLOGY_SYSTEM_PROMPT = """你是一个专业的知识图谱本体设计专家�
             "attributes": []
         }
     ],
+    "event_name": "事件简称（中文，10-20字，如'华中农大导师举报事件'）",
     "analysis_summary": "对文本内容的简要分析说明（中文）"
 }
 ```
@@ -281,6 +282,8 @@ class OntologyGenerator:
             result["edge_types"] = []
         if "analysis_summary" not in result:
             result["analysis_summary"] = ""
+        if "event_name" not in result:
+            result["event_name"] = ""
         
         # 验证实体类型
         # 记录原始名称到 PascalCase 的映射，用于后续修正 edge 的 source_targets 引用

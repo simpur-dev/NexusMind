@@ -4,7 +4,24 @@
 """
 
 import os
-from dotenv import load_dotenv
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    # python-dotenv 未安装时的简易替代
+    def load_dotenv(dotenv_path=None, override=False):
+        path = dotenv_path or os.path.join(os.getcwd(), '.env')
+        if not os.path.exists(path):
+            return
+        with open(path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, _, val = line.partition('=')
+                key, val = key.strip(), val.strip().strip('"').strip("'")
+                if override or key not in os.environ:
+                    os.environ[key] = val
 
 # 加载项目根目录的 .env 文件
 # 路径: NexusMind/.env (相对于 backend/app/config.py)

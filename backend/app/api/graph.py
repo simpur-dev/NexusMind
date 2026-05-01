@@ -197,7 +197,9 @@ def generate_ontology():
         
         # 获取参数
         simulation_requirement = request.form.get('simulation_requirement', '')
-        project_name = request.form.get('project_name', 'Unnamed Project')
+        project_name = request.form.get('project_name', '').strip()
+        if not project_name:
+            project_name = simulation_requirement[:30].strip() or 'Unnamed Project'
         additional_context = request.form.get('additional_context', '')
         web_query = request.form.get('web_query', '').strip()  # 可选：同时启用网络抓取
         
@@ -304,6 +306,11 @@ def generate_ontology():
             "edge_types": ontology.get("edge_types", [])
         }
         project.analysis_summary = ontology.get("analysis_summary", "")
+        # 用 LLM 提取的事件名称更新项目名
+        event_name = ontology.get("event_name", "").strip()
+        if event_name:
+            project.name = event_name
+            logger.info(f"项目名称更新为事件名: {event_name}")
         project.status = ProjectStatus.ONTOLOGY_GENERATED
         ProjectManager.save_project(project)
         logger.info(f"=== 本体生成完成 === 项目ID: {project.project_id}")
@@ -355,7 +362,9 @@ def generate_ontology_from_web():
         query = data.get('query', '').strip()
         simulation_requirement = data.get('simulation_requirement', '').strip()
         max_results = data.get('max_results', 8)
-        project_name = data.get('project_name', 'Web Search Project')
+        project_name = data.get('project_name', '').strip()
+        if not project_name:
+            project_name = (simulation_requirement or query)[:30].strip() or 'Web Search Project'
         
         if not query:
             return jsonify({
@@ -429,6 +438,11 @@ def generate_ontology_from_web():
             "edge_types": ontology.get("edge_types", [])
         }
         project.analysis_summary = ontology.get("analysis_summary", "")
+        # 用 LLM 提取的事件名称更新项目名
+        event_name = ontology.get("event_name", "").strip()
+        if event_name:
+            project.name = event_name
+            logger.info(f"项目名称更新为事件名: {event_name}")
         project.status = ProjectStatus.ONTOLOGY_GENERATED
         ProjectManager.save_project(project)
         logger.info(f"=== 网络搜索本体生成完成 === 项目ID: {project.project_id}")
