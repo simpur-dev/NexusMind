@@ -304,9 +304,15 @@
         <div v-if="graphData" class="graph-legend">
           <div class="legend-item" v-for="type in entityTypes" :key="type.name">
             <span class="legend-dot" :style="{ background: type.color }"></span>
-            <span class="legend-label">{{ type.label || type.name }}</span>
-            <span class="legend-count">{{ type.count }}</span>
+            <span class="legend-label">{{ type.label }}</span>
           </div>
+        </div>
+        <!-- 底部摘要条 -->
+        <div v-if="graphData && entityTypes.length > 1" class="graph-bottom-bar">
+          <span v-for="type in entityTypes" :key="type.name" class="bottom-bar-item">
+            <span class="bottom-bar-dot" :style="{ background: type.color }"></span>
+            {{ type.label }} {{ type.count }}
+          </span>
         </div>
       </div>
     </Transition>
@@ -588,24 +594,49 @@ const entityTypeChinese = {
   'University': '学校', 'College': '学院', 'Court': '法院',
   'ExpertPanel': '专家委员会', 'Organization': '组织机构',
   'GovernmentAgency': '政府机构', 'RegulatoryAgency': '监管机构',
-  'AcademicAssociation': '学术团体', 'Person': '人物',
+  'AcademicAssociation': '学术组织', 'Person': '人物',
   'Media': '媒体', 'MediaOutlet': '媒体机构', 'OnlineInfluencer': '网络大V',
   'Event': '事件', 'Policy': '政策', 'PublicFigure': '公众人物',
   'Platform': '平台', 'Company': '企业', 'Location': '地点',
-  'Document': '文件', 'Entity': '实体',
+  'Document': '文件', 'Entity': '实体', 'Government': '政府',
+  'PhD_Whistleblower': '学术举报人', 'SocialMedia': '社交媒体',
 }
 const translateType = (type) => entityTypeChinese[type] || type
+
+// 与 renderGraph 中 PALETTE 对齐的颜色映射
+const LEGEND_PALETTE = {
+  'Person':          '#6366f1',
+  'Organization':    '#f59e0b',
+  'Government':      '#ef4444',
+  'GovernmentAgency':'#ef4444',
+  'Location':        '#10b981',
+  'Event':           '#f43f5e',
+  'Policy':          '#8b5cf6',
+  'MediaOutlet':     '#ec4899',
+  'Media':           '#ec4899',
+  'AcademicAdvisor': '#14b8a6',
+  'University':      '#0ea5e9',
+  'College':         '#0ea5e9',
+  'GraduateStudent': '#6366f1',
+  'Student':         '#6366f1',
+  'RegulatoryAgency':'#ef4444',
+  'AcademicAssociation':'#f59e0b',
+  'OnlineInfluencer':'#a855f7',
+  'Entity':          '#38bdf8',
+}
+const LEGEND_FALLBACK = ['#6366f1','#f59e0b','#8b5cf6','#10b981','#ef4444','#ec4899','#0ea5e9','#14b8a6']
 
 const entityTypes = computed(() => {
   if (!graphData.value?.nodes) return []
   
   const typeMap = {}
-  const colors = ['#FF6B35', '#004E89', '#7B2D8E', '#1A936F', '#C5283D', '#E9724C']
+  let fallbackIdx = 0
   
   graphData.value.nodes.forEach(node => {
-    const type = node.labels?.find(l => l !== 'Entity') || 'Entity'
+    const type = node.labels?.find(l => l !== 'Entity' && l !== 'Node') || 'Entity'
     if (!typeMap[type]) {
-      typeMap[type] = { name: type, label: translateType(type), count: 0, color: colors[Object.keys(typeMap).length % colors.length] }
+      const color = LEGEND_PALETTE[type] || LEGEND_FALLBACK[fallbackIdx++ % LEGEND_FALLBACK.length]
+      typeMap[type] = { name: type, label: translateType(type), count: 0, color }
     }
     typeMap[type].count++
   })
@@ -3029,18 +3060,20 @@ body.is-resizing .left-panel {
   margin-bottom: 10px;
 }
 
-/* 图谱图例（白底条，与参考图一致） */
+/* 图谱图例（左下角竖排） */
 .graph-legend {
   display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  padding: 12px 24px;
-  padding-top: 16px;
-  border-top: 1px solid rgba(200, 215, 228, 0.85);
-  background: #ffffff;
-  backdrop-filter: none;
-  position: relative;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  position: absolute;
+  bottom: 52px;
+  left: 12px;
   z-index: 4;
+  background: rgba(10, 15, 30, 0.75);
+  backdrop-filter: blur(8px);
+  border-radius: 8px;
+  border: 1px solid rgba(100, 140, 180, 0.15);
 }
 
 .graph-legend::before,
@@ -3052,22 +3085,48 @@ body.is-resizing .left-panel {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
 }
 
 .legend-dot {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 0 4px currentColor;
 }
 
 .legend-label {
-  color: #334155;
+  color: rgba(220, 230, 245, 0.9);
 }
 
 .legend-count {
-  color: #94a3b8;
+  color: rgba(160, 180, 200, 0.7);
+}
+
+/* 底部摘要条 */
+.graph-bottom-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 8px 16px;
+  background: rgba(10, 15, 30, 0.8);
+  border-top: 1px solid rgba(100, 140, 180, 0.12);
+  position: relative;
+  z-index: 4;
+}
+.bottom-bar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  color: rgba(200, 215, 235, 0.85);
+  white-space: nowrap;
+}
+.bottom-bar-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
 }
 
 /* 右侧面板 - 50% default */
