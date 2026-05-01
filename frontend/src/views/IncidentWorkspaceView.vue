@@ -640,7 +640,41 @@ onMounted(async () => {
   if (materials.value.length === 0 && projectHasText.value) {
     await autoImportProjectText()
   }
+  // 检查是否有正在进行的图谱构建任务，恢复轮询
+  await _resumeGraphBuildIfRunning()
 })
+
+async function _resumeGraphBuildIfRunning() {
+  try {
+    const { getProject } = await import('../api/graph')
+    const res = await getProject(projectId.value)
+    if (!res?.success) return
+    const taskId = res.data?.graph_build_task_id
+    const status = res.data?.status
+    if (taskId && status === 'graph_building') {
+      baselineGraphRebuilding.value = true
+      baselineGraphRebuildProgress.value = 0
+      const { getTaskStatus } = await import('../api/graph')
+      const poll = setInterval(async () => {
+        try {
+          const tr = await getTaskStatus(taskId)
+          if (tr?.success) {
+            baselineGraphRebuildProgress.value = tr.data?.progress || 0
+            if (tr.data?.status === 'completed' || tr.data?.status === 'failed') {
+              clearInterval(poll)
+              baselineGraphRebuilding.value = false
+              baselineGraphRebuildProgress.value = 0
+              await loadBaselines()
+              const updated = baselines.value.find(b => b.baseline_id === activeBaseline.value?.baseline_id)
+              if (updated) activeBaseline.value = updated
+              await loadBaselineGraphStats()
+            }
+          }
+        } catch { /* ignore */ }
+      }, 3000)
+    }
+  } catch { /* ignore */ }
+}
 onBeforeUnmount(() => { _stopElapsedTimer() })
 
 async function loadProjectInfo() {

@@ -106,15 +106,17 @@
       </div>
 
       <!-- Step 02: Graph Build -->
-      <div class="step-card" :class="{ 'active': currentPhase === 1, 'completed': currentPhase > 1 }">
+      <div class="step-card" :class="{ 'active': currentPhase === 1 || rebuildingGraph, 'completed': currentPhase > 1 && !rebuildingGraph }">
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">02</span>
             <span class="step-title">事件记忆图谱构建</span>
           </div>
           <div class="step-status">
-            <span v-if="currentPhase > 1" class="badge success">已完成</span>
+            <span v-if="rebuildingGraph" class="badge processing">构建中...</span>
             <span v-else-if="currentPhase === 1" class="badge processing">{{ buildProgress?.progress || 0 }}%</span>
+            <span v-else-if="currentPhase > 1 && graphStats.nodes > 0" class="badge success">已完成</span>
+            <span v-else-if="currentPhase > 1 && graphStats.nodes === 0" class="badge warning">待重建</span>
             <span v-else class="badge pending">等待</span>
           </div>
         </div>
@@ -156,14 +158,15 @@
       </div>
 
       <!-- Step 03: Complete -->
-      <div class="step-card" :class="{ 'active': currentPhase === 2, 'completed': currentPhase >= 2 }">
+      <div class="step-card" :class="{ 'active': currentPhase === 2 && !rebuildingGraph, 'completed': currentPhase >= 2 && !rebuildingGraph }">
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">03</span>
             <span class="step-title">推演底座就绪</span>
           </div>
           <div class="step-status">
-            <span v-if="currentPhase >= 2" class="badge accent">进行中</span>
+            <span v-if="currentPhase >= 2 && !rebuildingGraph" class="badge accent">进行中</span>
+            <span v-else-if="rebuildingGraph" class="badge pending">等待</span>
           </div>
         </div>
         
@@ -491,6 +494,11 @@ watch(() => props.systemLogs.length, () => {
   background: rgba(34, 197, 94, 0.12);
   color: #15803d;
   border-color: rgba(34, 197, 94, 0.18);
+}
+.badge.warning {
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+  border-color: rgba(245, 158, 11, 0.18);
 }
 
 .badge.processing,

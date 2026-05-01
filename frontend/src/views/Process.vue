@@ -283,14 +283,14 @@
           </div>
           
           <!-- 构建中但还没有数据 -->
-          <div v-else-if="currentPhase === 1 && !graphData" class="graph-waiting">
+          <div v-else-if="(currentPhase === 1 || rebuildingGraph) && !graphData" class="graph-waiting">
             <div class="loading-animation">
               <div class="loading-ring"></div>
               <div class="loading-ring"></div>
               <div class="loading-ring"></div>
             </div>
             <p class="waiting-text">事件图谱生成中</p>
-            <p class="waiting-hint">数据即将显示...</p>
+            <p class="waiting-hint">{{ buildProgress?.message || '数据即将显示...' }}</p>
           </div>
           
           <!-- 错误状态 -->
@@ -343,7 +343,7 @@
             <div class="strip-spinner"></div>
             <span class="strip-text">{{ ontologyProgress?.message || '事件要素建模中...' }}</span>
           </div>
-          <div class="strip-graph" v-else-if="currentPhase >= 1 && currentPhase < 2">
+          <div class="strip-graph" v-else-if="currentPhase >= 1 && currentPhase < 2 || rebuildingGraph">
             <div class="strip-label">
               <span>事件图谱生成</span>
               <span class="strip-pct">{{ buildProgress?.progress || 0 }}%</span>
@@ -352,7 +352,7 @@
               <div class="strip-fill" :style="{ width: (buildProgress?.progress || 0) + '%' }"></div>
             </div>
           </div>
-          <div class="strip-done" v-else-if="currentPhase >= 2">
+          <div class="strip-done" v-else-if="currentPhase >= 2 && !rebuildingGraph">
             <span class="strip-done-icon">◆</span>
             <span class="strip-done-text">事件图谱生成完成 · {{ graphData?.node_count || graphData?.nodes?.length || 0 }} 节点 · {{ graphData?.edge_count || graphData?.edges?.length || 0 }} 关系</span>
           </div>
@@ -1080,6 +1080,9 @@ const handleRebuildGraph = async () => {
   if (rebuildingGraph.value) return
   rebuildingGraph.value = true
   error.value = ''
+  // 重置图谱数据和阶段，让 UI 回到构建中状态
+  graphData.value = null
+  currentPhase.value = 1
   addLog('用户手动触发图谱重建...')
   try {
     await startBuildGraph()

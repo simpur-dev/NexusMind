@@ -497,6 +497,11 @@ def rebuild_baseline_graph(project_id: str, baseline_id: str):
         task_manager = TaskManager()
         graph_task_id = task_manager.create_task(f"重建基线图谱-{baseline_id}")
 
+        # 更新项目状态，让 Process 页面能检测到构建中
+        project.status = ProjectStatus.GRAPH_BUILDING
+        project.graph_build_task_id = graph_task_id
+        ProjectManager.save_project(project)
+
         def _rebuild():
             _logger = get_logger("nexusmind.incident.baseline_graph_rebuild")
             try:
@@ -542,9 +547,15 @@ def rebuild_baseline_graph(project_id: str, baseline_id: str):
                     "node_count": graph_data.get("node_count", 0),
                     "edge_count": graph_data.get("edge_count", 0),
                 })
+                # 更新项目状态
+                project.status = ProjectStatus.GRAPH_COMPLETED
+                project.graph_id = graph_id
+                ProjectManager.save_project(project)
                 _logger.info(f"基线 {baseline_id} 图谱重建完成: {graph_id}")
             except Exception as e:
                 _logger.error(f"基线图谱重建失败: {e}")
+                project.status = ProjectStatus.GRAPH_COMPLETED
+                ProjectManager.save_project(project)
                 task_manager.update_task(graph_task_id, status=TaskStatus.FAILED, message=f"失败: {e}", error=str(e))
 
         threading.Thread(target=_rebuild, daemon=True).start()
