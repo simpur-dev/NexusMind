@@ -24,6 +24,28 @@ from ..utils.logger import get_logger
 logger = get_logger("nexusmind.api.forecast")
 
 
+def _make_recalibrated_label(parent_run: ForecastRun, new_baseline_id: str) -> str:
+    """为校准分支生成可读标签，如「校准自基线v2-发酵期」"""
+    stage = ""
+    version = ""
+    try:
+        baselines = BaselineManager.list_baselines(parent_run.project_id)
+        for idx, bl in enumerate(baselines, 1):
+            if bl.baseline_id == new_baseline_id:
+                version = f"v{idx}"
+                stage = bl.current_stage or ""
+                break
+    except Exception:
+        pass
+    if version and stage:
+        return f"校准自基线{version}-{stage}"
+    if version:
+        return f"校准自基线{version}"
+    if stage:
+        return f"校准·{stage}"
+    return f"校准自 {parent_run.branch_label or parent_run.run_id[-8:]}"
+
+
 # ============================================================
 # 预测分支生命周期
 # ============================================================
@@ -328,6 +350,17 @@ def start_forecast_run(run_id: str):
             start_round=start_round,
         )
 
+        # 注入基线上下文到世界状态引擎，提高状态计算准确性
+        try:
+            ws_engine = SimulationRunner.get_or_restore_world_state_engine(run.simulation_id)
+            if ws_engine and run.baseline_id:
+                bl = BaselineManager.get_baseline(run.project_id, run.baseline_id)
+                if bl:
+                    ws_engine.set_baseline_context(bl.to_dict())
+                    logger.info(f"已注入基线上下文到世界状态引擎: baseline={run.baseline_id}, stage={bl.current_stage}")
+        except Exception as be:
+            logger.warning(f"注入基线上下文失败: {be}")
+
         # 更新 ForecastRun 状态
         run.status = "running"
         ForecastRunManager.save_run(run)
@@ -402,7 +435,7 @@ def recalibrate_forecast_run(run_id: str):
             run.project_id,
             new_baseline_id,
             branch_type="recalibrated",
-            branch_label=data.get("branch_label", f"校准自 {run.run_id}"),
+            branch_label=data.get("branch_label") or _make_recalibrated_label(run, new_baseline_id),
             parent_run_id=run.run_id,
             forecast_horizon_hours=run.forecast_horizon_hours,
         )
@@ -740,11 +773,17 @@ def _build_reality_patch(baseline, diff: dict) -> dict:
         "new_facts": [],
     }
 
-    # 从新基线的风险判断状态调整
+    # 从新基线的风险判断状态调整（考虑阶段衰减）
     if baseline.current_risks:
         risk_count = len(baseline.current_risks)
+        stage = (baseline.current_stage or "").strip()
+        stage_factor = 1.0
+        if "消退" in stage:
+            stage_factor = 0.5
+        elif "平台" in stage:
+            stage_factor = 0.75
         if risk_count >= 3:
-            patch["state_overrides"]["risk_level"] = min(1.0, 0.3 + risk_count * 0.1)
+            patch["state_overrides"]["risk_level"] = min(1.0, (0.3 + risk_count * 0.1) * stage_factor)
 
     # 新增的确认事实
     facts_diff = diff.get("confirmed_facts_diff", {})

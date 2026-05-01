@@ -58,7 +58,22 @@ def get_project(project_id: str):
                 logger.info(f"自动补全 simulation_id={existing_sim.simulation_id} -> 项目 {project_id}")
         except Exception as e:
             logger.debug(f"查找模拟失败: {e}")
-    
+
+    # 自动修复 project.files 与实际材料不一致
+    try:
+        from ..models.material import MaterialManager
+        mat_count = MaterialManager.count(project_id)
+        if mat_count > 0 and len(project.files or []) != mat_count:
+            all_materials = MaterialManager.list_materials(project_id)
+            project.files = [
+                {"filename": m.title or m.material_id, "size": m.text_length or 0}
+                for m in all_materials
+            ]
+            project.materials_count = mat_count
+            ProjectManager.save_project(project)
+    except Exception:
+        pass
+
     return jsonify({
         "success": True,
         "data": project.to_dict()
@@ -72,7 +87,24 @@ def list_projects():
     """
     limit = request.args.get('limit', 50, type=int)
     projects = ProjectManager.list_projects(limit=limit)
-    
+
+    # 自动修复 incident_mode 项目的 files 列表
+    try:
+        from ..models.material import MaterialManager
+        for p in projects:
+            if getattr(p, 'incident_mode', None):
+                mat_count = MaterialManager.count(p.project_id)
+                if mat_count > 0 and len(p.files or []) != mat_count:
+                    all_materials = MaterialManager.list_materials(p.project_id)
+                    p.files = [
+                        {"filename": m.title or m.material_id, "size": m.text_length or 0}
+                        for m in all_materials
+                    ]
+                    p.materials_count = mat_count
+                    ProjectManager.save_project(p)
+    except Exception:
+        pass
+
     return jsonify({
         "success": True,
         "data": [p.to_dict() for p in projects],
@@ -573,7 +605,8 @@ def build_graph():
                     message="创建图谱...",
                     progress=10
                 )
-                graph_id = builder.create_graph(name=graph_name)
+                old_graph_id = project.graph_id  # 清理旧图谱数据（如有）
+                graph_id = builder.create_graph(name=graph_name, old_graph_id=old_graph_id)
                 
                 # 更新项目的graph_id
                 project.graph_id = graph_id
@@ -836,6 +869,26 @@ def annotate_graph_entities(graph_id):
         })
         
     except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
+@graph_bp.route('/repair-group-ids', methods=['POST'])
+def repair_group_ids():
+    """
+    修复 Neo4j 中所有 Entity / Edge 的 group_ids 数组。
+    通过 Episode→Entity MENTIONS 关系重建正确的多图谱归属。
+    用于修复旧版 tag_graph_data 覆盖 group_id 导致各基线数据互相干扰的问题。
+    """
+    try:
+        builder = GraphBuilderService()
+        builder.repair_group_ids()
+        return jsonify({"success": True, "message": "group_ids 修复完成"})
+    except Exception as e:
+        logger.error(f"repair_group_ids 失败: {e}")
         return jsonify({
             "success": False,
             "error": str(e),

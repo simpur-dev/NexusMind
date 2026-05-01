@@ -825,7 +825,7 @@ class SimulationRunner:
                         if not _alive():
                             break
                     if _alive():
-                        logger.info(f"子进程未自行退出，主动终止: {simulation_id}")
+                        logger.debug(f"子进程未自行退出，主动终止: {simulation_id}")
                         try:
                             if process:
                                 process.terminate()

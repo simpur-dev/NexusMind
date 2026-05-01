@@ -113,7 +113,8 @@ class EntityReader:
         """直接通过 Neo4j Cypher 获取所有节点和边，按 group_id 过滤"""
         async def _query():
             driver = get_neo4j_async_driver()
-            gid_filter = "WHERE n.group_id = $gid OR n.group_id IS NULL" if graph_id else ""
+            gid_filter = ("WHERE n.group_id = $gid OR $gid IN coalesce(n.group_ids, []) "
+                          "OR n.group_id IS NULL") if graph_id else ""
             node_result = await driver.execute_query(
                 f"MATCH (n:Entity) {gid_filter} "
                 "RETURN n.uuid AS uuid, n.name AS name, n.summary AS summary, "
@@ -121,7 +122,8 @@ class EntityReader:
                 gid=graph_id,
                 database_=Config.NEO4J_DATABASE,
             )
-            edge_gid = "WHERE r.group_id = $gid OR r.group_id IS NULL" if graph_id else ""
+            edge_gid = ("WHERE r.group_id = $gid OR $gid IN coalesce(r.group_ids, []) "
+                        "OR r.group_id IS NULL") if graph_id else ""
             edge_result = await driver.execute_query(
                 f"MATCH (a:Entity)-[r]->(b:Entity) {edge_gid} "
                 "RETURN r.uuid AS uuid, r.name AS name, r.fact AS fact, "

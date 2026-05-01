@@ -258,6 +258,30 @@ class WorldStateEngine:
     
     INJECTED_EVENTS_FILE = "injected_events.json"
     
+    # 阶段先验：不同事件阶段的合理初始状态范围
+    STAGE_PRIORS: Dict[str, Dict[str, float]] = {
+        "爆发期": {
+            "attention_level": 0.55, "panic_level": 0.45, "trust_level": 0.30,
+            "polarization_level": 0.35, "risk_level": 0.50, "stability_level": 0.35,
+        },
+        "发酵期": {
+            "attention_level": 0.65, "panic_level": 0.40, "trust_level": 0.25,
+            "polarization_level": 0.50, "risk_level": 0.55, "stability_level": 0.30,
+        },
+        "平台期": {
+            "attention_level": 0.40, "panic_level": 0.25, "trust_level": 0.40,
+            "polarization_level": 0.35, "risk_level": 0.35, "stability_level": 0.50,
+        },
+        "消退期": {
+            "attention_level": 0.20, "panic_level": 0.15, "trust_level": 0.50,
+            "polarization_level": 0.20, "risk_level": 0.20, "stability_level": 0.65,
+        },
+        "二次爆发": {
+            "attention_level": 0.70, "panic_level": 0.55, "trust_level": 0.20,
+            "polarization_level": 0.55, "risk_level": 0.65, "stability_level": 0.20,
+        },
+    }
+
     def __init__(self, sim_dir: str, use_llm: bool = True):
         """
         初始化世界状态引擎
@@ -288,8 +312,23 @@ class WorldStateEngine:
         self._topic_states: Dict[str, TopicState] = {}
         self._prev_dominant_topic: Optional[str] = None
         
+        # 基线上下文（用于提高状态估计准确性）
+        self._baseline_context: Optional[Dict[str, Any]] = None
+        self._stage_prior: Optional[Dict[str, float]] = None
+        
         # 加载已有历史
         self._load_history()
+
+    def set_baseline_context(self, baseline_context: Dict[str, Any]):
+        """注入基线上下文，用于提高初始状态和 LLM 修正的准确性"""
+        self._baseline_context = baseline_context
+        stage = (baseline_context.get("current_stage") or "").strip()
+        for key, prior in self.STAGE_PRIORS.items():
+            if key in stage:
+                self._stage_prior = prior
+                logger.info(f"已设置阶段先验: stage={stage}, prior={prior}")
+                return
+        self._stage_prior = None
     
     def _load_history(self):
         """从文件加载已有状态历史"""
@@ -743,7 +782,7 @@ class WorldStateEngine:
         - stability ← 1 - (attention_delta + panic_delta + polarization_delta) / 3
         """
         if prev is None:
-            # 初始状态：基于首轮动作计算，不硬编码
+            # 初始状态：基于首轮动作计算
             init_activity = obs["posts"] + obs["comments"] + obs["reposts"]
             init_attention = min(1.0, init_activity * 0.05)
             init_panic = min(1.0, obs["neg_ratio"] * 0.6)
@@ -753,15 +792,41 @@ class WorldStateEngine:
             init_polar = min(1.0, min(obs["pos_ratio"], obs["neg_ratio"]) * 2 * 0.6)
             init_risk = min(1.0, init_attention * 0.3 + init_panic * 0.4 + (1 - init_trust) * 0.3)
             init_stab = max(0.0, 1.0 - init_panic * 0.5 - init_polar * 0.3)
+
+            obs_values = {
+                "attention_level": init_attention, "panic_level": init_panic,
+                "trust_level": init_trust, "polarization_level": init_polar,
+                "risk_level": init_risk, "stability_level": init_stab,
+            }
+
+            # 与阶段先验混合：先验权重 60%，观测权重 40%
+            # 这使得"爆发期"不会从低值起步，"消退期"不会虚高
+            if self._stage_prior:
+                PRIOR_W = 0.6
+                for var in obs_values:
+                    obs_values[var] = self._clamp(
+                        self._stage_prior[var] * PRIOR_W + obs_values[var] * (1 - PRIOR_W)
+                    )
+                logger.info(f"[Round {round_num}] 初始状态融合阶段先验: {obs_values}")
+            elif self._baseline_context:
+                # 无匹配阶段但有基线风险信息，用风险数量调整 risk/trust
+                bl_risks = self._baseline_context.get("current_risks", [])
+                bl_stage = (self._baseline_context.get("current_stage") or "").strip()
+                stage_decay = 0.4 if "消退" in bl_stage else (0.7 if "平台" in bl_stage else 1.0)
+                if bl_risks:
+                    risk_boost = min(len(bl_risks) * 0.08, 0.3) * stage_decay
+                    obs_values["risk_level"] = self._clamp(obs_values["risk_level"] + risk_boost)
+                    obs_values["trust_level"] = self._clamp(obs_values["trust_level"] - risk_boost * 0.5)
+
             return WorldStateSnapshot(
                 round_num=round_num,
                 timestamp=datetime.now().isoformat(),
-                attention_level=init_attention,
-                panic_level=init_panic,
-                trust_level=init_trust,
-                polarization_level=init_polar,
-                risk_level=init_risk,
-                stability_level=init_stab,
+                attention_level=obs_values["attention_level"],
+                panic_level=obs_values["panic_level"],
+                trust_level=obs_values["trust_level"],
+                polarization_level=obs_values["polarization_level"],
+                risk_level=obs_values["risk_level"],
+                stability_level=obs_values["stability_level"],
                 total_posts=obs["posts"],
                 total_comments=obs["comments"],
                 total_reposts=obs["reposts"],
@@ -810,8 +875,37 @@ class WorldStateEngine:
         if prev.polarization_level > polarization_target:
             polarization_target = prev.polarization_level * 0.85 + polarization_target * 0.15
         
+        # ── 变量间耦合效应（现实中变量互相影响） ──
+        # 1) 低信任放大恐慌：信任越低，负面信息越容易引发恐慌
+        trust_deficit = max(0, 0.5 - trust_target)  # 信任低于 0.5 时触发
+        panic_target = self._clamp(panic_target + trust_deficit * 0.25)
+        
+        # 2) 高关注度加速极化扩散：围观越多，对立越容易被放大
+        if attention_target > 0.4:
+            polar_boost = (attention_target - 0.4) * 0.2
+            polarization_target = self._clamp(polarization_target + polar_boost)
+        
+        # 3) 恐慌 + 极化的复合效应侵蚀信任
+        compound_erosion = max(0, panic_target - 0.3) * max(0, polarization_target - 0.3) * 0.3
+        trust_target = self._clamp(trust_target - compound_erosion)
+        
+        # 4) 基线已识别的风险数量提升 risk 下限（按阶段衰减）
+        if self._baseline_context:
+            bl_risk_count = len(self._baseline_context.get("current_risks", []))
+            bl_stage = (self._baseline_context.get("current_stage") or "").strip()
+            stage_decay = 0.4 if "消退" in bl_stage else (0.7 if "平台" in bl_stage else 1.0)
+            if bl_risk_count > 0:
+                risk_floor = min(bl_risk_count * 0.06, 0.35) * stage_decay
+            else:
+                risk_floor = 0.0
+        else:
+            risk_floor = 0.0
+        
         # risk: 综合指标
-        risk_target = min(1.0, attention_target * 0.3 + panic_target * 0.4 + (1 - trust_target) * 0.3)
+        risk_target = max(risk_floor, min(1.0,
+            attention_target * 0.25 + panic_target * 0.35 +
+            (1 - trust_target) * 0.25 + polarization_target * 0.15
+        ))
         
         # stability: 区分正向变化和负向变化
         # 恐慌下降、信任上升是"好的变化"，不应拉低稳定性
@@ -927,8 +1021,26 @@ class WorldStateEngine:
             if prev_state:
                 prev_desc = prev_state.get_state_summary_text()
             
-            prompt = f"""你是一个社会模拟世界状态评估器。请根据以下本轮Agent动作摘要和上一轮状态，对当前世界状态做微调。
+            # 构建基线上下文段落，让 LLM 知道事件的真实背景
+            baseline_section = ""
+            if self._baseline_context:
+                bl_stage = self._baseline_context.get("current_stage", "未知")
+                bl_risks = self._baseline_context.get("current_risks", [])
+                bl_facts = self._baseline_context.get("confirmed_facts", [])
+                bl_actors = self._baseline_context.get("key_actors", [])
+                baseline_section = f"""
+【事件基线信息（来自真实材料分析）】
+- 当前阶段: {bl_stage}
+- 已确认事实: {'; '.join(bl_facts[:5]) if bl_facts else '无'}
+- 主要风险: {'; '.join(bl_risks[:5]) if bl_risks else '无'}
+- 关键主体: {', '.join(a.get('name', str(a)) if isinstance(a, dict) else str(a) for a in bl_actors[:5]) if bl_actors else '无'}
 
+请结合以上真实事件背景来判断规则计算的状态是否合理。
+例如：如果事件处于"爆发期"但关注度偏低，应适当上调；如果有多项风险但risk_level偏低，应修正。
+"""
+
+            prompt = f"""你是一个社会模拟世界状态评估器。请根据以下本轮Agent动作摘要和上一轮状态，对当前世界状态做微调。
+{baseline_section}
 上一轮状态：
 {prev_desc}
 
@@ -938,7 +1050,7 @@ class WorldStateEngine:
 本轮关键动作（最多30条）：
 {actions_text}
 
-请评估规则计算是否合理，输出 JSON 格式的微调量（每个变量的调整值在 -0.1 到 +0.1 之间，0 表示不调整）：
+请评估规则计算是否合理，输出 JSON 格式的微调量（每个变量的调整值在 -0.15 到 +0.15 之间，0 表示不调整）：
 ```json
 {{
   "attention_adj": 0.0,

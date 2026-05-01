@@ -462,7 +462,8 @@ const goToProject = () => {
   if (selectedProject.value?.project_id) {
     router.push({
       name: 'Process',
-      params: { projectId: selectedProject.value.project_id }
+      params: { projectId: selectedProject.value.project_id },
+      query: { step: 1 }
     })
     closeModal()
   }

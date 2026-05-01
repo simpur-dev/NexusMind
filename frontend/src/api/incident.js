@@ -32,6 +32,17 @@ export const appendMaterialText = (projectId, data) => {
 }
 
 /**
+ * 通过网络搜索抓取内容作为种子材料追加
+ * @param {string} projectId
+ * @param {Object} data - { query, max_results? }
+ */
+export const appendMaterialFromWeb = (projectId, data) => {
+  return requestWithRetry(() =>
+    service.post(`/api/incident/project/${projectId}/materials/append-web`, data)
+  )
+}
+
+/**
  * 获取项目材料时间线
  * @param {string} projectId
  */
@@ -97,6 +108,25 @@ export const deleteBaseline = (projectId, baselineId) => {
   return service.delete(`/api/incident/project/${projectId}/baseline/${baselineId}`)
 }
 
+/**
+ * 为指定基线单独重建图谱
+ * @param {string} projectId
+ * @param {string} baselineId
+ */
+export const rebuildBaselineGraph = (projectId, baselineId) => {
+  return service.post(`/api/incident/project/${projectId}/baseline/${baselineId}/rebuild-graph`)
+}
+
+/**
+ * 获取事件因果图
+ * @param {string} projectId
+ * @param {string} baselineId - 可选，默认使用当前基线
+ */
+export const getCausalGraph = (projectId, baselineId) => {
+  const params = baselineId ? { baseline_id: baselineId } : {}
+  return service.get(`/api/incident/project/${projectId}/causal-graph`, { params })
+}
+
 // ============================================================
 // 预测分支管理
 // ============================================================
@@ -127,6 +157,15 @@ export const listForecastRuns = (projectId) => {
  */
 export const getForecastRun = (projectId, runId) => {
   return service.get(`/api/incident/project/${projectId}/forecast/${runId}`)
+}
+
+/**
+ * 删除指定预测分支
+ * @param {string} projectId
+ * @param {string} runId
+ */
+export const deleteForecastRun = (projectId, runId) => {
+  return service.delete(`/api/incident/project/${projectId}/forecast/${runId}`)
 }
 
 /**

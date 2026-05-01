@@ -4,6 +4,7 @@ Step2: 实体读取与过滤、OASIS模拟准备与运行（全程自动化）
 """
 
 import os
+import json
 import traceback
 from flask import request, jsonify, send_file
 
@@ -1959,19 +1960,39 @@ def get_run_status(simulation_id: str):
         run_state = SimulationRunner.get_run_state(simulation_id)
         
         if not run_state:
-            return jsonify({
-                "success": True,
-                "data": {
-                    "simulation_id": simulation_id,
-                    "runner_status": "idle",
-                    "current_round": 0,
-                    "total_rounds": 0,
-                    "progress_percent": 0,
-                    "twitter_actions_count": 0,
-                    "reddit_actions_count": 0,
-                    "total_actions_count": 0,
-                }
-            })
+            # 尝试从磁盘恢复世界状态，获取已完成的轮次信息
+            ws_engine = SimulationRunner.get_or_restore_world_state_engine(simulation_id)
+            persisted_round = 0
+            persisted_total = 0
+            world_state_dict = None
+            if ws_engine and ws_engine.current_state:
+                persisted_round = getattr(ws_engine.current_state, 'round_num', 0) or 0
+                world_state_dict = ws_engine.current_state.to_dict()
+            # 推断 total_rounds：从配置文件读取
+            sim_dir = os.path.join(SimulationRunner.RUN_STATE_DIR, simulation_id)
+            config_path = os.path.join(sim_dir, "simulation_config.json")
+            if os.path.exists(config_path):
+                try:
+                    with open(config_path, 'r', encoding='utf-8') as f:
+                        cfg = json.load(f)
+                    tc = cfg.get("time_config", {})
+                    if tc.get("total_simulation_hours") and tc.get("minutes_per_round"):
+                        persisted_total = int(tc["total_simulation_hours"] * 60 / tc["minutes_per_round"])
+                except Exception:
+                    pass
+            result = {
+                "simulation_id": simulation_id,
+                "runner_status": "completed" if persisted_round > 0 else "idle",
+                "current_round": persisted_round,
+                "total_rounds": persisted_total or persisted_round,
+                "progress_percent": 100 if persisted_round > 0 else 0,
+                "twitter_actions_count": 0,
+                "reddit_actions_count": 0,
+                "total_actions_count": 0,
+            }
+            if world_state_dict:
+                result["world_state"] = world_state_dict
+            return jsonify({"success": True, "data": result})
         
         data = run_state.to_dict()
         # 注入世界状态
@@ -2035,16 +2056,27 @@ def get_run_status_detail(simulation_id: str):
         platform_filter = request.args.get('platform')
         
         if not run_state:
-            return jsonify({
-                "success": True,
-                "data": {
-                    "simulation_id": simulation_id,
-                    "runner_status": "idle",
-                    "all_actions": [],
-                    "twitter_actions": [],
-                    "reddit_actions": []
-                }
-            })
+            # run_state 不在内存中，但磁盘上可能有持久化的动作数据
+            disk_actions = SimulationRunner.get_all_actions(
+                simulation_id=simulation_id,
+                platform=platform_filter
+            )
+            result = {
+                "simulation_id": simulation_id,
+                "runner_status": "idle",
+                "all_actions": [a.to_dict() for a in disk_actions],
+                "twitter_actions": [a.to_dict() for a in SimulationRunner.get_all_actions(
+                    simulation_id=simulation_id, platform="twitter"
+                )] if not platform_filter or platform_filter == "twitter" else [],
+                "reddit_actions": [a.to_dict() for a in SimulationRunner.get_all_actions(
+                    simulation_id=simulation_id, platform="reddit"
+                )] if not platform_filter or platform_filter == "reddit" else [],
+            }
+            # 尝试注入世界状态
+            ws_engine = SimulationRunner.get_or_restore_world_state_engine(simulation_id)
+            if ws_engine and ws_engine.current_state:
+                result["world_state"] = ws_engine.current_state.to_dict()
+            return jsonify({"success": True, "data": result})
         
         # 获取完整的动作列表
         all_actions = SimulationRunner.get_all_actions(
@@ -3402,6 +3434,9 @@ def get_sim_graph(simulation_id):
             "stability_level": "稳定性",
         }
 
+        # Fallback max_round from events (in case Neo4j has no SimAction data)
+        event_max_round = max((evt.round_num for evt in recent_events), default=0) if recent_events else 0
+
         for key, label in variable_meta.items():
             current_value = getattr(current_state, key, 0.0) if current_state else 0.0
             prev_value = getattr(prev_state, key, current_value) if prev_state else current_value
@@ -3476,7 +3511,7 @@ def get_sim_graph(simulation_id):
                     "total_events": len(recent_events),
                     "total_variables": len(variable_meta),
                     "platforms": stats_result["platforms"] if stats_result else 0,
-                    "max_round": stats_result["max_round"] if stats_result else 0,
+                    "max_round": stats_result["max_round"] if stats_result and stats_result["max_round"] else event_max_round,
                     "causal_edges": len(causal_edges),
                 }
             }
