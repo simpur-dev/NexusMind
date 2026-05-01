@@ -234,6 +234,7 @@ class SimulationRunner:
     
     # 世界状态引擎（World State Engine）
     _world_state_engines: Dict[str, WorldStateEngine] = {}
+    _ws_restore_lock = threading.Lock()  # 防止多线程并发恢复同一引擎（冷启动雷群）
     _round_action_buffers: Dict[str, List[Dict[str, Any]]] = {}  # simulation_id -> current round actions
 
     @classmethod
@@ -323,30 +324,40 @@ class SimulationRunner:
         解决 Flask 进程重启后 _world_state_engines 丢失导致 world_state API 返回
         空数据的问题。WorldStateEngine.__init__ 已实现 _load_history()，可直接从
         world_state_history.jsonl / events.jsonl 恢复历史快照与事件。
+
+        使用 _ws_restore_lock 防止多个并发请求同时从磁盘重建同一引擎（冷启动雷群）。
         """
+        # 快速路径：已在内存中，无锁直接返回
         engine = cls._world_state_engines.get(simulation_id)
         if engine is not None:
             return engine
 
-        sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
-        history_path = os.path.join(sim_dir, "world_state_history.jsonl")
-        if not os.path.exists(history_path):
-            return None
+        # 慢路径：需要从磁盘恢复，加锁保证只有一个线程执行
+        with cls._ws_restore_lock:
+            # 双重检查：可能在等锁期间已被其他线程恢复
+            engine = cls._world_state_engines.get(simulation_id)
+            if engine is not None:
+                return engine
 
-        try:
-            # use_llm=False：只读重建，不触发任何 LLM 调用
-            engine = WorldStateEngine(sim_dir=sim_dir, use_llm=False)
-            if not engine.state_history:
+            sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
+            history_path = os.path.join(sim_dir, "world_state_history.jsonl")
+            if not os.path.exists(history_path):
                 return None
-            cls._world_state_engines[simulation_id] = engine
-            logger.info(
-                f"从磁盘恢复世界状态引擎: simulation_id={simulation_id}, "
-                f"history={len(engine.state_history)}, events={len(engine.events)}"
-            )
-            return engine
-        except Exception as e:
-            logger.warning(f"恢复世界状态引擎失败 simulation_id={simulation_id}: {e}")
-            return None
+
+            try:
+                # use_llm=False：只读重建，不触发任何 LLM 调用
+                engine = WorldStateEngine(sim_dir=sim_dir, use_llm=False)
+                if not engine.state_history:
+                    return None
+                cls._world_state_engines[simulation_id] = engine
+                logger.info(
+                    f"从磁盘恢复世界状态引擎: simulation_id={simulation_id}, "
+                    f"history={len(engine.state_history)}, events={len(engine.events)}"
+                )
+                return engine
+            except Exception as e:
+                logger.warning(f"恢复世界状态引擎失败 simulation_id={simulation_id}: {e}")
+                return None
 
     @classmethod
     def get_run_state(cls, simulation_id: str) -> Optional[SimulationRunState]:

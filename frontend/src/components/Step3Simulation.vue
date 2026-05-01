@@ -3,89 +3,69 @@
     <!-- Top Control Bar -->
     <div class="control-bar">
       <div class="status-group">
-        <!-- Twitter 平台进度 -->
-        <div class="platform-status twitter" :class="{ active: runStatus.twitter_running, completed: runStatus.twitter_completed }">
-          <div class="platform-header">
-            <svg class="platform-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-            </svg>
-            <span class="platform-name">信息广场</span>
-            <span v-if="runStatus.twitter_completed" class="status-badge">
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-            </span>
-          </div>
-          <div class="platform-stats">
-            <span class="stat">
-              <span class="stat-label">轮次</span>
-              <span class="stat-value mono">{{ runStatus.twitter_current_round || 0 }}<span class="stat-total">/{{ runStatus.total_rounds || maxRounds || '-' }}</span></span>
-            </span>
-            <span class="stat">
-              <span class="stat-label">推演时间</span>
-              <span class="stat-value mono">{{ twitterElapsedTime }}</span>
-            </span>
-            <span class="stat">
-              <span class="stat-label">动作</span>
-              <span class="stat-value mono">{{ runStatus.twitter_actions_count || 0 }}</span>
-            </span>
-          </div>
-          <!-- 可用动作提示 -->
-          <div class="actions-tooltip">
-            <div class="tooltip-title">可用动作</div>
-            <div class="tooltip-actions">
-              <span class="tooltip-action">发帖</span>
-              <span class="tooltip-action">点赞</span>
-              <span class="tooltip-action">转发</span>
-              <span class="tooltip-action">引用</span>
-              <span class="tooltip-action">关注</span>
-              <span class="tooltip-action">静默</span>
+        <!-- 综合进度面板 -->
+        <div class="progress-panel" :class="{ active: phase === 1, completed: phase === 2 }">
+          <!-- 双平台进度条 -->
+          <div class="dual-progress">
+            <div class="progress-row">
+              <span class="progress-label">
+                <svg class="platform-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                </svg>
+                信息广场
+              </span>
+              <div class="progress-track">
+                <div class="progress-fill twitter" :style="{ width: twitterProgress + '%' }"></div>
+              </div>
+              <span class="progress-text mono">{{ runStatus.twitter_current_round || 0 }}<span class="progress-total">/{{ runStatus.total_rounds || maxRounds || '-' }}</span></span>
+              <span v-if="runStatus.twitter_completed" class="check-icon">✓</span>
             </div>
+            <div class="progress-row">
+              <span class="progress-label">
+                <svg class="platform-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+                </svg>
+                话题社区
+              </span>
+              <div class="progress-track">
+                <div class="progress-fill reddit" :style="{ width: redditProgress + '%' }"></div>
+              </div>
+              <span class="progress-text mono">{{ runStatus.reddit_current_round || 0 }}<span class="progress-total">/{{ runStatus.total_rounds || maxRounds || '-' }}</span></span>
+              <span v-if="runStatus.reddit_completed" class="check-icon">✓</span>
+            </div>
+          </div>
+          <!-- ETA -->
+          <div class="eta-badge" v-if="phase === 1 && etaText">
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            {{ etaText }}
+          </div>
+          <div class="eta-badge done" v-else-if="phase === 2">
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            推演完成
           </div>
         </div>
-        
-        <!-- Reddit 平台进度 -->
-        <div class="platform-status reddit" :class="{ active: runStatus.reddit_running, completed: runStatus.reddit_completed }">
-          <div class="platform-header">
-            <svg class="platform-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
-            </svg>
-            <span class="platform-name">话题社区</span>
-            <span v-if="runStatus.reddit_completed" class="status-badge">
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-            </span>
+
+        <!-- 世界状态迷你指标 -->
+        <div class="ws-mini" v-if="worldState">
+          <div class="ws-indicator" title="关注度">
+            <span class="ws-dot" :style="{ background: wsColor(worldState.attention) }"></span>
+            <span class="ws-name">关注</span>
+            <span class="ws-val mono">{{ wsFormat(worldState.attention) }}</span>
           </div>
-          <div class="platform-stats">
-            <span class="stat">
-              <span class="stat-label">轮次</span>
-              <span class="stat-value mono">{{ runStatus.reddit_current_round || 0 }}<span class="stat-total">/{{ runStatus.total_rounds || maxRounds || '-' }}</span></span>
-            </span>
-            <span class="stat">
-              <span class="stat-label">推演时间</span>
-              <span class="stat-value mono">{{ redditElapsedTime }}</span>
-            </span>
-            <span class="stat">
-              <span class="stat-label">动作</span>
-              <span class="stat-value mono">{{ runStatus.reddit_actions_count || 0 }}</span>
-            </span>
+          <div class="ws-indicator" title="恐慌度">
+            <span class="ws-dot" :style="{ background: wsColor(worldState.panic) }"></span>
+            <span class="ws-name">恐慌</span>
+            <span class="ws-val mono">{{ wsFormat(worldState.panic) }}</span>
           </div>
-          <!-- 可用动作提示 -->
-          <div class="actions-tooltip">
-            <div class="tooltip-title">可用动作</div>
-            <div class="tooltip-actions">
-              <span class="tooltip-action">发帖</span>
-              <span class="tooltip-action">评论</span>
-              <span class="tooltip-action">点赞</span>
-              <span class="tooltip-action">反对</span>
-              <span class="tooltip-action">搜索</span>
-              <span class="tooltip-action">趋势</span>
-              <span class="tooltip-action">关注</span>
-              <span class="tooltip-action">静音</span>
-              <span class="tooltip-action">刷新</span>
-              <span class="tooltip-action">静默</span>
-            </div>
+          <div class="ws-indicator" title="信任度">
+            <span class="ws-dot" :style="{ background: wsColorInverse(worldState.trust) }"></span>
+            <span class="ws-name">信任</span>
+            <span class="ws-val mono">{{ wsFormat(worldState.trust) }}</span>
+          </div>
+          <div class="ws-indicator" title="极化度">
+            <span class="ws-dot" :style="{ background: wsColor(worldState.polarization) }"></span>
+            <span class="ws-name">极化</span>
+            <span class="ws-val mono">{{ wsFormat(worldState.polarization) }}</span>
           </div>
         </div>
       </div>
@@ -495,24 +475,45 @@ const redditActionsCount = computed(() => redditActions.value.length)
 const twitterIdleHidden = computed(() => twitterActionsAll.value.length - twitterActions.value.length)
 const redditIdleHidden = computed(() => redditActionsAll.value.length - redditActions.value.length)
 
-// 格式化模拟流逝时间（根据轮次和每轮分钟数计算）
-const formatElapsedTime = (currentRound) => {
-  if (!currentRound || currentRound <= 0) return '0小时 0分'
-  const totalMinutes = currentRound * props.minutesPerRound
-  const hours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-  return `${hours}小时 ${minutes}分`
+// 进度百分比
+const totalRounds = computed(() => runStatus.value.total_rounds || props.maxRounds || 1)
+const twitterProgress = computed(() => {
+  const r = runStatus.value.twitter_current_round || 0
+  return Math.min(100, Math.round(r / totalRounds.value * 100))
+})
+const redditProgress = computed(() => {
+  const r = runStatus.value.reddit_current_round || 0
+  return Math.min(100, Math.round(r / totalRounds.value * 100))
+})
+
+// ETA 计算（基于实际墙钟时间）
+const simulationStartTime = ref(null)
+const etaText = computed(() => {
+  if (!simulationStartTime.value) return ''
+  const maxR = Math.max(runStatus.value.twitter_current_round || 0, runStatus.value.reddit_current_round || 0)
+  if (maxR <= 0) return '计算中...'
+  const elapsed = (Date.now() - simulationStartTime.value) / 1000
+  const perRound = elapsed / maxR
+  const remaining = Math.max(0, (totalRounds.value - maxR) * perRound)
+  if (remaining < 60) return `预计 ${Math.ceil(remaining)}秒`
+  if (remaining < 3600) return `预计 ${Math.ceil(remaining / 60)}分钟`
+  return `预计 ${(remaining / 3600).toFixed(1)}小时`
+})
+
+// 世界状态迷你指标格式化
+const wsFormat = (v) => v != null ? v.toFixed(2) : '--'
+const wsColor = (v) => {
+  if (v == null) return '#94a3b8'
+  if (v < 0.3) return '#22c55e'
+  if (v < 0.6) return '#f59e0b'
+  return '#ef4444'
 }
-
-// Twitter平台的模拟流逝时间
-const twitterElapsedTime = computed(() => {
-  return formatElapsedTime(runStatus.value.twitter_current_round || 0)
-})
-
-// Reddit平台的模拟流逝时间
-const redditElapsedTime = computed(() => {
-  return formatElapsedTime(runStatus.value.reddit_current_round || 0)
-})
+const wsColorInverse = (v) => {
+  if (v == null) return '#94a3b8'
+  if (v > 0.6) return '#22c55e'
+  if (v > 0.3) return '#f59e0b'
+  return '#ef4444'
+}
 
 // Methods
 const addLog = (msg) => {
@@ -580,6 +581,7 @@ const doStartSimulation = async () => {
       addLog(`  ├─ PID: ${res.data.process_pid || '-'}`)
       
       phase.value = 1
+      simulationStartTime.value = Date.now()
       runStatus.value = res.data
       
       startStatusPolling()
@@ -632,6 +634,7 @@ const doResumeSimulation = async () => {
       addLog(`  ├─ PID: ${res.data.process_pid || '-'}`)
       
       phase.value = 1
+      simulationStartTime.value = Date.now()
       runStatus.value = res.data
       
       startStatusPolling()
@@ -712,11 +715,11 @@ let statusTimer = null
 let detailTimer = null
 
 const startStatusPolling = () => {
-  statusTimer = setInterval(fetchRunStatus, 2000)
+  statusTimer = setInterval(fetchRunStatus, 5000)
 }
 
 const startDetailPolling = () => {
-  detailTimer = setInterval(fetchRunStatusDetail, 3000)
+  detailTimer = setInterval(fetchRunStatusDetail, 8000)
 }
 
 const stopPolling = () => {
@@ -900,8 +903,11 @@ const fetchRunStatusDetail = async () => {
 //   （解决原实现每轮 3 个全量查询导致的性能问题，对应 #3）
 const _lastCausalFetchAt = ref(0)
 const CAUSAL_MIN_INTERVAL_MS = 10000  // 因果图谱节流：至少 10s 才重算一次
+let _fetchingWorldModel = false
 const fetchWorldModelData = async ({ initial = false } = {}) => {
   if (!props.simulationId) return
+  if (_fetchingWorldModel) return  // 防重入：避免并行重复请求
+  _fetchingWorldModel = true
   try {
     // --- 状态历史（增量） ---
     if (initial || worldStateHistory.value.length === 0) {
@@ -956,6 +962,8 @@ const fetchWorldModelData = async ({ initial = false } = {}) => {
     }
   } catch (err) {
     console.warn('获取世界模型数据失败:', err)
+  } finally {
+    _fetchingWorldModel = false
   }
 }
 
@@ -1115,18 +1123,19 @@ const bootstrap = async () => {
       addLog(`✓ 检测到模拟进行中 (R${data.current_round || 0}/${data.total_rounds || '-'})，恢复监听`)
       runStatus.value = data
       phase.value = 1
-      await fetchRunStatusDetail()
-      await fetchWorldModelData({ initial: true })
+      simulationStartTime.value = simulationStartTime.value || Date.now()
       startStatusPolling()
       startDetailPolling()
       emit('update-status', 'processing')
+      fetchRunStatusDetail()
+      fetchWorldModelData({ initial: true })
     } else if (status === 'completed') {
       addLog('✓ 检测到推演已完成，加载历史数据')
       runStatus.value = data
       phase.value = 2
-      await fetchRunStatusDetail()
-      await fetchWorldModelData({ initial: true })
       emit('update-status', 'completed')
+      fetchRunStatusDetail()
+      fetchWorldModelData({ initial: true })
     } else if (status === 'failed' || status === 'stopped') {
       runStatus.value = data
       // 如果已跑过轮次（stopped 且 current_round > 0），按"已完成"对待：
@@ -1141,8 +1150,8 @@ const bootstrap = async () => {
         phase.value = 0
         startError.value = getRunStatusErrorMessage(data)
       }
-      await fetchRunStatusDetail()
-      await fetchWorldModelData({ initial: true })
+      fetchRunStatusDetail()
+      fetchWorldModelData({ initial: true })
     } else {
       // idle / null：检查是否有已持久化的历史数据
       const hasHistoricData = (data.current_round || 0) > 0
@@ -1150,9 +1159,9 @@ const bootstrap = async () => {
         addLog(`✓ 检测到历史模拟数据 (R${data.current_round})，加载中`)
         runStatus.value = data
         phase.value = 2
-        await fetchRunStatusDetail()
-        await fetchWorldModelData({ initial: true })
         emit('update-status', 'completed')
+        fetchRunStatusDetail()
+        fetchWorldModelData({ initial: true })
       } else {
         // 真正的首次进入，启动
         doStartSimulation()
@@ -1290,160 +1299,171 @@ onUnmounted(() => {
   align-items: center;
   border-bottom: 1px solid var(--color-border);
   z-index: 10;
-  height: 64px;
+  height: 80px;
   box-shadow: 0 2px 8px rgba(136, 125, 255, 0.08);
 }
 
 .status-group {
   display: flex;
-  gap: 12px;
+  gap: 14px;
+  align-items: center;
 }
 
-/* Platform Status Cards */
-.platform-status {
+/* Progress Panel */
+.progress-panel {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 6px 12px;
-  border-radius: 8px;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 18px;
+  border-radius: 10px;
   background: var(--color-white);
   border: 1px solid var(--color-border);
   opacity: 0.7;
   transition: all 0.3s;
-  min-width: 140px;
+  min-width: 200px;
   position: relative;
   cursor: pointer;
 }
 
-.platform-status.active {
+.progress-panel.active {
   opacity: 1;
   border-color: var(--gradient-cyan);
-  background: linear-gradient(135deg, var(--color-white), rgba(167, 249, 255, 0.1));
-  box-shadow: 0 2px 12px rgba(167, 249, 255, 0.2);
+  background: linear-gradient(135deg, var(--color-white), rgba(167, 249, 255, 0.08));
+  box-shadow: 0 2px 12px rgba(167, 249, 255, 0.15);
 }
 
-.platform-status.completed {
+.progress-panel.completed {
   opacity: 1;
   border-color: var(--gradient-purple);
-  background: linear-gradient(135deg, var(--color-white), rgba(136, 125, 255, 0.08));
-  box-shadow: 0 2px 12px rgba(136, 125, 255, 0.15);
+  background: linear-gradient(135deg, var(--color-white), rgba(136, 125, 255, 0.06));
+  box-shadow: 0 2px 12px rgba(136, 125, 255, 0.12);
 }
 
-/* Actions Tooltip */
-.actions-tooltip {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-top: 8px;
-  padding: 10px 14px;
-  background: var(--gradient-purple);
-  color: var(--color-white);
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(136, 125, 255, 0.3);
-  opacity: 0;
-  visibility: hidden;
-  transition: all 0.2s ease;
-  z-index: 100;
-  min-width: 180px;
-  pointer-events: none;
-}
-
-.actions-tooltip::before {
-  content: '';
-  position: absolute;
-  top: -6px;
-  left: 50%;
-  transform: translateX(-50%);
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-bottom: 6px solid var(--gradient-purple);
-}
-
-.platform-status:hover .actions-tooltip {
-  opacity: 1;
-  visibility: visible;
-}
-
-.tooltip-title {
-  font-size: 10px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.8);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-bottom: 8px;
-}
-
-.tooltip-actions {
+/* Dual Progress Bars */
+.dual-progress {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 220px;
 }
 
-.tooltip-action {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 3px 8px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  color: var(--color-white);
-  letter-spacing: 0.03em;
-}
-
-.platform-header {
+.progress-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 2px;
 }
 
-.platform-name {
-  font-size: 11px;
+.progress-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
   font-weight: 700;
-  color: var(--color-black);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: #475569;
+  min-width: 74px;
+  white-space: nowrap;
+  letter-spacing: 0.03em;
 }
 
-.platform-status.twitter .platform-icon { color: var(--gradient-cyan); }
-.platform-status.reddit .platform-icon { color: var(--gradient-purple); }
+.progress-label .platform-icon { width: 13px; height: 13px; }
 
-.platform-stats {
-  display: flex;
-  gap: 10px;
+.progress-track {
+  flex: 1;
+  height: 7px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+  min-width: 110px;
 }
 
-.stat {
-  display: flex;
-  align-items: baseline;
-  gap: 3px;
+.progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s ease;
 }
 
-.stat-label {
-  font-size: 8px;
-  color: #64748b;
+.progress-fill.twitter {
+  background: linear-gradient(90deg, var(--gradient-cyan), #38bdf8);
+}
+
+.progress-fill.reddit {
+  background: linear-gradient(90deg, var(--gradient-purple), #a78bfa);
+}
+
+.progress-text {
+  font-size: 13px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--color-black);
+  min-width: 38px;
+  text-align: right;
 }
 
-.stat-value {
+.progress-total {
   font-size: 11px;
-  font-weight: 600;
-  color: var(--color-black);
-}
-
-.stat-total, .stat-unit {
-  font-size: 9px;
   color: #94a3b8;
   font-weight: 400;
 }
 
-.status-badge {
-  margin-left: auto;
+.check-icon {
+  font-size: 13px;
   color: var(--gradient-purple);
+  font-weight: 700;
+}
+
+/* ETA Badge */
+.eta-badge {
   display: flex;
   align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  background: #f1f5f9;
+  padding: 5px 12px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.eta-badge.done {
+  color: var(--gradient-purple);
+  background: rgba(136, 125, 255, 0.1);
+}
+
+/* World State Mini Indicators */
+.ws-mini {
+  display: flex;
+  gap: 14px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: var(--color-white);
+  border: 1px solid var(--color-border);
+}
+
+.ws-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ws-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ws-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ws-val {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-black);
 }
 
 /* Action Button */

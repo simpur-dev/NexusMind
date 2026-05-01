@@ -2057,20 +2057,22 @@ def get_run_status_detail(simulation_id: str):
         
         if not run_state:
             # run_state 不在内存中，但磁盘上可能有持久化的动作数据
-            disk_actions = SimulationRunner.get_all_actions(
-                simulation_id=simulation_id,
-                platform=platform_filter
+            # 只读一次磁盘，然后在内存中按平台过滤
+            all_disk_actions = SimulationRunner.get_all_actions(
+                simulation_id=simulation_id
             )
+            if platform_filter:
+                disk_actions = [a for a in all_disk_actions if a.platform == platform_filter]
+            else:
+                disk_actions = all_disk_actions
             result = {
                 "simulation_id": simulation_id,
                 "runner_status": "idle",
                 "all_actions": [a.to_dict() for a in disk_actions],
-                "twitter_actions": [a.to_dict() for a in SimulationRunner.get_all_actions(
-                    simulation_id=simulation_id, platform="twitter"
-                )] if not platform_filter or platform_filter == "twitter" else [],
-                "reddit_actions": [a.to_dict() for a in SimulationRunner.get_all_actions(
-                    simulation_id=simulation_id, platform="reddit"
-                )] if not platform_filter or platform_filter == "reddit" else [],
+                "twitter_actions": [a.to_dict() for a in all_disk_actions if a.platform == "twitter"
+                ] if not platform_filter or platform_filter == "twitter" else [],
+                "reddit_actions": [a.to_dict() for a in all_disk_actions if a.platform == "reddit"
+                ] if not platform_filter or platform_filter == "reddit" else [],
             }
             # 尝试注入世界状态
             ws_engine = SimulationRunner.get_or_restore_world_state_engine(simulation_id)
@@ -2078,30 +2080,27 @@ def get_run_status_detail(simulation_id: str):
                 result["world_state"] = ws_engine.current_state.to_dict()
             return jsonify({"success": True, "data": result})
         
-        # 获取完整的动作列表
-        all_actions = SimulationRunner.get_all_actions(
-            simulation_id=simulation_id,
-            platform=platform_filter
+        # 只读一次磁盘，然后在内存中按平台/轮次过滤
+        all_actions_raw = SimulationRunner.get_all_actions(
+            simulation_id=simulation_id
         )
         
-        # 分平台获取动作
-        twitter_actions = SimulationRunner.get_all_actions(
-            simulation_id=simulation_id,
-            platform="twitter"
-        ) if not platform_filter or platform_filter == "twitter" else []
+        # 内存中过滤
+        if platform_filter:
+            all_actions = [a for a in all_actions_raw if a.platform == platform_filter]
+        else:
+            all_actions = all_actions_raw
         
-        reddit_actions = SimulationRunner.get_all_actions(
-            simulation_id=simulation_id,
-            platform="reddit"
-        ) if not platform_filter or platform_filter == "reddit" else []
+        twitter_actions = [a for a in all_actions_raw if a.platform == "twitter"
+        ] if not platform_filter or platform_filter == "twitter" else []
         
-        # 获取当前轮次的动作（recent_actions 只展示最新一轮）
+        reddit_actions = [a for a in all_actions_raw if a.platform == "reddit"
+        ] if not platform_filter or platform_filter == "reddit" else []
+        
+        # 当前轮次的动作（recent_actions 只展示最新一轮）
         current_round = run_state.current_round
-        recent_actions = SimulationRunner.get_all_actions(
-            simulation_id=simulation_id,
-            platform=platform_filter,
-            round_num=current_round
-        ) if current_round > 0 else []
+        recent_actions = [a for a in all_actions if a.round_num == current_round
+        ] if current_round > 0 else []
         
         # 获取基础状态信息
         result = run_state.to_dict()
