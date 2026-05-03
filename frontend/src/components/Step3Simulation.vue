@@ -48,24 +48,24 @@
         <!-- 世界状态迷你指标 -->
         <div class="ws-mini" v-if="worldState">
           <div class="ws-indicator" title="关注度">
-            <span class="ws-dot" :style="{ background: wsColor(worldState.attention) }"></span>
+            <span class="ws-dot" :style="{ background: wsColor(worldState.attention_level) }"></span>
             <span class="ws-name">关注</span>
-            <span class="ws-val mono">{{ wsFormat(worldState.attention) }}</span>
+            <span class="ws-val mono">{{ wsFormat(worldState.attention_level) }}</span>
           </div>
           <div class="ws-indicator" title="恐慌度">
-            <span class="ws-dot" :style="{ background: wsColor(worldState.panic) }"></span>
+            <span class="ws-dot" :style="{ background: wsColor(worldState.panic_level) }"></span>
             <span class="ws-name">恐慌</span>
-            <span class="ws-val mono">{{ wsFormat(worldState.panic) }}</span>
+            <span class="ws-val mono">{{ wsFormat(worldState.panic_level) }}</span>
           </div>
           <div class="ws-indicator" title="信任度">
-            <span class="ws-dot" :style="{ background: wsColorInverse(worldState.trust) }"></span>
+            <span class="ws-dot" :style="{ background: wsColorInverse(worldState.trust_level) }"></span>
             <span class="ws-name">信任</span>
-            <span class="ws-val mono">{{ wsFormat(worldState.trust) }}</span>
+            <span class="ws-val mono">{{ wsFormat(worldState.trust_level) }}</span>
           </div>
           <div class="ws-indicator" title="极化度">
-            <span class="ws-dot" :style="{ background: wsColor(worldState.polarization) }"></span>
+            <span class="ws-dot" :style="{ background: wsColor(worldState.polarization_level) }"></span>
             <span class="ws-name">极化</span>
-            <span class="ws-val mono">{{ wsFormat(worldState.polarization) }}</span>
+            <span class="ws-val mono">{{ wsFormat(worldState.polarization_level) }}</span>
           </div>
         </div>
       </div>
@@ -1024,12 +1024,12 @@ const handleNextStep = async () => {
   }
   
   if (isGeneratingReport.value) {
-    addLog('决策简报生成请求已发送，请稍候...')
+    addLog('决策简报与智能研判请求已发送，请稍候...')
     return
   }
   
   isGeneratingReport.value = true
-  addLog('正在启动决策简报生成...')
+  addLog('正在启动决策简报与智能研判...')
   
   try {
     const res = await generateReport({
@@ -1039,16 +1039,16 @@ const handleNextStep = async () => {
     
     if (res.success && res.data) {
       const reportId = res.data.report_id
-      addLog(`✓ 决策简报生成任务已启动: ${reportId}`)
+      addLog(`✓ 决策简报与智能研判任务已启动: ${reportId}`)
 
-      // 通知父组件跳转决策简报生成步骤
+      // 通知父组件跳转决策简报与智能研判步骤
       emit('next-step', { reportId })
     } else {
-      addLog(`✗ 启动决策简报生成失败: ${res.error || '未知错误'}`)
+      addLog(`✗ 启动决策简报与智能研判失败: ${res.error || '未知错误'}`)
       isGeneratingReport.value = false
     }
   } catch (err) {
-    addLog(`✗ 启动决策简报生成异常: ${err.message}`)
+    addLog(`✗ 启动决策简报与智能研判异常: ${err.message}`)
     isGeneratingReport.value = false
   }
 }

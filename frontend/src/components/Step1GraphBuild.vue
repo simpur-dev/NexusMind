@@ -1,9 +1,23 @@
 ﻿<template>
   <div class="workbench-panel">
     <div class="scroll-container">
+      <div class="phase-rail">
+        <div
+          v-for="(item, idx) in internalStages"
+          :key="item.label"
+          class="phase-rail-item"
+          :class="item.state"
+        >
+          <span class="phase-rail-node">
+            <span v-if="item.state === 'done'">✓</span>
+            <span v-else>{{ idx + 1 }}</span>
+          </span>
+          <span class="phase-rail-label">{{ item.label }}</span>
+        </div>
+      </div>
       <!-- Step 01: Ontology -->
-      <div class="step-card" :class="{ 'active': currentPhase === 0, 'completed': currentPhase > 0 }">
-        <div class="card-header">
+      <div class="step-card" :class="{ 'active': currentPhase === 0, 'completed': currentPhase > 0, 'is-collapsed': isStepCollapsed(0), 'can-toggle': currentPhase > 0 }">
+        <div class="card-header" @click="toggleStepCard(0)">
           <div class="step-info">
             <span class="step-num">01</span>
             <span class="step-title">事件要素建模</span>
@@ -13,9 +27,11 @@
             <span v-else-if="currentPhase === 0" class="badge processing">生成中</span>
             <span v-else class="badge pending">等待</span>
           </div>
+          <span v-if="currentPhase > 0" class="collapse-indicator" :class="{ open: !isStepCollapsed(0) }">⌄</span>
         </div>
         
-        <div class="card-content">
+        <div v-if="isStepCollapsed(0)" class="collapsed-summary">{{ stepSummary(0) }}</div>
+        <div v-show="!isStepCollapsed(0)" class="card-content">
           <p class="api-note">POST /api/graph/ontology/generate</p>
           <p class="description">
             解析种子材料与推演目标，抽取角色、机构、议题与行动关系，生成面向舆情推演的事件本体。
@@ -106,8 +122,8 @@
       </div>
 
       <!-- Step 02: Graph Build -->
-      <div class="step-card" :class="{ 'active': currentPhase === 1 || rebuildingGraph, 'completed': currentPhase > 1 && !rebuildingGraph }">
-        <div class="card-header">
+      <div class="step-card" :class="{ 'active': currentPhase === 1 || rebuildingGraph, 'completed': currentPhase > 1 && !rebuildingGraph, 'is-collapsed': isStepCollapsed(1), 'can-toggle': currentPhase > 1 && !rebuildingGraph && graphStats.nodes > 0 }">
+        <div class="card-header" @click="toggleStepCard(1)">
           <div class="step-info">
             <span class="step-num">02</span>
             <span class="step-title">事件记忆图谱构建</span>
@@ -119,9 +135,11 @@
             <span v-else-if="currentPhase > 1 && graphStats.nodes === 0" class="badge warning">待重建</span>
             <span v-else class="badge pending">等待</span>
           </div>
+          <span v-if="currentPhase > 1 && !rebuildingGraph && graphStats.nodes > 0" class="collapse-indicator" :class="{ open: !isStepCollapsed(1) }">⌄</span>
         </div>
 
-        <div class="card-content">
+        <div v-if="isStepCollapsed(1)" class="collapsed-summary">{{ stepSummary(1) }}</div>
+        <div v-show="!isStepCollapsed(1)" class="card-content">
           <p class="api-note">POST /api/graph/build</p>
           <p class="description">
             将材料切分并写入 Graphiti + Neo4j，沉淀对象关系、时序记忆与社区摘要，为后续推演提供可追溯依据。
@@ -165,7 +183,7 @@
             <span class="step-title">推演底座就绪</span>
           </div>
           <div class="step-status">
-            <span v-if="currentPhase >= 2 && !rebuildingGraph" class="badge accent">进行中</span>
+            <span v-if="currentPhase >= 2 && !rebuildingGraph" class="badge success">已就绪</span>
             <span v-else-if="rebuildingGraph" class="badge pending">等待</span>
           </div>
         </div>
@@ -173,23 +191,26 @@
         <div class="card-content">
           <p class="api-note">POST /api/simulation/create</p>
           <p class="description">事件记忆图谱已完成，可进入群体环境建模，生成面向舆情演化的智能体场域。</p>
-          <button 
-            class="action-btn" 
-            :disabled="currentPhase < 2 || creatingSimulation"
-            @click="handleEnterEnvSetup"
-          >
-            <span v-if="creatingSimulation" class="spinner-sm"></span>
-            {{ creatingSimulation ? '创建中...' : '进入群体环境建模 ➝' }}
-          </button>
-          <button 
-            class="action-btn action-btn-workspace" 
-            :disabled="currentPhase < 2"
-            @click="goToWorkspace"
-          >
-            ⌁ 进入事件工作台
-          </button>
         </div>
       </div>
+    </div>
+
+    <div class="step-action-footer">
+      <button 
+        class="action-btn action-btn-workspace" 
+        :disabled="currentPhase < 2"
+        @click="goToWorkspace"
+      >
+        ⌁ 进入事件工作台
+      </button>
+      <button 
+        class="action-btn" 
+        :disabled="currentPhase < 2 || creatingSimulation"
+        @click="handleEnterEnvSetup"
+      >
+        <span v-if="creatingSimulation" class="spinner-sm"></span>
+        {{ creatingSimulation ? '创建中...' : '进入群体环境建模 ➝' }}
+      </button>
     </div>
 
     <!-- Floating System Terminal (已隐藏) -->
@@ -263,6 +284,47 @@ const selectedOntologyItem = ref(null)
 const logContent = ref(null)
 const creatingSimulation = ref(false)
 const currentLogIndex = computed(() => props.systemLogs.length - 1)
+const expandedStepCards = ref(new Set())
+
+const internalStages = computed(() => {
+  const labels = ['要素建模', '记忆图谱', '推演底座']
+  return labels.map((label, idx) => {
+    let state = props.currentPhase > idx ? 'done' : props.currentPhase === idx ? 'active' : 'todo'
+    if (props.rebuildingGraph) {
+      state = idx === 0 ? 'done' : idx === 1 ? 'active' : 'todo'
+    }
+    return { label, state }
+  })
+})
+
+const isStepCollapsed = (idx) => {
+  if (idx === 1 && (props.rebuildingGraph || graphStats.value.nodes === 0)) return false
+  return props.currentPhase > idx && !expandedStepCards.value.has(idx)
+}
+
+const toggleStepCard = (idx) => {
+  if (props.currentPhase <= idx) return
+  if (idx === 1 && props.rebuildingGraph) return
+  const next = new Set(expandedStepCards.value)
+  if (next.has(idx)) {
+    next.delete(idx)
+  } else {
+    next.add(idx)
+  }
+  expandedStepCards.value = next
+}
+
+const stepSummary = (idx) => {
+  if (idx === 0) {
+    const entities = props.projectData?.ontology?.entity_types?.length || 0
+    const relations = props.projectData?.ontology?.edge_types?.length || 0
+    return `识别 ${entities} 类关键对象 · ${relations} 类行动关系`
+  }
+  if (idx === 1) {
+    return `${graphStats.value.nodes} 节点 · ${graphStats.value.edges} 关系 · ${graphStats.value.types} 要素类型`
+  }
+  return ''
+}
 
 const isErrorMessage = (message = '') => /error|failed|exception|no pending/i.test(String(message))
 
@@ -422,10 +484,82 @@ watch(() => props.systemLogs.length, () => {
 .scroll-container {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: 20px 24px 16px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
+  min-height: 0;
+}
+
+.phase-rail {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 10px;
+  margin: -2px 0 4px;
+  background: rgba(248, 251, 255, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.phase-rail-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 6px;
+  border-radius: 12px;
+  color: #64748b;
+  background: rgba(255, 255, 255, 0.58);
+  transition: all 0.2s ease;
+}
+
+.phase-rail-node {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #64748b;
+  background: rgba(226, 232, 240, 0.86);
+  flex-shrink: 0;
+}
+
+.phase-rail-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.phase-rail-item.done {
+  color: #0f766e;
+}
+
+.phase-rail-item.done .phase-rail-node {
+  color: #fff;
+  background: linear-gradient(135deg, #14b8a6, #0f766e);
+}
+
+.phase-rail-item.active {
+  color: #fff;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
+}
+
+.phase-rail-item.active .phase-rail-node {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.22);
 }
 
 .step-card {
@@ -453,6 +587,19 @@ watch(() => props.systemLogs.length, () => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+  gap: 12px;
+}
+
+.step-card.can-toggle .card-header {
+  cursor: pointer;
+}
+
+.step-card.is-collapsed {
+  padding: 16px 18px;
+}
+
+.step-card.is-collapsed .card-header {
+  margin-bottom: 8px;
 }
 
 .step-info {
@@ -512,6 +659,35 @@ watch(() => props.systemLogs.length, () => {
   background: rgba(255, 255, 255, 0.7);
   color: var(--text-muted);
   border-color: rgba(148, 163, 184, 0.2);
+}
+
+.collapse-indicator {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #94a3b8;
+  background: rgba(248, 250, 252, 0.86);
+  transition: transform 0.2s ease, color 0.2s ease, background 0.2s ease;
+  flex-shrink: 0;
+}
+
+.collapse-indicator.open {
+  transform: rotate(180deg);
+  color: var(--accent-strong);
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.collapsed-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 18px;
+  color: #64748b;
+  padding-left: 46px;
 }
 
 .api-note {
@@ -764,7 +940,7 @@ watch(() => props.systemLogs.length, () => {
 }
 
 .stat-label {
-  font-size: 9px;
+  font-size: 11px;
   color: var(--text-muted);
   text-transform: uppercase;
   margin-top: 4px;
@@ -799,7 +975,6 @@ watch(() => props.systemLogs.length, () => {
 }
 
 .action-btn-workspace {
-  margin-top: 8px;
   background: linear-gradient(135deg, rgba(99, 179, 237, 0.15) 0%, rgba(59, 130, 246, 0.1) 100%);
   color: #63b3ed;
   border: 1px solid rgba(99, 179, 237, 0.3);
@@ -808,6 +983,23 @@ watch(() => props.systemLogs.length, () => {
 .action-btn-workspace:hover:not(:disabled) {
   background: linear-gradient(135deg, rgba(99, 179, 237, 0.25) 0%, rgba(59, 130, 246, 0.18) 100%);
   box-shadow: 0 8px 20px rgba(99, 179, 237, 0.15);
+}
+
+.step-action-footer {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 12px;
+  padding: 14px 24px 18px;
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.72), rgba(248, 251, 255, 0.96));
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 -12px 28px rgba(15, 23, 42, 0.06);
+  backdrop-filter: blur(16px);
+  flex-shrink: 0;
+}
+
+.step-action-footer .action-btn {
+  width: 100%;
+  min-height: 46px;
 }
 
 .rebuild-btn {

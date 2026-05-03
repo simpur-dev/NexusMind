@@ -1,9 +1,23 @@
 ﻿<template>
   <div class="env-setup-panel">
     <div class="scroll-container">
+      <div class="phase-rail">
+        <div
+          v-for="(item, idx) in internalStages"
+          :key="item.label"
+          class="phase-rail-item"
+          :class="item.state"
+        >
+          <span class="phase-rail-node">
+            <span v-if="item.state === 'done'">✓</span>
+            <span v-else>{{ idx + 1 }}</span>
+          </span>
+          <span class="phase-rail-label">{{ item.label }}</span>
+        </div>
+      </div>
       <!-- Step 01: 模拟实例 -->
-      <div class="step-card" :class="{ 'active': phase === 0, 'completed': phase > 0 }">
-        <div class="card-header">
+      <div class="step-card" :class="{ 'active': phase === 0, 'completed': phase > 0, 'is-collapsed': isStepCollapsed(0), 'can-toggle': phase > 0 }">
+        <div class="card-header" @click="toggleStepCard(0)">
           <div class="step-info">
             <span class="step-num">01</span>
             <span class="step-title">推演场景初始化</span>
@@ -12,9 +26,11 @@
             <span v-if="phase > 0" class="badge success">已完成</span>
             <span v-else class="badge processing">初始化</span>
           </div>
+          <span v-if="phase > 0" class="collapse-indicator" :class="{ open: !isStepCollapsed(0) }">⌄</span>
         </div>
         
-        <div class="card-content">
+        <div v-if="isStepCollapsed(0)" class="collapsed-summary">{{ stepSummary(0) }}</div>
+        <div v-show="!isStepCollapsed(0)" class="card-content">
           <p class="api-note">POST /api/simulation/create</p>
           <p class="description">
             创建推演实例，绑定事件记忆图谱，并拉取世界模型运行所需的基础参数。
@@ -42,8 +58,8 @@
       </div>
 
       <!-- Step 02: 生成 Agent 人设 -->
-      <div class="step-card" :class="{ 'active': phase === 1, 'completed': phase > 1 }">
-        <div class="card-header">
+      <div class="step-card" :class="{ 'active': phase === 1, 'completed': phase > 1, 'is-collapsed': isStepCollapsed(1), 'can-toggle': phase > 1 }">
+        <div class="card-header" @click="toggleStepCard(1)">
           <div class="step-info">
             <span class="step-num">02</span>
             <span class="step-title">群体角色画像生成</span>
@@ -54,9 +70,11 @@
             <span v-else-if="phase > 1 && isProfilesIncomplete" class="badge warning">部分完成</span>
             <span v-else class="badge pending">等待</span>
           </div>
+          <span v-if="phase > 1" class="collapse-indicator" :class="{ open: !isStepCollapsed(1) }">⌄</span>
         </div>
 
-        <div class="card-content">
+        <div v-if="isStepCollapsed(1)" class="collapsed-summary">{{ stepSummary(1) }}</div>
+        <div v-show="!isStepCollapsed(1)" class="card-content">
           <p class="api-note">POST /api/simulation/prepare</p>
           <p class="description">
             从事件记忆图谱梳理关键对象与关系，生成可参与舆情演化的智能体画像，并注入<span class="desc-accent">立场倾向、记忆线索、行动目标</span>等认知属性。
@@ -127,8 +145,8 @@
       </div>
 
       <!-- Step 03: 生成双平台模拟配置 -->
-      <div class="step-card" :class="{ 'active': phase === 2, 'completed': phase > 2 }">
-        <div class="card-header">
+      <div class="step-card" :class="{ 'active': phase === 2, 'completed': phase > 2, 'is-collapsed': isStepCollapsed(2), 'can-toggle': phase > 2 }">
+        <div class="card-header" @click="toggleStepCard(2)">
           <div class="step-info">
             <span class="step-num">03</span>
             <span class="step-title">推演参数自动配置</span>
@@ -138,9 +156,11 @@
             <span v-else-if="phase === 2" class="badge processing">生成中</span>
             <span v-else class="badge pending">等待</span>
           </div>
+          <span v-if="phase > 2" class="collapse-indicator" :class="{ open: !isStepCollapsed(2) }">⌄</span>
         </div>
 
-        <div class="card-content">
+        <div v-if="isStepCollapsed(2)" class="collapsed-summary">{{ stepSummary(2) }}</div>
+        <div v-show="!isStepCollapsed(2)" class="card-content">
           <p class="api-note">POST /api/simulation/prepare</p>
           <p class="description">
             根据推演目标与现实种子，自动配置<span class="desc-accent">时间流速、传播机制</span>、角色活跃窗口与发言频率，并初始化<span class="desc-accent">世界模型反馈闭环</span>的触发阈值与演化规则。
@@ -360,8 +380,8 @@
       </div>
 
       <!-- Step 04: 初始激活编排 -->
-      <div class="step-card" :class="{ 'active': phase === 3, 'completed': phase > 3 }">
-        <div class="card-header">
+      <div class="step-card" :class="{ 'active': phase === 3, 'completed': phase > 3, 'is-collapsed': isStepCollapsed(3), 'can-toggle': phase > 3 }">
+        <div class="card-header" @click="toggleStepCard(3)">
           <div class="step-info">
             <span class="step-num">04</span>
             <span class="step-title">初始议题激活</span>
@@ -371,9 +391,11 @@
             <span v-else-if="phase === 3" class="badge processing">编排中</span>
             <span v-else class="badge pending">等待</span>
           </div>
+          <span v-if="phase > 3" class="collapse-indicator" :class="{ open: !isStepCollapsed(3) }">⌄</span>
         </div>
 
-        <div class="card-content">
+        <div v-if="isStepCollapsed(3)" class="collapsed-summary">{{ stepSummary(3) }}</div>
+        <div v-show="!isStepCollapsed(3)" class="card-content">
           <p class="api-note">POST /api/simulation/prepare</p>
           <p class="description">
             基于事件叙事方向，生成首批触发话题与起始发言，作为<span class="desc-accent">世界状态反馈闭环</span>的初始输入，引导舆情场域进入可观测演化。
@@ -439,7 +461,7 @@
             <span class="step-title">推演启动就绪</span>
           </div>
           <div class="step-status">
-            <span v-if="phase >= 4" class="badge processing">进行中</span>
+            <span v-if="phase >= 4" class="badge success">已就绪</span>
             <span v-else class="badge pending">等待</span>
           </div>
         </div>
@@ -522,23 +544,24 @@
             </Transition>
           </div>
 
-          <div class="action-group dual">
-            <button 
-              class="action-btn secondary"
-              @click="$emit('go-back')"
-            >
-              ← 返回事件图谱生成
-            </button>
-            <button 
-              class="action-btn primary"
-              :disabled="phase < 4"
-              @click="handleStartSimulation"
-            >
-              开始推演 ➝
-            </button>
-          </div>
         </div>
       </div>
+    </div>
+
+    <div class="step-action-footer">
+      <button 
+        class="action-btn secondary"
+        @click="$emit('go-back')"
+      >
+        ← 返回事件图谱生成
+      </button>
+      <button 
+        class="action-btn primary"
+        :disabled="phase < 4"
+        @click="handleStartSimulation"
+      >
+        开始推演 ➝
+      </button>
     </div>
 
     <!-- Profile Detail Modal -->
@@ -727,6 +750,53 @@ const autoGeneratedRounds = computed(() => {
   // 确保最大轮数不小于40（推荐值），避免滑动条范围异常
   return Math.max(calculatedRounds, 40)
 })
+
+const expandedStepCards = ref(new Set())
+
+const internalStages = computed(() => {
+  const labels = ['场景初始化', '画像生成', '参数配置', '议题激活', '启动就绪']
+  return labels.map((label, idx) => ({
+    label,
+    state: phase.value > idx ? 'done' : phase.value === idx ? 'active' : 'todo'
+  }))
+})
+
+const isStepCollapsed = (idx) => {
+  if (idx === 1 && (isProfilesIncomplete.value || isContinueGenerating.value)) return false
+  return phase.value > idx && !expandedStepCards.value.has(idx)
+}
+
+const toggleStepCard = (idx) => {
+  if (phase.value <= idx) return
+  const next = new Set(expandedStepCards.value)
+  if (next.has(idx)) {
+    next.delete(idx)
+  } else {
+    next.add(idx)
+  }
+  expandedStepCards.value = next
+}
+
+const stepSummary = (idx) => {
+  if (idx === 0) {
+    const nodes = props.graphData?.node_count || props.graphData?.nodes?.length || 0
+    const edges = props.graphData?.edge_count || props.graphData?.edges?.length || 0
+    return `已绑定事件记忆图谱 · ${nodes} 节点 · ${edges} 关系`
+  }
+  if (idx === 1) {
+    return `${profiles.value.length}/${expectedTotal.value || '-'} 个角色画像 · ${totalTopicsCount.value} 个关联议题`
+  }
+  if (idx === 2) {
+    const tc = simulationConfig.value?.time_config
+    if (!tc) return '推演参数配置已生成'
+    return `未来 ${tc.total_simulation_hours || '-'} 小时 · 每轮 ${tc.minutes_per_round || '-'} 分钟 · ${autoGeneratedRounds.value || '-'} 轮`
+  }
+  if (idx === 3) {
+    const eventConfig = simulationConfig.value?.event_config
+    return `${eventConfig?.hot_topics?.length || 0} 个初始议题 · ${eventConfig?.initial_posts?.length || 0} 条首轮发言`
+  }
+  return ''
+}
 
 // Polling timer
 let pollTimer = null
@@ -1228,6 +1298,8 @@ onUnmounted(() => {
 <style scoped>
 .env-setup-panel {
   flex: 1;
+  height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1242,10 +1314,82 @@ onUnmounted(() => {
 .scroll-container {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: 20px 24px 16px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
+  min-height: 0;
+}
+
+.phase-rail {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  padding: 10px;
+  margin: -2px 0 4px;
+  background: rgba(248, 251, 255, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.phase-rail-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 6px;
+  border-radius: 12px;
+  color: #64748b;
+  background: rgba(255, 255, 255, 0.58);
+  transition: all 0.2s ease;
+}
+
+.phase-rail-node {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #64748b;
+  background: rgba(226, 232, 240, 0.86);
+  flex-shrink: 0;
+}
+
+.phase-rail-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.phase-rail-item.done {
+  color: #0f766e;
+}
+
+.phase-rail-item.done .phase-rail-node {
+  color: #fff;
+  background: linear-gradient(135deg, #14b8a6, #0f766e);
+}
+
+.phase-rail-item.active {
+  color: #fff;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
+}
+
+.phase-rail-item.active .phase-rail-node {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.22);
 }
 
 /* Step Card */
@@ -1270,6 +1414,19 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+  gap: 12px;
+}
+
+.step-card.can-toggle .card-header {
+  cursor: pointer;
+}
+
+.step-card.is-collapsed {
+  padding: 16px 18px;
+}
+
+.step-card.is-collapsed .card-header {
+  margin-bottom: 8px;
 }
 
 .step-info {
@@ -1309,6 +1466,35 @@ onUnmounted(() => {
 .badge.processing { background: rgba(59, 130, 246, 0.12); color: #2563eb; border: 1px solid rgba(59, 130, 246, 0.2); }
 .badge.pending { background: rgba(148, 163, 184, 0.1); color: #64748b; border: 1px solid rgba(148, 163, 184, 0.2); }
 .badge.accent { background: rgba(59, 130, 246, 0.12); color: #2563eb; border: 1px solid rgba(59, 130, 246, 0.2); }
+
+.collapse-indicator {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #94a3b8;
+  background: rgba(248, 250, 252, 0.86);
+  transition: transform 0.2s ease, color 0.2s ease, background 0.2s ease;
+  flex-shrink: 0;
+}
+
+.collapse-indicator.open {
+  transform: rotate(180deg);
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.collapsed-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 18px;
+  color: #64748b;
+  padding-left: 46px;
+}
 
 .incomplete-notice {
   display: flex;
@@ -1453,6 +1639,24 @@ onUnmounted(() => {
   width: 100%;
 }
 
+.step-action-footer {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 12px;
+  padding: 14px 24px 18px;
+  background:
+    linear-gradient(180deg, rgba(248, 251, 255, 0.72), rgba(248, 251, 255, 0.96));
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 -12px 28px rgba(15, 23, 42, 0.06);
+  backdrop-filter: blur(16px);
+  flex-shrink: 0;
+}
+
+.step-action-footer .action-btn {
+  width: 100%;
+  justify-content: center;
+}
+
 /* Info Card */
 .info-card {
   background: rgba(255, 255, 255, 0.75);
@@ -1515,7 +1719,7 @@ onUnmounted(() => {
 }
 
 .stat-label {
-  font-size: 9px;
+  font-size: 11px;
   color: #999;
   text-transform: uppercase;
   margin-top: 4px;
@@ -1546,9 +1750,9 @@ onUnmounted(() => {
 
 .profiles-list {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
-  max-height: 320px;
+  max-height: 300px;
   overflow-y: auto;
   padding-right: 4px;
   scrollbar-width: thin;

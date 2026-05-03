@@ -324,7 +324,7 @@
         :class="{ 'dragging': isDragging }"
         @mousedown="startResize"
         @dblclick="resetLayout"
-        title="拖拽调整比例 / 双击重置为 7:3"
+        title="拖拽调整比例 / 双击重置推荐比例"
       >
         <div class="handle-indicator">
           <span class="handle-dot"></span>
@@ -382,18 +382,16 @@
               />
               <!-- Step 2 用和 Step 1 相同的外层包裹 -->
               <div v-else-if="currentStep === 2" class="workbench-wrapper">
-                <div class="scroll-container">
-                  <Step2EnvSetup
-                    :simulationId="currentSimulationId"
-                    :projectData="projectData"
-                    :graphData="graphData"
-                    :systemLogs="systemLogs"
-                    @go-back="handleGoBack"
-                    @next-step="handleNextStep"
-                    @add-log="addLog"
-                    @update-status="updateStatus"
-                  />
-                </div>
+                <Step2EnvSetup
+                  :simulationId="currentSimulationId"
+                  :projectData="projectData"
+                  :graphData="graphData"
+                  :systemLogs="systemLogs"
+                  @go-back="handleGoBack"
+                  @next-step="handleNextStep"
+                  @add-log="addLog"
+                  @update-status="updateStatus"
+                />
               </div>
               <Step3Simulation
                 v-else-if="currentStep === 3"
@@ -411,19 +409,11 @@
                 @fresh-start-consumed="pendingFreshStart = false"
               />
               <Step4Report
-                v-else-if="currentStep === 4"
+                v-else
                 :reportId="currentReportId"
                 :simulationId="currentSimulationId"
                 :baselineId="route.query.baseline_id || ''"
                 :systemLogs="systemLogs"
-                @next-step="handleNextStep"
-                @add-log="addLog"
-                @update-status="updateStatus"
-              />
-              <Step5Interaction
-                v-else
-                :reportId="currentReportId"
-                :simulationId="currentSimulationId"
                 @add-log="addLog"
                 @update-status="updateStatus"
               />
@@ -445,7 +435,6 @@ import Step1GraphBuild from '../components/Step1GraphBuild.vue'
 import Step2EnvSetup from '../components/Step2EnvSetup.vue'
 import Step3Simulation from '../components/Step3Simulation.vue'
 import Step4Report from '../components/Step4Report.vue'
-import Step5Interaction from '../components/Step5Interaction.vue'
 import * as d3 from 'd3'
 
 const route = useRoute()
@@ -468,9 +457,9 @@ const selectedItem = ref(null) // 选中的节点或边
 const isFullScreen = ref(false)
 
 // Step 导航状态
-const currentStep = ref(1) // 1: 事件图谱生成, 2: 群体环境建模, 3: 舆情态势推演, 4: 决策简报生成, 5: 智能追问研判
+const currentStep = ref(1) // 1: 事件图谱生成, 2: 群体环境建模, 3: 舆情态势推演, 4: 决策简报与智能研判
 const maxReachedStep = ref(1) // 已到达过的最高步骤，允许在已访问步骤间自由跳转
-const stepNames = ['事件图谱生成', '群体环境建模', '舆情态势推演', '决策简报生成', '智能追问研判']
+const stepNames = ['事件图谱生成', '群体环境建模', '舆情态势推演', '决策简报与智能研判']
 const currentSimulationId = ref(null)
 const currentReportId = ref(null)
 const maxRounds = ref(null) // 从 Step2 传入的模拟轮数配置
@@ -484,6 +473,13 @@ const leftPanelWidth = ref(70) // 默认 70%
 const isDragging = ref(false)
 let resizeStartX = 0
 let resizeStartWidth = 70
+
+const getRecommendedLeftPanelWidth = (step = currentStep.value) => step === 2 ? 62 : 70
+
+const applyLeftPanelWidth = (width) => {
+  leftPanelWidth.value = width
+  document.documentElement.style.setProperty('--left-panel-width', width + '%')
+}
 
 // 开始拖拽调整布局
 const startResize = (e) => {
@@ -536,10 +532,9 @@ const stopResize = () => {
   document.body.style.userSelect = ''
 }
 
-// 重置布局为默认 7:3
+// 重置布局为当前步骤推荐比例
 const resetLayout = () => {
-  leftPanelWidth.value = 70
-  document.documentElement.style.setProperty('--left-panel-width', '70%')
+  applyLeftPanelWidth(getRecommendedLeftPanelWidth())
 }
 
 // DOM引用
@@ -565,9 +560,7 @@ const statusText = computed(() => {
     case 3:
       return stepStatus.value === 'completed' ? '推演完成' : '舆情态势推演中'
     case 4:
-      return stepStatus.value === 'completed' ? '决策简报已生成' : '决策简报生成中'
-    case 5:
-      return '智能追问研判中'
+      return stepStatus.value === 'completed' ? '决策简报与智能研判已完成' : '决策简报与智能研判中'
     default:
       return ''
   }
@@ -581,7 +574,7 @@ const statusClass = computed(() => {
     if (currentPhase.value >= 2) return 'completed'
     return 'processing'
   }
-  // Step 2-5: 使用子组件上报的 stepStatus
+  // Step 2-4: 使用子组件上报的 stepStatus
   if (stepStatus.value === 'completed') return 'completed'
   if (stepStatus.value === 'processing') return 'processing'
   // 默认：刚切到这个步骤，还没有状态上报
@@ -725,26 +718,26 @@ const handleNextStep = (params = {}) => {
   if (params.reportId) {
     currentReportId.value = params.reportId
   }
-  if (currentStep.value < 5) {
+  if (currentStep.value < 4) {
     currentStep.value++
     if (currentStep.value > maxReachedStep.value) {
       maxReachedStep.value = currentStep.value
     }
-    addLog(`进入 ${stepNames[currentStep.value - 1]} (Step ${currentStep.value}/5)`)
+    addLog(`进入 ${stepNames[currentStep.value - 1]} (Step ${currentStep.value}/4)`)
   }
 }
 
 const handleGoBack = () => {
   if (currentStep.value > 1) {
     currentStep.value--
-    addLog(`返回 ${stepNames[currentStep.value - 1]} (Step ${currentStep.value}/5)`)
+    addLog(`返回 ${stepNames[currentStep.value - 1]} (Step ${currentStep.value}/4)`)
   }
 }
 
 const handleGoBackTo = (step) => {
   if (step < currentStep.value) {
     currentStep.value = step
-    addLog(`返回 ${stepNames[step - 1]} (Step ${step}/5)`)
+    addLog(`返回 ${stepNames[step - 1]} (Step ${step}/4)`)
   }
 }
 
@@ -753,7 +746,7 @@ const handleSimulationCreated = ({ simulationId }) => {
   currentStep.value = 2
   if (2 > maxReachedStep.value) maxReachedStep.value = 2
   addLog(`推演场景已初始化: ${simulationId}`)
-  addLog(`进入 ${stepNames[1]} (Step 2/5)`)
+  addLog(`进入 ${stepNames[1]} (Step 2/4)`)
 }
 
 // 兜底：任何 currentStep 变更（包括初始化/加载项目）都同步到 URL
@@ -761,6 +754,9 @@ const handleSimulationCreated = ({ simulationId }) => {
 watch(currentStep, (newStep) => {
   if (!newStep) return
   stepStatus.value = '' // 切换步骤时重置子组件状态
+  if (newStep <= 2 && !isDragging.value) {
+    applyLeftPanelWidth(getRecommendedLeftPanelWidth(newStep))
+  }
   pushStepToRoute(newStep)
 })
 
@@ -768,13 +764,13 @@ watch(currentStep, (newStep) => {
 watch(() => route.query.step, (newStep) => {
   if (!newStep) return
   const target = Number(newStep)
-  if (!Number.isInteger(target) || target < 1 || target > 5) return
+  if (!Number.isInteger(target) || target < 1 || target > 4) return
   // 只允许跳到已到达过的 step，防止通过 URL 非法越级
   if (target > maxReachedStep.value) return
   if (target === currentStep.value) return
   isSyncingFromRoute = true
   currentStep.value = target
-  addLog(`浏览器导航：切换到 ${stepNames[target - 1]} (Step ${target}/5)`)
+  addLog(`浏览器导航：切换到 ${stepNames[target - 1]} (Step ${target}/4)`)
   nextTick(() => { isSyncingFromRoute = false })
 })
 
@@ -990,7 +986,7 @@ const loadProject = async () => {
         // 报告已生成，恢复关联数据
         currentSimulationId.value = querySim || response.data.simulation_id
         currentReportId.value = response.data.report_id
-        maxReachedStep.value = 5
+        maxReachedStep.value = 4
         const graphIdToLoad = await resolveGraphId(currentSimulationId.value)
         if (graphIdToLoad) {
           currentPhase.value = 2
@@ -1011,7 +1007,7 @@ const loadProject = async () => {
       } else if (querySim || response.data.simulation_id) {
         // 模拟已创建，恢复关联数据（querySim 来自事件工作台跳转）
         currentSimulationId.value = querySim || response.data.simulation_id
-        maxReachedStep.value = 5
+        maxReachedStep.value = 4
         const graphIdToLoad = await resolveGraphId(currentSimulationId.value)
         if (graphIdToLoad) {
           currentPhase.value = 2
@@ -1865,7 +1861,7 @@ watch(currentStep, (newStep, oldStep) => {
 // 生命周期
 onMounted(() => {
   // 初始化布局宽度 CSS 变量
-  document.documentElement.style.setProperty('--left-panel-width', leftPanelWidth.value + '%')
+  applyLeftPanelWidth(getRecommendedLeftPanelWidth())
   initProject()
 })
 
@@ -3151,7 +3147,7 @@ body.is-resizing .right-panel {
   pointer-events: none;
 }
 
-/* Step 3-5：右侧全屏 */
+/* Step 3-4：右侧全屏 */
 .right-panel.full-screen-step {
   flex: 1;
   width: auto !important;
@@ -3376,35 +3372,6 @@ body.is-resizing .right-panel {
     linear-gradient(180deg, #f8fbff 0%, #f3f7fc 100%);
 }
 
-.workbench-wrapper .scroll-container {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  scrollbar-width: thin;
-  scrollbar-color: #93c5fd #e0effe;
-}
-
-.workbench-wrapper .scroll-container::-webkit-scrollbar {
-  width: 8px;
-}
-
-.workbench-wrapper .scroll-container::-webkit-scrollbar-track {
-  background: #e0effe;
-  border-radius: 999px;
-}
-
-.workbench-wrapper .scroll-container::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #93c5fd, #60a5fa);
-  border: 2px solid #e0effe;
-  border-radius: 999px;
-}
-
-.workbench-wrapper .scroll-container::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #60a5fa, #3b82f6);
-}
-
 /* ── Step 内容区 ── */
 .step-area {
   flex: 1;
@@ -3445,7 +3412,7 @@ body.is-resizing .right-panel {
   background: linear-gradient(180deg, #60a5fa, #3b82f6);
 }
 
-/* Step 3-5 全屏时：内容占满，隐藏内部终端 */
+/* Step 3-4 全屏时：内容占满，隐藏内部终端 */
 .right-panel.full-screen-step :deep(.system-logs) {
   display: none !important;
 }
@@ -3455,7 +3422,7 @@ body.is-resizing .right-panel {
   display: none !important;
 }
 
-/* Step 3-5 全屏时：Step 组件本身背景透明，全屏展示 */
+/* Step 3-4 全屏时：Step 组件本身背景透明，全屏展示 */
 .right-panel.full-screen-step :deep(.simulation-panel),
 .right-panel.full-screen-step :deep(.report-panel),
 .right-panel.full-screen-step :deep(.interaction-panel) {

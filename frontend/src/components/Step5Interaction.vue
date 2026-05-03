@@ -1,85 +1,5 @@
 ﻿<template>
-  <div class="interaction-panel">
-    <!-- Main Split Layout -->
-    <div class="main-split-layout">
-      <!-- LEFT PANEL: Report Style -->
-      <div class="left-panel report-style" ref="leftPanel">
-        <div v-if="reportOutline" class="report-content-wrapper">
-          <!-- Report Header -->
-          <div class="report-header-block">
-            <div class="report-meta">
-              <span class="report-tag">决策预测报告</span>
-              <span class="report-id">ID: {{ reportId || 'REF-2024-X92' }}</span>
-            </div>
-            <h1 class="main-title">{{ reportOutline.title }}</h1>
-            <p class="sub-title">{{ reportOutline.summary }}</p>
-            <div class="header-divider"></div>
-          </div>
-
-          <!-- Sections List -->
-          <div class="sections-list">
-            <div 
-              v-for="(section, idx) in reportOutline.sections" 
-              :key="idx"
-              class="report-section-item"
-              :class="{ 
-                'is-active': currentSectionIndex === idx + 1,
-                'is-completed': isSectionCompleted(idx + 1),
-                'is-pending': !isSectionCompleted(idx + 1) && currentSectionIndex !== idx + 1
-              }"
-            >
-              <div class="section-header-row" @click="toggleSectionCollapse(idx)" :class="{ 'clickable': isSectionCompleted(idx + 1) }">
-                <span class="section-number">{{ String(idx + 1).padStart(2, '0') }}</span>
-                <h3 class="section-title">{{ section.title }}</h3>
-                <svg 
-                  v-if="isSectionCompleted(idx + 1)" 
-                  class="collapse-icon" 
-                  :class="{ 'is-collapsed': collapsedSections.has(idx) }"
-                  viewBox="0 0 24 24" 
-                  width="20" 
-                  height="20" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  stroke-width="2"
-                >
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-              </div>
-              
-              <Transition name="section-slide">
-                <div class="section-body" v-show="!collapsedSections.has(idx)">
-                  <!-- Completed Content -->
-                  <div v-if="generatedSections[idx + 1]" class="generated-content" v-html="renderMarkdown(generatedSections[idx + 1])"></div>
-
-                  <!-- Loading State -->
-                  <div v-else-if="currentSectionIndex === idx + 1" class="loading-state">
-                    <div class="loading-icon">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <circle cx="12" cy="12" r="10" stroke-width="4" stroke="#E5E7EB"></circle>
-                        <path d="M12 2a10 10 0 0 1 10 10" stroke-width="4" stroke="#4B5563" stroke-linecap="round"></path>
-                      </svg>
-                    </div>
-                    <span class="loading-text">正在生成{{ section.title }}...</span>
-                  </div>
-                </div>
-              </Transition>
-            </div>
-          </div>
-        </div>
-
-        <!-- Waiting State -->
-        <div v-if="!reportOutline" class="waiting-placeholder">
-          <div class="waiting-animation">
-            <div class="waiting-ring"></div>
-            <div class="waiting-ring"></div>
-            <div class="waiting-ring"></div>
-          </div>
-          <span class="waiting-text">等待决策简报生成...</span>
-        </div>
-      </div>
-
-      <!-- RIGHT PANEL: Interaction Interface -->
-      <div class="right-panel" ref="rightPanel">
+  <div class="interaction-panel interaction-embedded" ref="rightPanel">
         <!-- Unified Action Bar - Professional Design -->
         <div class="action-bar">
         <div class="action-bar-header">
@@ -102,11 +22,11 @@
               </svg>
               <span>追问决策简报</span>
             </button>
-            <div class="agent-dropdown" v-if="profiles.length > 0">
+            <div class="agent-dropdown">
               <button 
                 class="tab-pill agent-pill"
-                :class="{ active: activeTab === 'chat' && chatTarget === 'agent' }"
-                @click="toggleAgentDropdown"
+                :class="{ active: activeTab === 'chat' && chatTarget === 'agent', disabled: profiles.length === 0 }"
+                @click="profiles.length > 0 && toggleAgentDropdown()"
               >
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
@@ -151,7 +71,7 @@
         <!-- Chat Mode -->
         <div v-if="activeTab === 'chat'" class="chat-container">
 
-          <!-- Report Agent Tools Card -->
+          <!-- Report Agent Description Card -->
           <div v-if="chatTarget === 'report_agent'" class="report-agent-tools-card">
             <div class="tools-card-header">
               <div class="tools-card-avatar">R</div>
@@ -159,74 +79,11 @@
                 <div class="tools-card-name">ReportAgent 决策追问</div>
                 <div class="tools-card-subtitle">围绕报告结论追问因果、证据与处置建议，自动调用图谱检索与虚拟访谈工具</div>
               </div>
-              <button class="tools-card-toggle" @click="showToolsDetail = !showToolsDetail">
-                <svg :class="{ 'is-expanded': showToolsDetail }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-              </button>
             </div>
-            <div v-if="showToolsDetail" class="tools-card-body">
-              <div class="tools-grid">
-                <div class="tool-item tool-agent tool-active">
-                  <div class="tool-icon-wrapper">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M12 3l7 4v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V7l7-4z"></path>
-                      <path d="M9 12l2 2 4-5"></path>
-                    </svg>
-                  </div>
-                  <div class="tool-content">
-                    <div class="tool-name">ReportAgent 决策追问</div>
-                    <div class="tool-desc">围绕报告结论、证据来源与处置建议进行多轮追问</div>
-                  </div>
-                </div>
-                <div class="tool-item tool-purple">
-                  <div class="tool-icon-wrapper">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.5V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.5A7 7 0 0 0 12 2z"></path>
-                    </svg>
-                  </div>
-                  <div class="tool-content">
-                    <div class="tool-name">InsightForge 因果归因</div>
-                    <div class="tool-desc">对齐种子材料与推演状态，定位关键转折、风险诱因与处置窗口</div>
-                  </div>
-                </div>
-                <div class="tool-item tool-blue">
-                  <div class="tool-icon-wrapper">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-                    </svg>
-                  </div>
-                  <div class="tool-content">
-                    <div class="tool-name">PanoramaSearch 传播追踪</div>
-                    <div class="tool-desc">沿事件图谱追踪信息扩散链路，复盘议题聚合与放大路径</div>
-                  </div>
-                </div>
-                <div class="tool-item tool-orange">
-                  <div class="tool-icon-wrapper">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-                    </svg>
-                  </div>
-                  <div class="tool-content">
-                    <div class="tool-name">QuickSearch 证据检索</div>
-                    <div class="tool-desc">快速提取图谱节点、事实片段与报告依据，支撑可解释追问</div>
-                  </div>
-                </div>
-                <div class="tool-item tool-green">
-                  <div class="tool-icon-wrapper">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                      <circle cx="9" cy="7" r="4"></circle>
-                      <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>
-                    </svg>
-                  </div>
-                  <div class="tool-content">
-                    <div class="tool-name">InterviewSubAgent 群体访谈</div>
-                    <div class="tool-desc">并行访谈模拟角色，采集立场变化、关注议题与潜在反应</div>
-                  </div>
-                </div>
-              </div>
+            <div class="tools-card-body">
+              <p class="tools-description-text">
+                以决策简报为核心知识源，支持围绕报告结论、证据来源与处置建议进行多轮深度追问。对话过程中，ReportAgent 可自主调度 InsightForge（因果归因）、PanoramaSearch（传播追踪）、QuickSearch（证据检索）与 InterviewSubAgent（群体访谈）四项专用工具协同作答，从因果定位、扩散链路、事实依据到群体立场多维度交叉验证，确保每一轮追问都有据可依。
+              </p>
             </div>
           </div>
 
@@ -258,14 +115,73 @@
           <!-- Chat Messages -->
           <div class="chat-messages" ref="chatMessages">
             <div v-if="chatHistory.length === 0" class="chat-empty">
-              <div class="empty-icon">
-                <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                </svg>
-              </div>
-              <p class="empty-text">
-                {{ chatTarget === 'report_agent' ? '追问报告结论、证据来源与下一步处置建议' : '访谈模拟角色，了解群体立场与情绪变化' }}
-              </p>
+              <!-- Report Agent Empty State -->
+              <template v-if="chatTarget === 'report_agent'">
+                <div class="empty-hero">
+                  <div class="empty-hero-icon">
+                    <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+                    </svg>
+                  </div>
+                  <div class="empty-hero-text">
+                    <h4 class="empty-hero-title">决策追问</h4>
+                    <p class="empty-hero-desc">围绕决策简报进行多轮深度追问，Agent 将自动调度图谱检索与群体访谈工具辅助作答</p>
+                  </div>
+                </div>
+                <div class="empty-suggestions">
+                  <div class="suggestions-label">试试这样提问</div>
+                  <div class="suggestion-chips">
+                    <button class="suggestion-chip" @click="chatInput = '当前最值得优先处置的风险点是什么？'; sendMessage()">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                      当前最值得优先处置的风险点是什么？
+                    </button>
+                    <button class="suggestion-chip" @click="chatInput = '舆情可能的转折点有哪些？各自的触发条件是什么？'; sendMessage()">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                      舆情可能的转折点有哪些？各自的触发条件是什么？
+                    </button>
+                    <button class="suggestion-chip" @click="chatInput = '请分析各方主体的立场分布和潜在行动倾向'; sendMessage()">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                      请分析各方主体的立场分布和潜在行动倾向
+                    </button>
+                    <button class="suggestion-chip" @click="chatInput = '建议校方在未来24小时内采取什么应对措施？'; sendMessage()">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 4v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V7l7-4z"/></svg>
+                      建议校方在未来24小时内采取什么应对措施？
+                    </button>
+                  </div>
+                </div>
+              </template>
+              <!-- Agent Interview Empty State -->
+              <template v-else>
+                <div class="empty-hero">
+                  <div class="empty-hero-icon agent-icon">
+                    <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                  </div>
+                  <div class="empty-hero-text">
+                    <h4 class="empty-hero-title">角色访谈</h4>
+                    <p class="empty-hero-desc">与模拟群体中的个体对话，了解其立场、情绪变化和对事件的真实看法</p>
+                  </div>
+                </div>
+                <div class="empty-suggestions">
+                  <div class="suggestions-label">试试这样提问</div>
+                  <div class="suggestion-chips">
+                    <button class="suggestion-chip" @click="chatInput = '你对这件事怎么看？'; sendMessage()">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                      你对这件事怎么看？
+                    </button>
+                    <button class="suggestion-chip" @click="chatInput = '你觉得校方的处理方式合理吗？'; sendMessage()">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 15h8M9 9h.01M15 9h.01"/></svg>
+                      你觉得校方的处理方式合理吗？
+                    </button>
+                    <button class="suggestion-chip" @click="chatInput = '你身边的人都在讨论什么？'; sendMessage()">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                      你身边的人都在讨论什么？
+                    </button>
+                  </div>
+                </div>
+              </template>
             </div>
             <div 
               v-for="(msg, idx) in chatHistory" 
@@ -428,8 +344,6 @@
             </div>
           </div>
         </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -452,7 +366,6 @@ const showAgentDropdown = ref(false)
 const selectedAgent = ref(null)
 const selectedAgentIndex = ref(null)
 const showFullProfile = ref(true)
-const showToolsDetail = ref(true)
 
 // Chat State
 const chatInput = ref('')
@@ -472,7 +385,7 @@ const scrollToBottom = () => {
 
 // --- sessionStorage 持久化 ---
 const CHAT_CACHE_VERSION = 2 // 递增此值可强制清除旧缓存
-const storageKey = computed(() => `nexusmind_step5_chat_${props.simulationId || 'default'}`)
+const storageKey = computed(() => `nexusmind_step4_chat_${props.simulationId || 'default'}`)
 
 const persistToStorage = () => {
   try {
@@ -1136,7 +1049,7 @@ const handleClickOutside = (e) => {
 
 // Lifecycle
 onMounted(() => {
-  addLog('Step5 智能追问研判初始化')
+  addLog('智能研判工作台初始化')
   restoreFromStorage()
   loadReportData()
   loadProfiles()
@@ -1180,13 +1093,10 @@ watch(() => props.simulationId, (newId) => {
   font-family: 'JetBrains Mono', 'SF Mono', 'Monaco', 'Consolas', monospace;
 }
 
-/* Main Split Layout */
-.main-split-layout {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-  gap: 12px;
-  padding: 12px;
+/* When embedded in Step4, strip all decorative styles */
+.interaction-panel.interaction-embedded::before,
+.interaction-panel.interaction-embedded::after {
+  display: none !important;
 }
 
 /* Left Panel - Report Style (与 Step4Report.vue 完全一致) */
@@ -1545,11 +1455,12 @@ watch(() => props.simulationId, (newId) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   padding: 16px 18px;
   border-bottom: 1px solid rgba(226, 232, 240, 0.9);
   background:
     linear-gradient(135deg, rgba(239, 246, 255, 0.85), rgba(240, 253, 250, 0.62));
-  gap: 16px;
+  gap: 12px;
 }
 
 .action-bar-header {
@@ -1592,6 +1503,7 @@ watch(() => props.simulationId, (newId) => {
   gap: 6px;
   flex: 1;
   justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .tab-pill {
@@ -1613,6 +1525,11 @@ watch(() => props.simulationId, (newId) => {
 .tab-pill:hover {
   background: #E5E7EB;
   color: #374151;
+}
+
+.tab-pill.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .tab-pill.active {
@@ -1708,16 +1625,17 @@ watch(() => props.simulationId, (newId) => {
   flex-shrink: 0;
 }
 
-/* Chat Container */
+/* Chat Container — single-column: tools card on top, chat below, input at bottom */
 .chat-container {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-areas:
-    "side messages"
-    "side input";
-  gap: 14px;
+    "side"
+    "messages"
+    "input";
+  gap: 10px;
   padding: 14px;
   overflow: hidden;
   background:
@@ -1739,7 +1657,9 @@ watch(() => props.simulationId, (newId) => {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
+
 
 .tools-card-header {
   display: flex;
@@ -1783,33 +1703,6 @@ watch(() => props.simulationId, (newId) => {
   line-height: 1.45;
 }
 
-.tools-card-toggle {
-  width: 28px;
-  height: 28px;
-  background: #FFFFFF;
-  border: 1px solid #E5E7EB;
-  border-radius: 6px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #6B7280;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-
-.tools-card-toggle:hover {
-  background: #F9FAFB;
-  border-color: #D1D5DB;
-}
-
-.tools-card-toggle svg {
-  transition: transform 0.3s ease;
-}
-
-.tools-card-toggle svg.is-expanded {
-  transform: rotate(180deg);
-}
 
 .tools-card-body {
   padding: 0 14px 14px;
@@ -3189,9 +3082,9 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .chat-container {
-  grid-template-columns: minmax(288px, 340px) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 16px;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
   padding: 16px;
   background:
     radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.06), transparent 30%),
@@ -3235,14 +3128,12 @@ watch(() => props.simulationId, (newId) => {
   color: #86909C;
 }
 
-.tools-card-toggle,
 .profile-card-toggle {
   border-radius: 10px;
   border-color: rgba(22, 93, 255, 0.12);
   color: #4E5969;
 }
 
-.tools-card-toggle:hover,
 .profile-card-toggle:hover {
   color: #2563EB;
   border-color: rgba(37, 99, 235, 0.24);
@@ -3251,6 +3142,15 @@ watch(() => props.simulationId, (newId) => {
 
 .tools-card-body {
   padding: 0 14px 14px;
+}
+
+.tools-description-text {
+  font-size: 13px;
+  line-height: 1.8;
+  color: #4B5563;
+  margin: 0;
+  padding: 10px 4px;
+  letter-spacing: 0.02em;
 }
 
 .tools-grid {
@@ -3368,6 +3268,109 @@ watch(() => props.simulationId, (newId) => {
 
 .chat-empty {
   color: #86909C;
+  padding: 32px 24px;
+  align-items: stretch;
+  gap: 24px;
+}
+
+.empty-hero {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.06), rgba(99, 102, 241, 0.04));
+  border: 1px solid rgba(37, 99, 235, 0.1);
+}
+
+.empty-hero-icon {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #2563EB, #4F46E5);
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-hero-icon.agent-icon {
+  background: linear-gradient(135deg, #0F766E, #14B8A6);
+}
+
+.empty-hero-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.empty-hero-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1D2129;
+  margin: 0 0 6px 0;
+}
+
+.empty-hero-desc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #6B7280;
+  margin: 0;
+}
+
+.empty-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.suggestions-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9CA3AF;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-left: 2px;
+}
+
+.suggestion-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.suggestion-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(255, 255, 255, 0.7);
+  color: #374151;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.suggestion-chip:hover {
+  border-color: rgba(37, 99, 235, 0.3);
+  background: rgba(37, 99, 235, 0.04);
+  color: #2563EB;
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
+}
+
+.suggestion-chip svg {
+  min-width: 14px;
+  color: #94A3B8;
+  transition: color 0.2s ease;
+}
+
+.suggestion-chip:hover svg {
+  color: #2563EB;
 }
 
 .empty-icon {

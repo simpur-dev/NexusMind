@@ -24,6 +24,25 @@
               <span v-if="i < sidebarStages.length - 1" class="phase-step-line"></span>
             </div>
             <span class="phase-step-label">{{ st.label }}</span>
+            <!-- Section progress under "章节生成" (index 2) -->
+            <div v-if="i === 2 && reportOutline?.sections?.length" class="section-progress-list">
+              <div
+                v-for="(sec, si) in reportOutline.sections"
+                :key="si"
+                class="section-progress-item"
+                :class="{
+                  'sp-done': !!generatedSections[si + 1],
+                  'sp-active': currentSectionIndex === si + 1 && !generatedSections[si + 1],
+                  'sp-pending': !generatedSections[si + 1] && currentSectionIndex !== si + 1
+                }"
+              >
+                <span class="sp-title">{{ sec.title }}</span>
+                <span class="sp-status">
+                  <svg v-if="generatedSections[si + 1]" viewBox="0 0 16 16" width="11" height="11"><path d="M13.5 4.5l-7 7L3 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  <span v-else-if="currentSectionIndex === si + 1" class="sp-spinner"></span>
+                </span>
+              </div>
+            </div>
           </div>
         </nav>
       </aside>
@@ -140,9 +159,21 @@
         title="拖动调整宽度"
       ></div>
 
-      <!-- RIGHT PANEL: Workflow Timeline -->
-      <div class="right-panel content-card" ref="rightPanel" :style="{ width: (100 - splitRatio) + '%' }">
-        <div class="panel-header" :class="`panel-header--${activeStep.status}`" v-if="!isComplete">
+      <!-- RIGHT PANEL: Workflow Timeline / Interaction -->
+      <div class="right-panel content-card" :class="{ 'interaction-mode': isComplete }" ref="rightPanel" :style="{ width: (100 - splitRatio) + '%' }">
+        <!-- === Post-completion: embedded 智能研判 Interaction === -->
+        <Step5Interaction
+          v-if="isComplete"
+          :reportId="activeReportId || reportId"
+          :simulationId="simulationId"
+          @add-log="(msg) => emit('add-log', msg)"
+          @update-status="(s) => emit('update-status', s)"
+          class="embedded-interaction"
+        />
+
+        <!-- === Pre-completion: Timeline === -->
+        <template v-else>
+        <div class="panel-header" :class="`panel-header--${activeStep.status}`">
           <span class="header-dot" v-if="activeStep.status === 'active'"></span>
           <span class="header-index mono">{{ activeStep.noLabel }}</span>
           <span class="header-title">{{ activeStep.title }}</span>
@@ -171,14 +202,6 @@
 
           <!-- workflow steps hidden: progress shown via metrics bar -->
 
-          <!-- Next Step Button - 在完成后显示 -->
-          <button v-if="isComplete" class="next-step-btn" @click="goToInteraction">
-            <span>进入智能追问研判</span>
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-              <polyline points="12 5 19 12 12 19"></polyline>
-            </svg>
-          </button>
 
           <div class="workflow-divider"></div>
         </div>
@@ -415,7 +438,7 @@
                         <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                         <polyline points="22 4 12 14.01 9 11.01"></polyline>
                       </svg>
-                      <span>决策简报生成完成</span>
+                      <span>决策简报与智能研判完成</span>
                     </div>
                   </template>
                 </div>
@@ -447,11 +470,12 @@
           </TransitionGroup>
 
           <!-- Empty State -->
-          <div v-if="agentLogs.length === 0 && !isComplete" class="workflow-empty">
+          <div v-if="agentLogs.length === 0" class="workflow-empty">
             <div class="empty-pulse"></div>
             <span>等待智能体活动…</span>
           </div>
         </div>
+        </template>
       </div>
         </div>
       </div>
@@ -464,6 +488,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick, h, reactive } f
 import { generateReport, getAgentLog, getConsoleLog, getReport, getReportSections } from '../api/report'
 import html2pdf from 'html2pdf.js'
 import { marked } from 'marked'
+import Step5Interaction from './Step5Interaction.vue'
 
 const props = defineProps({
   reportId: String,
@@ -472,15 +497,7 @@ const props = defineProps({
   systemLogs: Array
 })
 
-const emit = defineEmits(['add-log', 'update-status', 'next-step'])
-
-// Navigation
-const goToInteraction = () => {
-  const rid = activeReportId.value || props.reportId
-  if (rid) {
-    emit('next-step', { reportId: rid })
-  }
-}
+const emit = defineEmits(['add-log', 'update-status'])
 
 // 内部实际使用的 reportId（可能来自 props，也可能来自自动生成）
 const activeReportId = ref('')
@@ -2538,19 +2555,19 @@ onMounted(async () => {
     initReport(props.reportId)
   } else if (props.simulationId && !props.reportId) {
     // 从事件工作台跳转过来，没有 reportId，自动触发生成
-    addLog('从事件工作台进入，自动启动决策简报生成...')
+    addLog('从事件工作台进入，自动启动决策简报与智能研判...')
     try {
       const payload = { simulation_id: props.simulationId, force_regenerate: true }
       if (props.baselineId) payload.baseline_id = props.baselineId
       const res = await generateReport(payload)
       if (res?.success && res.data?.report_id) {
-        addLog(`决策简报生成任务已启动: ${res.data.report_id}`)
+        addLog(`决策简报与智能研判任务已启动: ${res.data.report_id}`)
         initReport(res.data.report_id)
       } else {
-        addLog(`决策简报生成启动失败: ${res?.error || '未知错误'}`)
+        addLog(`决策简报与智能研判启动失败: ${res?.error || '未知错误'}`)
       }
     } catch (e) {
-      addLog(`决策简报生成启动异常: ${e.message}`)
+      addLog(`决策简报与智能研判启动异常: ${e.message}`)
     }
   }
 })
@@ -2754,6 +2771,68 @@ watch(() => props.reportId, (newId, oldId) => {
 .phase-step--done .phase-step-line,
 .phase-step--active .phase-step-line {
   background: linear-gradient(180deg, var(--nm-teal-muted), #e2e8ec);
+}
+
+/* Section progress list under "章节生成" */
+.section-progress-list {
+  grid-column: 1 / -1;
+  margin: 4px 0 6px 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.section-progress-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: #a0b4bc;
+  transition: all 0.25s ease;
+}
+
+.section-progress-item.sp-done {
+  color: var(--nm-teal, #006680);
+}
+
+.section-progress-item.sp-active {
+  color: var(--nm-teal-dark, #004d63);
+  background: rgba(0, 102, 128, 0.06);
+  font-weight: 500;
+}
+
+.sp-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-status {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--nm-teal, #006680);
+}
+
+.sp-spinner {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid rgba(0, 102, 128, 0.15);
+  border-top-color: var(--nm-teal, #006680);
+  border-radius: 50%;
+  animation: sp-spin 0.8s linear infinite;
+}
+
+@keyframes sp-spin {
+  to { transform: rotate(360deg); }
 }
 
 .step4-workspace {
@@ -3458,6 +3537,21 @@ watch(() => props.reportId, (newId, oldId) => {
 
 .right-panel::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.25);
+}
+
+/* When right-panel is in interaction mode (report complete), become a strict flex container */
+.right-panel.interaction-mode {
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* Embedded 智能研判 fills right panel completely */
+.embedded-interaction {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
 }
 
 .mono {

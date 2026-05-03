@@ -193,9 +193,9 @@ const handleGoBack = async () => {
 }
 
 const handleNextStep = () => {
-  // Step3Simulation 组件会直接处理决策简报生成和路由跳转
+  // Step3Simulation 组件会直接处理决策简报与智能研判和路由跳转
   // 这个方法仅作为备用
-  addLog('进入 Step 4: 决策简报生成')
+  addLog('进入 Step 4: 决策简报与智能研判')
 }
 
 // --- Data Logic ---

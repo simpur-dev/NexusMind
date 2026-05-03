@@ -184,7 +184,7 @@
             </div>
 
             <div class="hero-footer">
-              <span>// 图谱构建 · 多智能体推演 · 世界模型跟踪 · 滚动预测校准 · 决策简报生成</span>
+              <span>// 图谱构建 · 多智能体推演 · 世界模型跟踪 · 滚动预测校准 · 决策简报与智能研判</span>
             </div>
 
             <div class="hero-left-spacer" aria-hidden="true"></div>
@@ -279,13 +279,13 @@
           <div class="metrics-row">
             <div class="metric-card">
               <span class="metric-icon">◇</span>
-              <div class="metric-value">零试错</div>
-              <div class="metric-label">在真实处置前完成多方案推演与风险预判</div>
+              <div class="metric-value">沙盘预判</div>
+              <div class="metric-label">在真实处置前通过多智能体仿真推演完成风险预判</div>
             </div>
             <div class="metric-card">
               <span class="metric-icon">◎</span>
-              <div class="metric-value">高可扩</div>
-              <div class="metric-label">支持多源材料接入与百万级 Agent 并行建模</div>
+              <div class="metric-value">群智建模</div>
+              <div class="metric-label">基于事件记忆图谱生成群体画像，驱动多智能体协同推演</div>
             </div>
             <div class="metric-card">
               <span class="metric-icon">↻</span>
@@ -468,15 +468,8 @@
               <div class="workflow-item">
                 <span class="step-num">04</span>
                 <div class="step-info">
-                  <div class="step-title">决策简报生成</div>
-                  <div class="step-desc">ReportAgent 融合世界状态轨迹与因果图谱，自动生成可解释的专业预测报告</div>
-                </div>
-              </div>
-              <div class="workflow-item">
-                <span class="step-num">05</span>
-                <div class="step-info">
-                  <div class="step-title">智能追问研判</div>
-                  <div class="step-desc">与模拟世界中的任意角色对话，或与 ReportAgent 连续追问</div>
+                  <div class="step-title">决策简报与智能研判</div>
+                  <div class="step-desc">ReportAgent 自动生成决策报告，完成后直接进入追问研判，与角色对话或连续追问</div>
                 </div>
               </div>
             </div>

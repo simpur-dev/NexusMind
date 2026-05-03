@@ -45,7 +45,7 @@
             <span 
               class="status-icon" 
               :class="{ available: project.report_id, unavailable: !project.report_id }"
-              title="决策简报生成"
+              title="决策简报与智能研判"
             >◆</span>
             <span
               class="card-delete-btn"
@@ -194,15 +194,7 @@
               >
                 <span class="btn-step">Step4</span>
                 <span class="btn-icon">◆</span>
-                <span class="btn-text">决策简报生成</span>
-              </button>
-              <button 
-                class="modal-btn btn-step5" 
-                @click="goToStep5"
-              >
-                <span class="btn-step">Step5</span>
-                <span class="btn-icon">💬</span>
-                <span class="btn-text">智能追问研判</span>
+                <span class="btn-text">决策简报与智能研判</span>
               </button>
               <button 
                 class="modal-btn btn-incident" 
@@ -502,18 +494,6 @@ const goToReport = () => {
       name: 'Process',
       params: { projectId: selectedProject.value.project_id },
       query: { step: 4 }
-    })
-    closeModal()
-  }
-}
-
-// 导航到智能追问研判页面
-const goToStep5 = () => {
-  if (selectedProject.value?.project_id) {
-    router.push({
-      name: 'Process',
-      params: { projectId: selectedProject.value.project_id },
-      query: { step: 5 }
     })
     closeModal()
   }
@@ -1446,7 +1426,6 @@ onUnmounted(() => {
 .modal-btn.btn-simulation .btn-icon { color: #F59E0B; }
 .modal-btn.btn-step3 .btn-icon { color: #8B5CF6; }
 .modal-btn.btn-report .btn-icon { color: #10B981; }
-.modal-btn.btn-step5 .btn-icon { color: #EC4899; }
 /* 卡片快捷工作台入口 */
 .card-workspace-link {
   display: flex;

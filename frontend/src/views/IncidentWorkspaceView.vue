@@ -337,12 +337,8 @@
               <span class="step-nav-spinner" v-if="stepState(3) === 'active' && activeRun?.status === 'running'"></span>
             </button>
             <button class="step-nav-btn" :class="stepState(4)" @click="goToStep(4)">
-              <span class="step-nav-num">04</span><span class="step-nav-name">决策简报生成</span>
+              <span class="step-nav-num">04</span><span class="step-nav-name">决策简报与智能研判</span>
               <span class="step-nav-check" v-if="stepState(4) === 'done'">&#10003;</span>
-            </button>
-            <button class="step-nav-btn" :class="stepState(5)" @click="goToStep(5)">
-              <span class="step-nav-num">05</span><span class="step-nav-name">智能追问研判</span>
-              <span class="step-nav-check" v-if="stepState(5) === 'done'">&#10003;</span>
             </button>
           </div>
         </div>
@@ -435,7 +431,7 @@
         <p class="modal-hint">提示：日常工作请优先使用右栏的「决策简报」。</p>
         <div class="modal-actions">
           <button class="ws-action-btn ws-secondary" @click="showExportReport = false">取消</button>
-          <button class="ws-action-btn ws-primary" @click="goToReport">前往决策简报生成</button>
+          <button class="ws-action-btn ws-primary" @click="goToReport">前往决策简报与智能研判</button>
         </div>
       </div>
     </div>
@@ -617,13 +613,13 @@ const activeRunStep = computed(() => {
   if (s === 'preparing') return 2         // 群体环境建模中
   if (['prepared', 'ready'].includes(s)) return 2 // 群体环境建模完成
   if (s === 'running') return 3           // 推演中
-  if (s === 'completed') return 5         // 全部完成
+  if (s === 'completed') return 4         // 全部完成
   return 0
 })
 function stepState(stepNum) {
   if (!activeRun.value) return stepNum <= 1 ? '' : 'disabled'
   const cur = activeRunStep.value
-  if (cur >= 5 && stepNum <= 5) return 'done'       // 全流程完成
+  if (cur >= 4 && stepNum <= 4) return 'done'       // 全流程完成
   if (stepNum < cur) return 'done'
   if (stepNum === cur) return 'active'
   return 'pending'

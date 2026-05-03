@@ -22,7 +22,7 @@
 
       <div class="header-right">
         <div class="workflow-step">
-          <span class="step-num">Step {{ currentStep }}/5</span>
+          <span class="step-num">Step {{ currentStep }}/4</span>
           <span class="step-name">{{ stepNames[currentStep - 1] }}</span>
         </div>
         <div class="step-divider"></div>
@@ -90,8 +90,8 @@ const router = useRouter()
 const viewMode = ref('split') // graph | split | workbench
 
 // Step State
-const currentStep = ref(1) // 1: 事件图谱生成, 2: 群体环境建模, 3: 舆情态势推演, 4: 决策简报生成, 5: 智能追问研判
-const stepNames = ['事件图谱生成', '群体环境建模', '舆情态势推演', '决策简报生成', '智能追问研判']
+const currentStep = ref(1) // 1: 事件图谱生成, 2: 群体环境建模, 3: 舆情态势推演, 4: 决策简报与智能研判
+const stepNames = ['事件图谱生成', '群体环境建模', '舆情态势推演', '决策简报与智能研判']
 
 // Data State
 const currentProjectId = ref(route.params.projectId)
@@ -173,7 +173,7 @@ const toggleMaximize = (target) => {
 }
 
 const handleNextStep = (params = {}) => {
-  if (currentStep.value < 5) {
+  if (currentStep.value < 4) {
     currentStep.value++
     addLog(`进入 Step ${currentStep.value}: ${stepNames[currentStep.value - 1]}`)
     
