@@ -1555,10 +1555,6 @@ onUnmounted(() => {
   to { transform: rotate(360deg); }
 }
 
-.card-content {
-  /* No extra padding - uses step-card's padding */
-}
-
 .api-note {
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
@@ -1832,6 +1828,7 @@ onUnmounted(() => {
   margin: 0 0 10px 0;
   display: -webkit-box;
   -webkit-line-clamp: 3;
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -2879,6 +2876,7 @@ onUnmounted(() => {
 
 .minimal-slider {
   -webkit-appearance: none;
+  appearance: none;
   width: 100%;
   height: 4px;
   background: #E2E8F0;

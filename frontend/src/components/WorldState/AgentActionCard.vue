@@ -130,13 +130,50 @@
       <span class="rm-icon">{{ miniIcon }}</span>
       <span class="rm-user">{{ realisticName(action.agent_name, action) }}</span>
       <span class="rm-desc">
-        <template v-if="action.action_type === 'LIKE_POST' || action.action_type === 'LIKE_COMMENT'">赞了 <b v-if="prettifyAuthor(action.action_args?.post_author_name)">{{ prettifyAuthor(action.action_args.post_author_name) }}</b><span v-else>一篇帖子</span></template>
-        <template v-else-if="action.action_type === 'UPVOTE_POST'">赞同了一篇帖子</template>
-        <template v-else-if="action.action_type === 'DOWNVOTE_POST'">反对了一篇帖子</template>
-        <template v-else-if="action.action_type === 'DISLIKE_POST'">踩了一篇帖子</template>
+        <template v-if="action.action_type === 'LIKE_POST'">
+          赞了
+          <template v-if="prettifyAuthor(action.action_args?.post_author_name)">
+            <b>@{{ prettifyAuthor(action.action_args.post_author_name) }}</b> 的帖子
+          </template>
+          <span v-else>一篇帖子</span>
+        </template>
+        <template v-else-if="action.action_type === 'LIKE_COMMENT'">
+          赞了
+          <template v-if="prettifyAuthor(action.action_args?.post_author_name)">
+            <b>@{{ prettifyAuthor(action.action_args.post_author_name) }}</b> 的评论
+          </template>
+          <span v-else>一条评论</span>
+        </template>
+        <template v-else-if="action.action_type === 'UPVOTE_POST'">
+          赞同了
+          <template v-if="prettifyAuthor(action.action_args?.post_author_name)">
+            <b>@{{ prettifyAuthor(action.action_args.post_author_name) }}</b> 的帖子
+          </template>
+          <span v-else>一篇帖子</span>
+        </template>
+        <template v-else-if="action.action_type === 'DOWNVOTE_POST'">
+          反对了
+          <template v-if="prettifyAuthor(action.action_args?.post_author_name)">
+            <b>@{{ prettifyAuthor(action.action_args.post_author_name) }}</b> 的帖子
+          </template>
+          <span v-else>一篇帖子</span>
+        </template>
+        <template v-else-if="action.action_type === 'DISLIKE_POST'">
+          踩了
+          <template v-if="prettifyAuthor(action.action_args?.post_author_name)">
+            <b>@{{ prettifyAuthor(action.action_args.post_author_name) }}</b> 的帖子
+          </template>
+          <span v-else>一篇帖子</span>
+        </template>
         <template v-else-if="action.action_type === 'SEARCH_POSTS'">搜索 "{{ truncate(action.action_args?.query || '', 20) }}"</template>
         <template v-else-if="action.action_type === 'SEARCH_USER'">查找用户</template>
-        <template v-else-if="action.action_type === 'FOLLOW'">关注了 {{ prettifyAuthor(action.action_args?.target_user || action.action_args?.user_id) || '某用户' }}</template>
+        <template v-else-if="action.action_type === 'FOLLOW'">
+          关注了
+          <template v-if="prettifyAuthor(action.action_args?.target_user || action.action_args?.user_id)">
+            <b>@{{ prettifyAuthor(action.action_args?.target_user || action.action_args?.user_id) }}</b>
+          </template>
+          <span v-else>某位用户</span>
+        </template>
         <template v-else-if="action.action_type === 'TREND'">浏览热门话题</template>
         <template v-else-if="action.action_type === 'DO_NOTHING'">静默浏览</template>
         <template v-else>{{ getActionTypeLabel(action.action_type) }}</template>
