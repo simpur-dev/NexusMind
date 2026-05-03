@@ -7,8 +7,10 @@ services:
       - "7474:7474"   # Neo4j Browser
       - "7687:7687"   # Bolt protocol
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      - NEO4J_AUTH=neo4j/nexusmind123
+      NEO4J_AUTH: "${NEO4J_USERNAME:-neo4j}/${NEO4J_PASSWORD:?NEO4J_PASSWORD must be set in .env}"
     volumes:
       - neo4j_data:/data
 

@@ -1,420 +1,520 @@
+# NexusMind
+
+> 基于社会世界模型的多智能体舆情推演与决策辅助系统  
+> Multi-Agent Public Opinion Simulation and Decision Support Powered by a Social World Model
+
 <div align="center">
 
-<img src="./static/image/MiroFish_logo_compressed.jpeg" alt="NexusMind Logo" width="75%"/>
-
-<a href="https://trendshift.io/repositories/16144" target="_blank"><img src="https://trendshift.io/api/badge/repositories/16144" alt="666ghj%2FNexusMind | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-
-简洁通用的群体智能引擎，预测万物
-</br>
-<em>A Simple and Universal Swarm Intelligence Engine, Predicting Anything</em>
-
-<a href="https://www.shanda.com/" target="_blank"><img src="./static/image/shanda_logo.png" alt="666ghj%2NexusMind | Shanda" height="40"/></a>
+<img src="./static/image/NexusMind_logo.png" alt="NexusMind Logo" width="72%"/>
 
 [![GitHub Stars](https://img.shields.io/github/stars/666ghj/NexusMind?style=flat-square&color=DAA520)](https://github.com/666ghj/NexusMind/stargazers)
-[![GitHub Watchers](https://img.shields.io/github/watchers/666ghj/NexusMind?style=flat-square)](https://github.com/666ghj/NexusMind/watchers)
 [![GitHub Forks](https://img.shields.io/github/forks/666ghj/NexusMind?style=flat-square)](https://github.com/666ghj/NexusMind/network)
-[![Docker](https://img.shields.io/badge/Docker-Build-2496ED?style=flat-square&logo=docker&logoColor=white)](https://hub.docker.com/)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/666ghj/NexusMind)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](./package.json)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Vue](https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vue.js&logoColor=white)](https://vuejs.org/)
+[![Neo4j](https://img.shields.io/badge/Neo4j-5.x-4581C3?style=flat-square&logo=neo4j&logoColor=white)](https://neo4j.com/)
 
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white)](http://discord.gg/ePf5aPaHnA)
-[![X](https://img.shields.io/badge/X-Follow-000000?style=flat-square&logo=x&logoColor=white)](https://x.com/NexusMind_ai)
-[![Instagram](https://img.shields.io/badge/Instagram-Follow-E4405F?style=flat-square&logo=instagram&logoColor=white)](https://www.instagram.com/NexusMind_ai/)
-
-[English](./README-EN.md) | [中文文档](./README.md)
+[中文文档](./README.md) · [English](./README-EN.md)
 
 </div>
 
-## ⚡ 项目概述
+---
 
-**NexusMind** 是一款基于多智能体技术的新一代 AI 预测引擎。通过提取现实世界的种子信息（如突发新闻、政策草案、金融信号），自动构建出高保真的平行数字世界。在此空间内，成千上万个具备独立人格、认知状态与行为逻辑的智能体进行自由交互与社会演化。系统内置**世界模型引擎**实时追踪六维宏观状态与因果链，驱动 Agent 认知反馈闭环。你可透过「上帝视角」动态注入变量，精准推演未来走向——**让未来在数字沙盘中预演，助决策在百战模拟后胜出**。
+## 1. 项目简介
 
-> 你只需：上传种子材料（数据分析报告或者有趣的小说故事），并用自然语言描述预测需求</br>
-> NexusMind 将返回：一份详尽的预测报告，以及一个可深度交互的高保真数字世界
+**NexusMind** 是一套以**社会世界模型**为核心的多智能体舆情推演与决策辅助系统。系统以现实公共事件中的种子材料为起点，自动完成事实理解、知识图谱构建、Agent 社会生成、舆情态势推演、世界状态追踪、因果链分析与决策报告生成。
 
-### 核心亮点
+社会世界模型用于刻画公共事件所处的动态社会环境：它不仅关注“谁说了什么”，还持续追踪关注度、公众信任、情绪压力、立场极化、综合风险和系统稳定性等状态变量。多类 Agent 会在信息广场和话题社区中发帖、评论、转发、搜索与互动；这些行为会改变世界状态，而世界状态又会反馈影响后续 Agent 行为，从而形成“个体行为—群体涌现—社会态势—决策响应”的闭环推演。
 
-- **Benchmark 验证**：武汉大学舆情案例综合评分 **99.3/100（A 级）**，三级信息门控对照实验证明知识图谱信息溢价达 44.6 分
-- **滚动预测**：支持随现实进展持续追加材料、滚动更新基线、多分支干预方案对比推演
-- **世界模型闭环**：论文级六维状态引擎 + 因果图谱 + Agent 认知架构，模拟过程中实时感知与反馈
-- **决策辅助**：内置高校舆情干预动作模板库，自动生成态势评分卡与决策支持简报
+与传统舆情系统不同，NexusMind 不只是对已有材料进行摘要、分类或情感分析，而是尝试在可控数字社会中模拟事件的发展过程，提前识别可能出现的扩散趋势、风险拐点、关键影响因素和干预窗口。
 
-### 我们的愿景
+一句话概括：
 
-NexusMind 致力于打造映射现实的群体智能镜像，通过捕捉个体互动引发的群体涌现，突破传统预测的局限：
+> **NexusMind 是一个由社会世界模型驱动、能随着事件发展持续更新的公共事件数字沙盘。**
 
-- **于宏观**：我们是决策者的预演实验室，让政策与公关在零风险中试错
-- **于微观**：我们是个人用户的创意沙盘，无论是推演小说结局还是探索脑洞，皆可有趣、好玩、触手可及
+当前项目重点面向：
 
-从严肃预测到趣味仿真，我们让每一个如果都能看见结果，让预测万物成为可能。
+- **高校舆情与品牌声誉治理**：模拟举报、通报、媒体报道和公众讨论的演化过程，辅助识别声誉风险、信任拐点与修复策略。
+- **公共安全与应急管理**：模拟自然灾害、校园安全、公共卫生等事件中的人群情绪、信息扩散和社会动态，优化应急预案与响应节奏。
+- **舆情风险预警**：实时监测并模拟网络舆情的传播路径和演变趋势，提前识别潜在的次生风险、极化风险和信任危机。
+- **政策沟通与组织治理**：模拟不同回应方式、信息披露节奏和资源配置方案的效果，为组织治理和公共沟通提供决策参考。
+- **计算机设计大赛展示**：围绕真实案例展示“材料接入—社会世界建模—多智能体推演—决策辅助”的完整 AI 实践闭环。
 
-## 🌐 在线体验
+---
 
-欢迎访问在线 Demo 演示环境，体验我们为你准备的一次关于热点舆情事件的推演预测：[NexusMind-live-demo](https://666ghj.github.io/mirofish-demo/)
+## 2. 核心价值
 
-## 📸 系统截图
+### 2.1 从静态分析到动态推演
 
-<div align="center">
-<table>
-<tr>
-<td><img src="./static/image/Screenshot/运行截图1.png" alt="截图1" width="100%"/></td>
-<td><img src="./static/image/Screenshot/运行截图2.png" alt="截图2" width="100%"/></td>
-</tr>
-<tr>
-<td><img src="./static/image/Screenshot/运行截图3.png" alt="截图3" width="100%"/></td>
-<td><img src="./static/image/Screenshot/运行截图4.png" alt="截图4" width="100%"/></td>
-</tr>
-<tr>
-<td><img src="./static/image/Screenshot/运行截图5.png" alt="截图5" width="100%"/></td>
-<td><img src="./static/image/Screenshot/运行截图6.png" alt="截图6" width="100%"/></td>
-</tr>
-</table>
-</div>
+多数舆情分析工具回答的是：“已经发生了什么？”  
+NexusMind 更进一步回答：
 
-## 🎬 演示视频
+- 接下来可能如何扩散？
+- 哪些节点可能成为风险拐点？
+- 哪些主体、话题和信息会放大影响？
+- 不同处置策略可能带来什么收益和副作用？
 
-### 1. 武汉大学舆情推演预测 + NexusMind项目讲解
+### 2.2 从文本摘要到社会世界模型
 
-<div align="center">
-<a href="https://www.bilibili.com/video/BV1VYBsBHEMY/" target="_blank"><img src="./static/image/武大模拟演示封面.png" alt="NexusMind Demo Video" width="75%"/></a>
+系统不仅抽取文本中的实体、关系和事件，还会持续维护宏观社会状态，包括关注度、公众信任、情绪压力、立场极化、综合风险和系统稳定性。Agent 的行为会改变世界状态，世界状态又会通过反馈机制影响后续 Agent 行为。
 
-点击图片查看使用微舆BettaFish生成的《武大舆情报告》进行预测的完整演示视频
-</div>
+### 2.3 从一次性报告到滚动决策
 
-### 2. 《红楼梦》失传结局推演预测
+真实公共事件不会在一次分析后结束。NexusMind 支持随着现实新材料出现持续追加材料、重建事实基线、创建预测分支和更新决策简报，形成滚动研判闭环。
 
-<div align="center">
-<a href="https://www.bilibili.com/video/BV1cPk3BBExq" target="_blank"><img src="./static/image/红楼梦模拟推演封面.jpg" alt="NexusMind Demo Video" width="75%"/></a>
+---
 
-点击图片查看基于《红楼梦》前80回数十万字，NexusMind深度预测失传结局
-</div>
+## 3. 系统总览
 
-> **金融方向推演预测**、**时政要闻推演预测**等示例陆续更新中...
+```text
+现实种子材料
+   │
+   ▼
+文本解析 / 网络抓取 / 分阶段追加
+   │
+   ▼
+事实基线 Baseline Snapshot
+   │
+   ▼
+知识图谱 + 向量检索 GraphRAG / VectorRAG
+   │
+   ▼
+Agent 社会构建：身份、人设、认知先验、平台参数
+   │
+   ▼
+信息广场 + 话题社区双平台推演
+   │
+   ▼
+社会世界模型：六维状态、事件流、因果链、反馈闭环
+   │
+   ▼
+报告生成 / 量化评估 / 决策简报 / 分支对比
+```
 
-## 🏗️ 技术架构
+---
 
-| 层次 | 技术栈 |
-|------|--------|
-| **前端** | Vue 3 + Vite + D3.js + ECharts（知识图谱 & 因果图谱可视化） |
-| **后端** | Flask 3.x + Graphiti + Neo4j（知识图谱与向量存储） |
-| **模拟引擎** | [OASIS](https://github.com/camel-ai/oasis) 多智能体仿真框架（camel-oasis 0.2.5） |
-| **世界模型** | 六维状态引擎 + 因果图谱引擎 + Agent 认知架构（AgentBrain） |
-| **决策辅助** | 滚动预测工作台 + 干预动作模板库 + 态势评分卡 + 决策简报 |
-| **报告引擎** | ReACT 多轮推理 + 11 种工具（图谱检索 / Agent 采访 / 世界模型洞察） |
-| **Benchmark** | 四维评分体系 + 三级信息门控对照实验（Full / Gated / Blind） |
-| **LLM** | 兼容 OpenAI SDK 格式的任意大模型 API |
+## 4. 社会世界模型
 
-## 🧠 核心能力
+社会世界模型是 NexusMind 当前版本的核心。它用于表示事件环境如何在 Agent 行为、外部信息和群体反馈中持续演化。
 
-### 世界模型引擎
+### 4.1 六维宏观状态
 
-NexusMind 内置论文级世界模型（参考 POSIM、SocioVerse、AgentSociety 等），在模拟运行过程中实时构建宏观态势感知：
+| 状态变量 | 中文含义 | 作用 |
+|---|---|---|
+| `attention_level` | 舆论关注度 | 衡量事件热度和讨论规模 |
+| `panic_level` | 情绪压力 | 衡量负面情绪、焦虑和恐慌扩散 |
+| `trust_level` | 公众信任 | 衡量公众对组织、权威或官方回应的信任 |
+| `polarization_level` | 立场极化 | 衡量群体分歧和对立强度 |
+| `risk_level` | 综合风险 | 综合刻画事件升级、次生风险和治理压力 |
+| `stability_level` | 系统稳定性 | 衡量舆论环境是否趋于收敛和平稳 |
 
-- **六维状态追踪**：关注度、恐慌情绪、公众信任、立场极化、综合风险、系统稳定性，每轮自动更新
-- **世界事件检测**：当状态变量发生显著变化时自动识别关键事件（如信息级联、信任崩塌）
-- **因果图谱**：从事件序列和状态变化中推断因果边，支持因果链追踪和影响路径查询
-- **反馈闭环**：世界状态通过 IPC 通道实时回注 OASIS 子进程，影响 Agent 后续决策（含阻尼机制，偏差 > 0.15 时才注入）
+### 4.2 状态更新机制
 
-### Agent 认知架构（AgentBrain）
+每轮推演结束后，系统会从 Agent 行为中提取观测信号，例如：
 
-每个模拟 Agent 拥有独立的认知状态，而非简单的 Prompt 角色扮演：
+- 发帖、评论、转发、点赞、搜索和关注行为
+- 活跃 Agent 数量
+- 关键词和话题变化
+- 情感分布
+- 平台行为差异
+- 事件触发和状态突变
 
-- **AgentPrior**：从知识图谱人设中编译出先验特征（易感性、求真性、从众性、风险容忍度等）
-- **AgentCognitiveState**：认知状态随模拟进程动态演化（情感、立场、焦虑、信任等）
-- **个性化感知渲染**：同一世界状态对不同 Agent 渲染出差异化环境信号（机构类看稳定度，媒体类看信息流，高从众者看群体趋势）
-- **认知衰减与遗忘**：非活跃认知维度自然衰减回基线
+随后通过规则层、平滑机制、自然衰减、话题状态和事件检测生成新的世界状态快照，并持久化为 JSONL 数据。
 
-### 报告生成引擎
+### 4.3 反馈闭环
 
-ReportAgent 通过 ReACT（Reasoning + Acting）多轮推理，自主调用 **11 种工具** 生成深度分析报告：
+世界状态不是只用于展示。系统会将宏观状态压缩为中性、非指令式的环境观察信息，通过模拟子进程注入 Agent 所感知的环境，使 Agent 后续行为受到社会态势影响。
 
-| 类别 | 工具 | 说明 |
-|------|------|------|
-| 图谱检索 | InsightForge / PanoramaSearch / QuickSearch | 混合检索（GraphRAG + VectorRAG 双路召回） |
-| Agent 采访 | AgentInterview | 模拟中实时采访任意 Agent |
-| 世界模型 | WorldModelBrief | 六维状态全景摘要 |
-| 状态演化 | StateEvolutionAnalysis | 峰值/谷值/转折点分析 |
-| 因果分析 | CausalChainAnalysis | 因果链追踪与归因 |
-| 评估摘要 | EvaluationSummary | 量化评估指标汇总 |
-| 态势评分 | ReputationScorecard | 综合态势四维评分卡 |
-| 决策支持 | DecisionSupportBrief | 风险/机会/建议简报 |
-| 证据检索 | SimulationEvidenceSearch | 模拟行为日志检索 |
+为避免过度操控，系统采用阻尼机制：只有当状态偏离基线达到阈值时才注入环境观察，从而保持 Agent 行为的自主性。
 
-### 滚动预测与决策辅助
+相关实现：
 
-NexusMind 支持事件全生命周期的**滚动预测工作流**——从首次录入到持续追踪，真正实现「态势研判 → 推演预测 → 处置决策」闭环：
+- `backend/app/services/world_state.py`
+- `backend/app/services/causal_graph.py`
+- `backend/scripts/run_parallel_simulation.py`
+- `backend/app/services/simulation_runner.py`
+- `frontend/src/components/WorldState/`
 
-- **材料管理**：支持向已有项目持续追加种子材料（文件/网络/人工），每批材料可追溯来源与时间
-- **事实基线版本管理**：每次追加材料后可生成新的基线快照（确认事实/待核实信息/关键主体/当前风险），支持版本对比
-- **预测分支**：基于同一基线创建多个预测分支（基准预测 / 干预方案 A / 干预方案 B），独立推演并行比较
-- **干预动作模板库**：内置高校舆情场景预置模板（初步回应、调查通报、舆情引导、纪律处分、制度改革等），每个模板包含预期效果、副作用、前置条件及对六维状态的影响向量
-- **事件工作台**（`/incident/:projectId`）：三栏式专业界面——材料时间线 | 基线版本 | 预测分支，面向事件处置人员的一站式操作台
+---
 
-### 量化评估框架
+## 5. 论文启发与工程化实现
 
-- **情感演化时序**：逐轮追踪正面/负面/中立情感分布
-- **Agent 行为多样性**：衡量 Agent 行为的丰富程度
-- **世界状态演化摘要**：六维状态的峰值、谷值与转折点
-- **影响力分析**：识别最具影响力的 Agent 与事件
+NexusMind 的社会世界模型和 Agent 认知机制参考了多智能体社会仿真、世界模型、公共舆情传播和可信 Agent 方向的多篇前沿研究，并进行了工程化实现。
 
-### Benchmark 验证
+| 研究方向 | 工程化映射 |
+|---|---|
+| Social World Model | 将社会环境拆分为结构、动态和个性化感知 |
+| Agent Society Simulation | 将 Agent 属性、情绪、认知状态与行为生成耦合 |
+| Public Opinion Simulation | 引入公共舆论中的信念、情绪、立场漂移和理性干预思想 |
+| Social Media Simulation | 复用多平台社交互动机制，支持发帖、评论、转发、搜索等行为 |
+| Rumor / Information Spreading | 关注信息级联、群体扩散和传播路径 |
+| Generative Agents | 引入记忆、反思和可置信行为的结构化脚手架 |
+| World Models | 将环境状态、未来演化和决策支持统一建模 |
 
-通过真实案例对照验证系统有效性，四维评分体系：
+这些思想不是停留在文档中，而是映射到了可运行代码：
+
+- `agent_brain.py`：AgentPrior、AgentCognitiveState、记忆和策略脚手架
+- `world_state.py`：六维世界状态、事件检测、Topic State 和状态衰减
+- `causal_graph.py`：事件因果边和因果链推断
+- `run_parallel_simulation.py`：世界状态对 Agent 环境感知的注入
+- `simulation_insight_service.py`：状态演化、风险机会、评分卡和决策简报
+
+---
+
+## 6. Agent 认知架构
+
+系统中的 Agent 不再只是静态角色设定，而是具备可计算认知结构。
+
+### 6.1 AgentPrior
+
+AgentPrior 描述 Agent 的长期先验：
+
+- 身份类型和职业角色
+- 初始立场
+- 核心目标
+- 关注话题
+- 风险容忍度
+- 权威信任和同伴信任
+- 从众性、表达欲和易感性
+- 决策风格
+
+### 6.2 AgentCognitiveState
+
+AgentCognitiveState 描述每轮变化的认知状态：
+
+- 注意焦点
+- 情绪唤醒
+- 感知风险
+- 信息确定性
+- 权威信任变化
+- 同伴信任变化
+- 当前目标显著性
+- 最近策略和反思提示
+
+### 6.3 个性化感知
+
+同一个宏观世界状态，对不同 Agent 会产生不同感知。例如：
+
+- 机构类 Agent 更关注稳定性、信任和风险。
+- 媒体类 Agent 更关注热度、信息变化和传播价值。
+- 学生或普通公众 Agent 更容易受到同伴反馈、情绪压力和立场分化影响。
+
+相关实现：
+
+- `backend/app/services/agent_brain.py`
+- `backend/app/services/oasis_profile_generator.py`
+- `backend/app/services/simulation_runner.py`
+
+---
+
+## 7. 产品工作流
+
+### 7.1 五步主链路
+
+| 阶段 | 名称 | 说明 |
+|---|---|---|
+| Step 1 | 事件图谱生成 | 从材料中抽取实体、关系和事件线索，构建知识图谱 |
+| Step 2 | 群体环境建模 | 生成 Agent 画像、认知先验、平台配置和模拟参数 |
+| Step 3 | 舆情态势推演 | Agent 在信息广场和话题社区交互，世界模型追踪态势变化 |
+| Step 4 | 结果报告生成 | ReportAgent 调用图谱、Agent、世界模型和评估工具生成报告 |
+| Step 5 | 深度交互 | 与 Agent 或报告智能体进行追问和解释 |
+
+### 7.2 事件工作台
+
+事件工作台用于真实事件的持续跟踪：
+
+- 路由：`/incident/:projectId`
+- 前端：`frontend/src/views/IncidentWorkspaceView.vue`
+- 后端：`backend/app/api/incident.py`
+
+支持能力：
+
+- 持续追加材料
+- 生成和切换事实基线版本
+- 查看材料时间线
+- 重建基线图谱
+- 创建预测分支
+- 对比不同干预方案
+- 导出阶段性报告
+
+---
+
+## 8. 核心模块
+
+### 8.1 材料接入与知识图谱
+
+- 支持 PDF、Markdown、TXT 等文件材料
+- 支持 Tavily 网络搜索抓取公开信息
+- LLM 自动生成 Prescribed Ontology
+- Graphiti + Neo4j 构建知识图谱
+- 实体清洗、伪实体过滤和实体类型标注
+- Neo4j 向量索引用于语义召回
+
+相关文件：
+
+- `backend/app/services/text_processor.py`
+- `backend/app/services/ontology_generator.py`
+- `backend/app/services/graph_builder.py`
+- `backend/app/services/entity_cleaner.py`
+- `backend/app/services/vector_store.py`
+
+### 8.2 多智能体社会推演
+
+- 基于 CAMEL-AI OASIS 的社交平台模拟
+- 支持信息广场和话题社区双平台
+- 支持发帖、评论、转发、点赞、搜索、关注等动作
+- 每轮记录 Agent 行为、平台状态和世界状态
+- 支持停止、续跑、重启和历史数据恢复
+
+相关文件：
+
+- `backend/app/services/simulation_runner.py`
+- `backend/app/services/simulation_manager.py`
+- `backend/scripts/run_parallel_simulation.py`
+- `frontend/src/components/Step3Simulation.vue`
+
+### 8.3 因果链与世界事件
+
+- 自动检测世界状态显著变化
+- 记录关键世界事件
+- 推断事件间因果边
+- 支持因果链追踪和可视化
+
+相关文件：
+
+- `backend/app/services/causal_graph.py`
+- `frontend/src/components/WorldState/CausalGraphView.vue`
+- `frontend/src/components/WorldState/EventTimeline.vue`
+
+### 8.4 ReportAgent 报告引擎
+
+ReportAgent 使用 ReACT 多轮推理模式，可调用多类工具生成结构化报告。
+
+| 工具类别 | 工具 |
+|---|---|
+| 图谱检索 | `insight_forge`、`panorama_search`、`quick_search` |
+| Agent 采访 | `interview_agents` |
+| 世界模型 | `world_model_brief`、`state_evolution_analysis` |
+| 因果分析 | `causal_chain_analysis` |
+| 量化评估 | `evaluation_summary` |
+| 态势评分 | `reputation_scorecard` |
+| 决策支持 | `decision_support_brief` |
+| 证据检索 | `simulation_evidence_search` |
+| 认知分析 | `agent_cognition_analysis` |
+
+相关文件：
+
+- `backend/app/services/report_agent.py`
+- `backend/app/services/simulation_insight_service.py`
+- `backend/app/api/report.py`
+
+---
+
+## 9. 量化评估与 Benchmark
+
+系统提供事后量化评估与真实案例对照验证。
+
+### 9.1 评估内容
+
+- 情感演化时序
+- Agent 行为多样性
+- 世界状态峰值、谷值、波动率和转折点
+- 影响力 Agent 分析
+- 因果图谱统计
+- 世界模型反馈环统计
+
+### 9.2 Benchmark 指标
 
 | 指标 | 全称 | 权重 | 含义 |
-|------|------|------|------|
-| **TCS** | Trend Consistency Score | 35% | 模拟情绪走势与现实是否同涨同跌 |
-| **TPH** | Turning Point Hit Rate | 25% | 是否抓住现实中的关键拐点 |
-| **KAC** | Key Actor Coverage | 20% | 关键主体是否被系统覆盖 |
-| **EOA** | Event Order Accuracy | 20% | 事件顺序是否与现实一致 |
+|---|---|---:|---|
+| TCS | Trend Consistency Score | 35% | 模拟走势与现实阶段方向是否一致 |
+| TPH | Turning Point Hit Rate | 25% | 是否命中关键现实转折点 |
+| KAC | Key Actor Coverage | 20% | 关键主体是否被图谱、Agent 与报告覆盖 |
+| EOA | Event Order Accuracy | 20% | 模拟事件顺序与现实参考链是否一致 |
 
-#### 三级信息门控对照实验（Case 01 武汉大学舆情事件）
+### 9.3 典型案例结果
 
-通过控制 Agent 可获取的知识量，验证知识图谱对模拟质量的关键作用：
+Case 01 高校舆情案例当前记录：
 
-| 指标 | Tier A 全知模式 | Tier B 限知模式 | Tier C 盲测模式 |
-|------|:-:|:-:|:-:|
-| **TCS** 趋势一致性 | **100.0** | 80.0 | 50.0 |
-| **TPH** 转折命中率 | **100.0** | 50.0 | 33.3 |
-| **KAC** 主体覆盖率 | **100.0** | 100.0 | 77.8 |
-| **EOA** 事件顺序 | **96.4** | 86.7 | 66.7 |
-| **总分** | **99.3 (A级)** | 77.8 (B级) | 54.7 (C级) |
+| 模式 | TCS | TPH | KAC | EOA | 总分 |
+|---|---:|---:|---:|---:|---:|
+| Tier A / Full | 100.0 | 100.0 | 100.0 | 96.4 | **99.3 / A** |
+| Tier B / Gated | 80.0 | 50.0 | 100.0 | 86.7 | **77.8 / B** |
+| Tier C / Blind | 50.0 | 33.3 | 77.8 | 66.7 | **54.7 / C** |
 
-> **信息溢价 = Tier A − Tier C = 44.6 分**，充分证明知识图谱驱动的信息注入是模拟准确性的核心驱动力。
+该对照说明：更完整的事实图谱和上下文能够显著提升趋势一致性、关键拐点命中率和事件顺序准确度；当信息被限制或盲测时，系统仍能捕捉部分传播趋势，但深层转折和角色归因会明显下降。
 
-## 🔄 工作流程
+相关文件：
 
-```
-种子材料 ──→ 知识图谱 ──→ Agent 世界 ──→ 推演模拟 ──→ 报告 / 评估
- (文件/网络)    (Graphiti)   (OASIS)      (世界模型)    (ReACT Agent)
-      ▲                                                      │
-      └──────────── 追加材料 · 滚动更新 · 分支对比 ◀───────────┘
-```
+- `benchmark/scoring.py`
+- `benchmark/case_01_wuhan_university_library/`
+- `backend/app/services/evaluation.py`
+- `backend/app/api/evaluation.py`
+- `frontend/src/api/evaluation.js`
 
-1. **图谱构建**：上传种子材料（PDF / Markdown / TXT）或输入网络搜索关键词（Tavily API 自动抓取）→ LLM 自动生成本体（Prescribed Ontology） → Graphiti + Neo4j 构建知识图谱 → 伪实体清洗 → 实体类型标注
-2. **环境搭建**：从图谱中读取并过滤实体 → LLM 智能生成 Agent 人设（含认知先验编译 + 三级知识门控）→ 自动配置模拟参数（平台类型、轮次、时间线、事件序列等）
-3. **推演模拟**：Twitter / Reddit 双平台并行模拟 → Agent 自主交互与涌现 → 世界模型六维状态实时追踪 → 因果图谱自动构建 → 支持上帝模式动态事件注入 → 模拟图谱实时写回 Neo4j
-4. **报告生成**：ReportAgent 通过 ReACT 多轮推理，调用 11 种工具（图谱检索 + Agent 采访 + 世界模型洞察），并行生成结构化分析报告 + 决策支持简报
-5. **深度互动**：与模拟世界中的任意 Agent 对话 → 与 ReportAgent 追问交流 → 查看量化评估仪表盘 + Benchmark 评测报告
-6. **滚动预测**（可选）：追加新材料 → 重建事实基线 → 创建干预分支 → 多方案对比推演 → 迭代优化决策
+---
 
-## 📁 项目结构
+## 10. 技术架构
 
-```
+| 层级 | 技术与模块 |
+|---|---|
+| 前端 | Vue 3、Vite、D3.js、可视化组件 |
+| 后端 | Flask 3.x、REST API、本地文件持久化、异步任务管理 |
+| 图谱层 | Graphiti、Neo4j、GraphRAG、VectorRAG |
+| 模拟层 | CAMEL-AI OASIS、双平台社交互动模拟 |
+| 世界模型 | WorldStateEngine、CausalGraphEngine、AgentBrain、SimulationInsightService |
+| 报告层 | ReACT ReportAgent、多工具调用、Markdown/HTML/PDF 导出 |
+| 评估层 | Benchmark scoring、情感/行为/影响力/状态演化分析 |
+
+核心目录：
+
+```text
 NexusMind/
-├── frontend/                     # 前端（Vue 3 + Vite）
+├── frontend/                         # Vue 3 + Vite 前端
 │   └── src/
-│       ├── components/           # 五步流程组件 + 世界模型面板
-│       │   ├── Step1GraphBuild   # 图谱构建
-│       │   ├── Step2EnvSetup     # 环境搭建
-│       │   ├── Step3Simulation   # 推演模拟
-│       │   ├── Step4Report       # 报告生成
-│       │   ├── Step5Interaction  # 深度互动
-│       │   ├── WorldState/       # 世界模型可视化子组件
-│       │   │   ├── WorldStateHero      # 六维状态雷达图
-│       │   │   ├── EventTimeline       # 事件时间线
-│       │   │   ├── CausalGraphView     # 因果图谱 D3 力导向图
-│       │   │   ├── AgentActionCard     # Agent 行为卡片
-│       │   │   └── SimGraphView        # 模拟图谱可视化
-│       │   ├── WorldStatePanel   # Step3 世界模型侧边栏
-│       │   ├── GraphPanel        # 知识图谱面板
-│       │   └── HistoryDatabase   # 历史项目数据库
-│       ├── views/                # 页面视图
-│       │   ├── Home              # 首页
-│       │   ├── Process           # 五步流程主页
-│       │   ├── EvaluationView    # 量化评估 + Benchmark 评测报告
-│       │   ├── IncidentWorkspaceView  # 🆕 事件工作台（滚动预测）
-│       │   └── SimGraphPage      # 模拟图谱全屏页
-│       └── api/                  # API 调用层
-│           ├── simulation.js     # 模拟 API
-│           ├── report.js         # 报告 API
-│           ├── evaluation.js     # 评估 + Benchmark API
-│           ├── forecast.js       # 🆕 预测分支 API
-│           └── incident.js       # 🆕 事件工作台 API
-├── backend/                      # 后端（Flask 3.x）
+│       ├── views/                    # Home / Process / IncidentWorkspace / SimGraph
+│       ├── components/               # 五步流程组件与世界模型组件
+│       └── api/                      # graph / simulation / report / evaluation / incident API
+├── backend/
 │   ├── app/
-│   │   ├── api/                  # REST API
-│   │   │   ├── graph.py          # 图谱 API
-│   │   │   ├── simulation.py     # 模拟 API（含世界模型 & IPC）
-│   │   │   ├── report.py         # 报告 API
-│   │   │   ├── evaluation.py     # 评估 API + Benchmark 端点
-│   │   │   ├── forecast.py       # 🆕 预测分支 API
-│   │   │   └── incident.py       # 🆕 滚动预测工作台 API
-│   │   ├── services/             # 核心业务逻辑（22 个模块）
-│   │   │   ├── graph_builder.py              # 知识图谱构建
-│   │   │   ├── ontology_generator.py         # LLM 本体生成
-│   │   │   ├── entity_reader.py              # 实体读取与过滤
-│   │   │   ├── entity_cleaner.py             # 伪实体清洗
-│   │   │   ├── entity_type_annotator.py      # 实体类型标注
-│   │   │   ├── vector_store.py               # 向量 RAG 存储（Neo4j 向量索引）
-│   │   │   ├── oasis_profile_generator.py    # Agent 人设生成（含三级知识门控）
-│   │   │   ├── simulation_config_generator.py # 模拟参数配置
-│   │   │   ├── simulation_manager.py         # 模拟管理器
-│   │   │   ├── simulation_runner.py          # 模拟运行器
-│   │   │   ├── simulation_ipc.py             # IPC 进程间通信
-│   │   │   ├── world_state.py                # 六维世界状态引擎
-│   │   │   ├── causal_graph.py               # 因果图谱引擎
-│   │   │   ├── agent_brain.py                # Agent 认知架构
-│   │   │   ├── graph_memory_updater.py       # 模拟图谱实时写回
-│   │   │   ├── graph_tools.py                # 图谱检索工具
-│   │   │   ├── report_agent.py               # ReACT 报告生成
-│   │   │   ├── simulation_insight_service.py # 模拟洞察聚合 + 决策简报
-│   │   │   ├── intervention_library.py       # 🆕 干预动作模板库
-│   │   │   ├── evaluation.py                 # 量化评估框架
-│   │   │   └── web_scraper.py                # 网络搜索（Tavily）
-│   │   ├── utils/                # 工具库
-│   │   │   ├── llm_client.py     # LLM 统一客户端
-│   │   │   ├── graphiti_client.py # Graphiti / Neo4j 客户端
-│   │   │   ├── file_parser.py    # 文件解析（PDF/MD/TXT）
-│   │   │   └── retry.py          # 重试机制
-│   │   └── models/               # 数据模型
-│   │       ├── project.py        # 项目管理
-│   │       ├── material.py       # 🆕 种子材料管理（持续追加）
-│   │       ├── baseline.py       # 🆕 事实基线版本管理
-│   │       ├── forecast_run.py   # 🆕 预测分支管理
-│   │       └── task.py           # 异步任务管理
-│   ├── scripts/                  # 模拟子进程脚本
-│   │   └── run_parallel_simulation.py  # OASIS 并行模拟（含世界模型注入）
-│   └── tests/                    # 测试套件（500+ 测试用例）
-├── benchmark/                    # Benchmark 验证框架
-│   ├── scoring.py                # 四维评分脚本
-│   ├── analyze_sim.py            # 模拟数据分析
-│   ├── check_leakage.py          # 知识门控泄漏检测
-│   ├── case_01_wuhan_university_library/                          # 武大舆情（99.3/100 A级 + 三级对照）
-│   ├── case_02_huazhong_agricultural_university_academic_misconduct/  # 华中农大学术不端
-│   └── case_03_jiangxi_industry_vocational_college_food_safety/       # 江西工职院食品安全
-├── tests/                        # 集成测试
-│   └── incident_phased_test/     # 事件工作台分阶段测试
-└── docker-compose.yml            # Docker 一键部署
+│   │   ├── api/                      # Flask REST API
+│   │   ├── services/                 # 图谱、模拟、世界模型、报告、评估核心逻辑
+│   │   ├── models/                   # Project / Material / Baseline / ForecastRun
+│   │   └── utils/                    # LLM、Graphiti、文件解析、日志等工具
+│   ├── scripts/
+│   │   └── run_parallel_simulation.py # OASIS 子进程与世界状态注入
+│   └── uploads/                      # 本地运行数据、模拟日志、报告产物
+├── benchmark/                        # 真实案例评测与评分脚本
+├── docs/                             # 使用手册、比赛材料、案例资料与报告归档
+│   ├── cases/                        # 真实案例材料与阶段时间线
+│   │   ├── huazhong_agricultural_university/
+│   │   └── wuhan_university/
+│   ├── competition/                  # 比赛演示脚本与分镜文档
+│   ├── manuals/                      # 使用手册
+│   ├── planning/                     # 产品规划与蓝图
+│   └── reports/                      # 外部报告与中间解析结果
+├── word_modle/papers/                # 社会世界模型论文分析与规划文档
+├── static/image/                     # README 图片与演示素材
+└── docker-compose.yml
 ```
 
-## 🚀 快速开始
+---
 
-### 一、源码部署（推荐）
+## 11. 快速开始
 
-#### 前置要求
+### 11.1 环境要求
 
-| 工具 | 版本要求 | 说明 | 安装检查 |
-|------|---------|------|---------|
-| **Node.js** | 18+ | 前端运行环境，包含 npm | `node -v` |
-| **Python** | ≥3.11, ≤3.12 | 后端运行环境 | `python --version` |
-| **uv** | 最新版 | Python 包管理器 | `uv --version` |
-| **Neo4j** | 5.x | 知识图谱存储 | 访问 `http://localhost:7474` |
+| 组件 | 推荐版本 |
+|---|---|
+| Python | 3.11+ |
+| Node.js | 18+ |
+| Neo4j | 5.x |
+| npm | 9+ |
 
-> **Neo4j 安装**：推荐安装 [Neo4j Desktop](https://neo4j.com/download/)（Windows/Mac 图形化管理），或使用 Docker：`docker run -d -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/your_password neo4j:5-community`
+### 11.2 环境变量
 
-#### 1. 配置环境变量
-
-```bash
-# 复制示例配置文件
-cp .env.example .env
-
-# 编辑 .env 文件，填入必要的 API 密钥
-```
-
-**必需的环境变量：**
+在项目根目录创建 `.env`：
 
 ```env
-# LLM API配置（支持 OpenAI SDK 格式的任意 LLM API）
-# 推荐使用阿里百炼平台qwen-plus模型：https://bailian.console.aliyun.com/
-# 注意消耗较大，可先进行小于40轮的模拟尝试
 LLM_API_KEY=your_api_key
 LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 LLM_MODEL_NAME=qwen-plus
 
-# Neo4j 图数据库配置
-# 安装 Neo4j Desktop: https://neo4j.com/download/
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USERNAME=neo4j
 NEO4J_PASSWORD=your_neo4j_password
-```
+NEO4J_DATABASE=neo4j
 
-**可选配置：**
-
-```env
-# 加速 LLM（用于 Profile 生成等高频调用，可选独立的低成本模型）
-# 如不使用，请勿添加以下配置项
-LLM_BOOST_API_KEY=your_api_key
-LLM_BOOST_BASE_URL=your_base_url
-LLM_BOOST_MODEL_NAME=your_model_name
-
-# 网络搜索（自动抓取公开舆情信息作为种子材料）
-# 免费注册：https://tavily.com
+# 可选：网络搜索
 TAVILY_API_KEY=your_tavily_api_key
 ```
 
-#### 2. 安装依赖
+如本地 Neo4j 使用自定义端口，只需同步修改 `NEO4J_URI`。
+
+### 11.3 安装依赖
 
 ```bash
-# 一键安装所有依赖（根目录 + 前端 + 后端）
-npm run setup:all
-```
-
-或者分步安装：
-
-```bash
-# 安装 Node 依赖（根目录 + 前端）
+# 根目录依赖 + 前端依赖
 npm run setup
 
-# 安装 Python 依赖（后端，自动创建虚拟环境）
+# 后端依赖（使用 uv）
 npm run setup:backend
 ```
 
-#### 3. 启动服务
+也可以手动安装：
 
 ```bash
-# 同时启动前后端（在项目根目录执行）
+cd frontend
+npm install
+
+cd ../backend
+pip install -r requirements.txt
+```
+
+### 11.4 启动服务
+
+```bash
+# 根目录一键启动前后端
 npm run dev
 ```
 
-**服务地址：**
-- 前端：`http://localhost:3000`
-- 后端 API：`http://localhost:5001`
-
-**单独启动：**
+或分开启动：
 
 ```bash
-npm run backend   # 仅启动后端
-npm run frontend  # 仅启动前端
+# 后端
+cd backend
+python run.py
+
+# 前端
+cd frontend
+npm run dev
 ```
 
-### 二、Docker 部署
+默认地址：
+
+- 前端：`http://localhost:3000`
+- 后端：`http://localhost:5001`
+- Neo4j Browser：`http://localhost:7474`
+- Neo4j Bolt：`bolt://localhost:7687`
+
+### 11.5 Docker Compose 启动
+
+如果希望使用容器方式同时启动 Neo4j 与 NexusMind：
 
 ```bash
-# 1. 配置环境变量（同源码部署）
-cp .env.example .env
-
-# 2. 拉取镜像并启动
 docker compose up -d
 ```
 
-默认会读取根目录下的 `.env`，并映射端口 `3000（前端）/5001（后端）`
+`docker-compose.yml` 会读取根目录 `.env`。其中 `NEO4J_USERNAME` 和 `NEO4J_PASSWORD` 会用于初始化 Neo4j 容器的账号密码。
 
-> 在 `docker-compose.yml` 中已通过注释提供加速镜像地址，可按需替换
+---
 
-## 📬 更多交流
+## 12. 比赛演示建议
 
-<div align="center">
-<img src="./static/image/QQ群.png" alt="QQ交流群" width="60%"/>
-</div>
+用于计算机设计大赛时，建议不要逐个讲按钮，而是围绕真实事件的持续演化展开。
 
-&nbsp;
+推荐主线：
 
-NexusMind团队长期招募全职/实习，如果你对多Agent应用感兴趣，欢迎投递简历至：**nexusmind@shanda.com**
+1. **现实种子接入**：上传第一阶段材料，说明系统可从早期有限信息起跑。
+2. **事实与图谱构建**：展示实体、关系和事件线索如何被结构化。
+3. **舆情态势推演**：展示 Agent 在信息广场和话题社区中交互，社会世界模型跟踪六维状态。
+4. **世界模型解释**：强调系统不是总结已有材料，而是在模拟扩散趋势、风险拐点和关键影响因素。
+5. **事件工作台滚动更新**：追加后续材料，生成新基线和预测分支。
+6. **决策支持输出**：展示风险、机会、推荐行动和证据链。
 
-## 📄 致谢
+核心表达：
 
-**NexusMind 得到了盛大集团的战略支持和孵化！**
+> 我们不是只对事件做一次静态分析，而是随着事件不断演化，持续更新事实基线、图谱理解、社会状态和决策判断。
 
-NexusMind 的仿真引擎由 **[OASIS (Open Agent Social Interaction Simulations)](https://github.com/camel-ai/oasis)** 驱动，我们衷心感谢 CAMEL-AI 团队的开源贡献！
+---
 
-世界模型设计参考了以下学术成果：POSIM、SocioVerse、AgentSociety、MOSAIC、OASIS、Generative Agents 等。
+## 13. 开源与致谢
 
-## 📈 项目统计
+NexusMind 的实现离不开开源生态和相关学术研究：
 
-<a href="https://www.star-history.com/#666ghj/NexusMind&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=666ghj/NexusMind&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=666ghj/NexusMind&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=666ghj/NexusMind&type=date&legend=top-left" />
- </picture>
-</a>
+- 感谢 **CAMEL-AI OASIS** 提供多智能体社交仿真基础。
+- 感谢 **Graphiti / Neo4j** 为知识图谱和检索层提供基础能力。
+- 感谢 Vue、Flask、D3、OpenAI SDK 等开源项目。
+- 社会世界模型与 Agent 认知设计参考了 Social World Model、Agent Society Simulation、Public Opinion Simulation、Generative Agents、World Models 等方向的研究成果。
+
+本项目遵循 `AGPL-3.0` 开源许可。若基于本项目进行二次开发或部署，请遵守相应开源协议。
