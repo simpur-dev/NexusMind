@@ -56,7 +56,7 @@
     </div>
 
     <!-- 主内容区 -->
-    <div class="main-content">
+    <div class="main-content" :class="{ 'is-swapped': isSwapped }">
 
       <!-- 左侧图谱：仅 Step 1-2 显示 -->
       <Transition name="panel-slide">
@@ -317,6 +317,16 @@
       </div>
     </Transition>
 
+      <!-- 左右切换按钮（位于拖拽条上方） -->
+      <button
+        v-if="currentStep <= 2 && !isFullScreen"
+        class="swap-btn"
+        :class="{ swapped: isSwapped }"
+        type="button"
+        @click="toggleSwap"
+        :title="isSwapped ? '恢复默认（图谱在左）' : '左右切换（图谱到右）'"
+      >⇄</button>
+
       <!-- 可拖拽分隔条 -->
       <div
         v-if="currentStep <= 2 && !isFullScreen"
@@ -471,8 +481,13 @@ const systemLogs = ref([])
 // 响应式布局状态
 const leftPanelWidth = ref(70) // 默认 70%
 const isDragging = ref(false)
+const isSwapped = ref(false) // 左右面板是否互换
 let resizeStartX = 0
 let resizeStartWidth = 70
+
+const toggleSwap = () => {
+  isSwapped.value = !isSwapped.value
+}
 
 const getRecommendedLeftPanelWidth = (step = currentStep.value) => step === 2 ? 62 : 70
 
@@ -506,7 +521,9 @@ const handleResize = (e) => {
     
     const containerWidth = document.querySelector('.main-content')?.offsetWidth || window.innerWidth
     const deltaX = e.clientX - resizeStartX
-    const deltaPercent = (deltaX / containerWidth) * 100
+    // 互换后拖拽方向需反为负：图谱在右，鼠标向右拖动“应该”缩小图谱
+    const dirSign = isSwapped.value ? -1 : 1
+    const deltaPercent = (deltaX / containerWidth) * 100 * dirSign
     
     // 限制范围在 20% - 80% 之间
     let newWidth = resizeStartWidth + deltaPercent
@@ -2304,7 +2321,7 @@ onUnmounted(() => {
   display: flex;
   flex: 1;
   min-height: 0;
-  position: relative;
+  position: relative; /* anchor 为 swap-btn / resize-handle */
 }
 
 /* 左侧面板 - 50% default（冰蓝浅色底，与右侧工作台协调） */
@@ -3477,6 +3494,82 @@ body.is-resizing .right-panel {
   box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.1);
   /* 使用 CSS 变量动态控制位置 */
   left: var(--left-panel-width, 70%);
+}
+
+/* ============== 左右互换 ============== */
+.main-content.is-swapped {
+  flex-direction: row-reverse;
+}
+/* 互换后：resize-handle 位于从右起算的同样偏移处 */
+.main-content.is-swapped .resize-handle {
+  left: auto;
+  right: var(--left-panel-width, 70%);
+  margin-left: 0;
+  margin-right: -6px;
+}
+/* 互换后：原本在 .left-panel 右侧的柔和分隔渐变要反转到左侧 */
+.main-content.is-swapped .left-panel {
+  border-right: none;
+  border-left: 1px solid rgba(173, 196, 214, 0.45);
+}
+.main-content.is-swapped .left-panel::after {
+  right: auto;
+  left: -1px;
+  background: linear-gradient(
+    to left,
+    rgba(180, 200, 218, 0) 0%,
+    rgba(180, 200, 218, 0.06) 50%,
+    rgba(180, 200, 218, 0.12) 100%
+  );
+}
+
+/* 左右切换按钮：在拖拽条上方 60px 处 */
+.swap-btn {
+  position: absolute;
+  top: calc(50% - 56px);
+  left: var(--left-panel-width, 70%);
+  transform: translateX(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.18);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  color: #1e3a5f;
+  cursor: pointer;
+  z-index: 101;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  font-family: inherit;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.18);
+  transition: background .2s, transform .2s, color .2s, box-shadow .2s;
+  padding: 0;
+}
+.swap-btn:hover {
+  background: rgba(59, 130, 246, 0.3);
+  transform: translateX(-50%) scale(1.12);
+  color: #1d4ed8;
+  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.32);
+}
+.swap-btn.swapped {
+  background: rgba(37, 99, 235, 0.85);
+  color: #ffffff;
+  border-color: #2563eb;
+}
+.main-content.is-swapped .swap-btn {
+  left: auto;
+  right: var(--left-panel-width, 70%);
+  transform: translateX(50%);
+}
+.main-content.is-swapped .swap-btn:hover {
+  transform: translateX(50%) scale(1.12);
+}
+body.is-resizing .swap-btn {
+  pointer-events: none;
+  opacity: 0.4;
 }
 
 .resize-handle:hover,

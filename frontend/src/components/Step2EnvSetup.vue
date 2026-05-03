@@ -62,7 +62,7 @@
         <div class="card-header" @click="toggleStepCard(1)">
           <div class="step-info">
             <span class="step-num">02</span>
-            <span class="step-title">群体角色画像生成</span>
+            <span class="step-title">多智能体 Agent 画像生成</span>
           </div>
           <div class="step-status">
             <span v-if="phase > 1 && !isProfilesIncomplete" class="badge success">已完成</span>
@@ -77,7 +77,7 @@
         <div v-show="!isStepCollapsed(1)" class="card-content">
           <p class="api-note">POST /api/simulation/prepare</p>
           <p class="description">
-            从事件记忆图谱梳理关键对象与关系，生成可参与舆情演化的智能体画像，并注入<span class="desc-accent">立场倾向、记忆线索、行动目标</span>等认知属性。
+            从事件记忆图谱梳理关键对象与关系，构建可参与舆情演化的 Agent 社会画像，并注入<span class="desc-accent">立场倾向、记忆线索、行动目标</span>等认知属性。
           </p>
 
           <!-- 继续生成提示 -->

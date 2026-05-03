@@ -7,7 +7,7 @@
       </div>
       <div class="tweet-main">
         <div class="tweet-header">
-          <span class="tweet-name">{{ realisticName(action.agent_name) }}</span>
+          <span class="tweet-name">{{ realisticName(action.agent_name, action) }}</span>
           <span class="tweet-handle">@{{ handleName(action.agent_name) }}</span>
           <span class="tweet-dot">·</span>
           <span class="tweet-time">R{{ action.round_num }}</span>
@@ -77,9 +77,11 @@
       </div>
       <div class="reddit-main">
         <div class="reddit-meta">
-          <span class="reddit-sub">r/topic</span>
-          <span class="reddit-author">u/{{ realisticName(action.agent_name) }}</span>
-          <span class="reddit-time">· R{{ action.round_num }}</span>
+          <span class="reddit-sub">r/{{ subRedditFor(action) }}</span>
+          <span class="reddit-sep">·</span>
+          <span class="reddit-author">u/{{ realisticName(action.agent_name, action) }}</span>
+          <span class="reddit-sep">·</span>
+          <span class="reddit-time">R{{ action.round_num }}</span>
           <span class="reddit-badge" :class="getActionTypeClass(action.action_type)">{{ getActionTypeLabel(action.action_type) }}</span>
         </div>
         <div class="reddit-body">
@@ -126,7 +128,7 @@
     <!-- ====== Reddit 紧凑 mini-card ====== -->
     <div v-else class="reddit-mini" :class="getActionTypeClass(action.action_type)">
       <span class="rm-icon">{{ miniIcon }}</span>
-      <span class="rm-user">{{ realisticName(action.agent_name) }}</span>
+      <span class="rm-user">{{ realisticName(action.agent_name, action) }}</span>
       <span class="rm-desc">
         <template v-if="action.action_type === 'LIKE_POST' || action.action_type === 'LIKE_COMMENT'">赞了 <b v-if="prettifyAuthor(action.action_args?.post_author_name)">{{ prettifyAuthor(action.action_args.post_author_name) }}</b><span v-else>一篇帖子</span></template>
         <template v-else-if="action.action_type === 'UPVOTE_POST'">赞同了一篇帖子</template>
@@ -209,8 +211,53 @@ function randomScore(action) {
   return (h % 120) + 1
 }
 
+// ============== 角色识别：机构 / 媒体 / 普通用户 ==============
+// 以前把所有 agent 都换成休闲昵称，导致官方通报被贴上 r/年轻人说
+const INSTITUTIONAL_KEYWORDS = [
+  '学会', '委员会', '协会', '学术', '官方', '秘书处', '公告',
+  '通报', '教育部', '纪委', '部门', '研究院', '学院', '高校',
+  '学术道德', '主管', '处置', '决定', '发布【'
+]
+const MEDIA_KEYWORDS = [
+  '媒体', '报道', '记者', '新闻', '央视', '人民日报', '新华',
+  '日报', '通讯社', '时报', '编辑部', '中国教育报', '接访'
+]
+
+function _detectRole(rawName, sampleText) {
+  const corpus = (rawName || '') + ' ' + (sampleText || '')
+  if (INSTITUTIONAL_KEYWORDS.some(kw => corpus.includes(kw))) return 'institutional'
+  if (MEDIA_KEYWORDS.some(kw => corpus.includes(kw))) return 'media'
+  return 'casual'
+}
+
+// 子版块按角色分池，避免 学术通报被随机贴到 r/围观瓜田
+const SUB_POOLS = {
+  institutional: ['学术圈', '高校事', '制度与治理', '院校动态', '公共议题', '教育圈'],
+  media: ['媒体报道', '今日热话', '社会热点', '舆情现场'],
+  casual: ['校园观察', '围观瓜田', '理性讨论', '年轻人说', '在校生活', '今日热话']
+}
+
+function subRedditFor(action) {
+  // 优先看当前贴文本身的调性，同一 agent 不同贴可以发在不同子版
+  const text = (action.action_args?.content || action.action_args?.original_content || '')
+  const role = _detectRole(action.agent_name, text)
+  const pool = SUB_POOLS[role]
+  const key = (action.agent_name || '') + '|' + (action.action_type || '') + '|' + role
+  return pool[_simpleHash(key) % pool.length]
+}
+
 // ---- 自然化昵称映射 ----
 // 图谱实体名 → 社交媒体风格用户名，确定性哈希选取
+// 机构/媒体走独立名池，保证官方贴看起来是官方账号
+const INSTITUTIONAL_NAME_POOL = [
+  '学术道德委员会', '学术伦理处', '高校联合会', '教育研究院',
+  '委员会秘书处', '学术传播部', '官方发布', '院校公告号',
+  '学位委员会', '纪委监委', '研究生院', '高教动态'
+]
+const MEDIA_NAME_POOL = [
+  '中青报记者', '人民日报评论', '新华社记者', '教育报编辑',
+  '全媒体观察', '新闻手记', '舆情分析师', '财经记者小陈'
+]
 const NICKNAME_POOL = [
   '珞珈山下的猫', '不喝咖啡会死星人', '今天也在摸鱼', '毕业遥遥无期',
   '图书馆占座侠', '认真生活的小王', '吃瓜第一线', '理性讨论bot',
@@ -242,28 +289,42 @@ const _nicknameCache = new Map()
 let _poolIndex = 0
 const _usedIndices = new Set()
 
-function realisticName(raw) {
+// 按角色从对应的池选名，保证同一 agent 始终只对应一个名字
+function _pickFromPool(key, pool, usedSet) {
+  let idx = _simpleHash(key) % pool.length
+  let attempts = 0
+  while (usedSet.has(idx) && attempts < pool.length) {
+    idx = (idx + 1) % pool.length
+    attempts++
+  }
+  if (attempts >= pool.length) return null
+  usedSet.add(idx)
+  return pool[idx]
+}
+const _institUsed = new Set()
+const _mediaUsed = new Set()
+
+function realisticName(raw, action) {
   if (!raw) return '匿名用户'
   const key = String(raw).trim()
   if (_nicknameCache.has(key)) return _nicknameCache.get(key)
 
-  // 用 hash 选一个未被占用的昵称
-  let idx = _simpleHash(key) % NICKNAME_POOL.length
-  let attempts = 0
-  while (_usedIndices.has(idx) && attempts < NICKNAME_POOL.length) {
-    idx = (idx + 1) % NICKNAME_POOL.length
-    attempts++
-  }
+  // 根据 agent_name + 当前贴文本识别角色，并选对应名池
+  const sampleText = action ? (action.action_args?.content || action.action_args?.original_content || '') : ''
+  const role = _detectRole(key, sampleText)
 
-  if (attempts >= NICKNAME_POOL.length) {
-    // 池子用完了，加序号
-    const fallback = `用户${_poolIndex++}`
-    _nicknameCache.set(key, fallback)
-    return fallback
+  let nick = null
+  if (role === 'institutional') {
+    nick = _pickFromPool(key, INSTITUTIONAL_NAME_POOL, _institUsed)
+  } else if (role === 'media') {
+    nick = _pickFromPool(key, MEDIA_NAME_POOL, _mediaUsed)
   }
-
-  _usedIndices.add(idx)
-  const nick = NICKNAME_POOL[idx]
+  if (!nick) {
+    nick = _pickFromPool(key, NICKNAME_POOL, _usedIndices)
+  }
+  if (!nick) {
+    nick = `用户${_poolIndex++}`
+  }
   _nicknameCache.set(key, nick)
   return nick
 }
@@ -466,17 +527,22 @@ const formatTime = (ts) => {
 /* ============ Reddit 完整帖子卡片 ============ */
 .reddit-card {
   display: flex;
-  background: #161620;
-  border: 1px solid rgba(255,255,255,.06);
+  /* 深灰蓝（slate-800 偏暖），不黑不白，与页面背景醒目区分 */
+  background: #232a39;
+  border: 1px solid rgba(148, 163, 184, 0.12);
   border-radius: 8px; overflow: hidden;
-  transition: border-color .15s;
+  transition: border-color .15s, background .15s;
   margin: 6px 8px;
 }
-.reddit-card:hover { border-color: rgba(255,69,0,.25); }
+.reddit-card:hover {
+  border-color: rgba(255,69,0,.35);
+  background: #272f3f;
+}
 
 .reddit-votes {
   display: flex; flex-direction: column; align-items: center;
-  padding: 10px 6px; gap: 2px; background: rgba(255,255,255,.02);
+  padding: 10px 6px; gap: 2px;
+  background: rgba(15, 23, 42, 0.35);
   min-width: 34px;
 }
 .vote-arrow {
@@ -492,12 +558,31 @@ const formatTime = (ts) => {
 
 .reddit-main { flex: 1; padding: 8px 10px; min-width: 0; }
 .reddit-meta {
-  display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
-  margin-bottom: 4px; font-size: 11px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin-bottom: 4px; font-size: 11.5px;
+  line-height: 1.3;
 }
-.reddit-sub { color: #d7dadc; font-weight: 700; }
-.reddit-author { color: #4a9eff; }
-.reddit-time { color: #555; }
+.reddit-sub {
+  color: #f1f5f9;
+  font-weight: 800;
+  background: rgba(255, 69, 0, 0.12);
+  border: 1px solid rgba(255, 69, 0, 0.25);
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+.reddit-sep { color: #475569; font-size: 11px; }
+.reddit-author {
+  color: #93c5fd;
+  font-weight: 600;
+}
+.reddit-time {
+  color: #94a3b8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+}
 .reddit-badge {
   font-size: 9px; font-weight: 700; padding: 1px 6px;
   border-radius: 9px; margin-left: auto;
@@ -513,8 +598,10 @@ const formatTime = (ts) => {
 }
 .reddit-repost-tag { font-size: 11px; color: #6ee7b7; font-weight: 600; margin-bottom: 2px; }
 .reddit-quote-block {
-  border-left: 2px solid #333; padding: 6px 10px; margin-top: 4px;
-  background: rgba(255,255,255,.02); border-radius: 0 4px 4px 0;
+  border-left: 2px solid rgba(148, 163, 184, 0.3);
+  padding: 6px 10px; margin-top: 4px;
+  background: rgba(15, 23, 42, 0.3);
+  border-radius: 0 4px 4px 0;
 }
 .rq-author { color: #4a9eff; font-size: 11px; font-weight: 600; display: block; margin-bottom: 2px; }
 .rq-text { color: #818384; font-size: 12px; line-height: 1.35; }
@@ -528,15 +615,19 @@ const formatTime = (ts) => {
 /* ============ Reddit mini-card（轻量操作） ============ */
 .reddit-mini {
   display: flex; align-items: center; gap: 8px;
-  padding: 6px 12px;
+  padding: 7px 12px;
   margin: 3px 8px;
   border-radius: 6px;
-  background: rgba(255,255,255,.02);
-  border-left: 3px solid #333;
-  font-size: 12px; color: #818384;
+  background: #2a3142;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-left: 3px solid #64748b;
+  font-size: 12px; color: #cbd5e1;
   transition: all .15s;
 }
-.reddit-mini:hover { background: rgba(255,255,255,.04); }
+.reddit-mini:hover {
+  background: #313a4d;
+  border-color: rgba(148, 163, 184, 0.2);
+}
 .reddit-mini.like { border-left-color: #ff4500; }
 .reddit-mini.vote-up { border-left-color: #ff4500; }
 .reddit-mini.vote-down { border-left-color: #7193ff; }
@@ -545,11 +636,27 @@ const formatTime = (ts) => {
 .reddit-mini.idle { border-left-color: #444; opacity: .7; }
 
 .rm-icon { font-size: 13px; flex-shrink: 0; width: 18px; text-align: center; }
-.rm-user { color: #4a9eff; font-weight: 600; white-space: nowrap; }
-.rm-desc { color: #aaa; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rm-desc b { color: #4a9eff; font-weight: 600; }
+.rm-user {
+  color: #93c5fd;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.rm-desc {
+  color: #cbd5e1;
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rm-desc b { color: #93c5fd; font-weight: 700; }
 .rm-round {
-  color: #555; font-size: 10px; margin-left: auto; flex-shrink: 0;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.5);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.04em;
 }
 </style>

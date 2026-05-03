@@ -1,7 +1,7 @@
 <template>
   <div class="world-state-panel">
     <div class="panel-header">
-      <h3>🌍 全局世界状态</h3>
+      <h3>🌍 社会世界模型状态</h3>
       <span class="round-badge" v-if="currentState">第 {{ currentState.round_num }} 轮</span>
     </div>
 
