@@ -1,41 +1,39 @@
 """
-任务状态管理
-用于跟踪长时间运行的任务（如图谱构建）
+In-memory task status model and thread-safe task registry.
 """
 
-import uuid
 import threading
-from datetime import datetime
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Dict, Any, Optional
-from dataclasses import dataclass, field
 
 
 class TaskStatus(str, Enum):
-    """任务状态枚举"""
-    PENDING = "pending"          # 等待中
-    PROCESSING = "processing"    # 处理中
-    COMPLETED = "completed"      # 已完成
-    FAILED = "failed"            # 失败
+    """Task lifecycle status."""
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 @dataclass
 class Task:
-    """任务数据类"""
+    """Serializable task record."""
     task_id: str
     task_type: str
     status: TaskStatus
     created_at: datetime
     updated_at: datetime
-    progress: int = 0              # 总进度百分比 0-100
-    message: str = ""              # 状态消息
-    result: Optional[Dict] = None  # 任务结果
-    error: Optional[str] = None    # 错误信息
-    metadata: Dict = field(default_factory=dict)  # 额外元数据
-    progress_detail: Dict = field(default_factory=dict)  # 详细进度信息
-    
+    progress: int = 0
+    message: str = ""
+    result: Optional[Dict] = None
+    error: Optional[str] = None
+    metadata: Dict = field(default_factory=dict)
+    progress_detail: Dict = field(default_factory=dict)
+
     def to_dict(self) -> Dict[str, Any]:
-        """转换为字典"""
         return {
             "task_id": self.task_id,
             "task_type": self.task_type,
@@ -52,57 +50,50 @@ class Task:
 
 
 class TaskManager:
-    """
-    任务管理器
-    线程安全的任务状态管理
-    """
-    
+    """Thread-safe singleton task manager."""
+
     _instance = None
-    _lock = threading.Lock()
-    
+    _instance_lock = threading.Lock()
+
     def __new__(cls):
-        """单例模式"""
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._tasks: Dict[str, Task] = {}
-                    cls._instance._task_lock = threading.Lock()
+        with cls._instance_lock:
+            if cls._instance is None:
+                instance = super().__new__(cls)
+                instance._tasks: Dict[str, Task] = {}
+                instance._task_lock = threading.RLock()
+                cls._instance = instance
         return cls._instance
-    
+
+    @staticmethod
+    def _new_id() -> str:
+        return str(uuid.uuid4())
+
+    @staticmethod
+    def _now() -> datetime:
+        return datetime.now()
+
+    def _snapshot(self, tasks):
+        return [task.to_dict() for task in sorted(tasks, key=lambda item: item.created_at, reverse=True)]
+
     def create_task(self, task_type: str, metadata: Optional[Dict] = None) -> str:
-        """
-        创建新任务
-        
-        Args:
-            task_type: 任务类型
-            metadata: 额外元数据
-            
-        Returns:
-            任务ID
-        """
-        task_id = str(uuid.uuid4())
-        now = datetime.now()
-        
+        task_id = self._new_id()
+        now = self._now()
         task = Task(
             task_id=task_id,
             task_type=task_type,
             status=TaskStatus.PENDING,
             created_at=now,
             updated_at=now,
-            metadata=metadata or {}
+            metadata=metadata or {},
         )
-        
         with self._task_lock:
             self._tasks[task_id] = task
-        
         return task_id
-    
+
     def get_task(self, task_id: str) -> Optional[Task]:
-        """获取任务"""
         with self._task_lock:
             return self._tasks.get(task_id)
-    
+
     def update_task(
         self,
         task_id: str,
@@ -113,99 +104,65 @@ class TaskManager:
         error: Optional[str] = None,
         progress_detail: Optional[Dict] = None
     ):
-        """
-        更新任务状态
-        
-        Args:
-            task_id: 任务ID
-            status: 新状态
-            progress: 进度
-            message: 消息
-            result: 结果
-            error: 错误信息
-            progress_detail: 详细进度信息
-        """
+        updates = {
+            "status": status,
+            "progress": progress,
+            "message": message,
+            "result": result,
+            "error": error,
+            "progress_detail": progress_detail,
+        }
         with self._task_lock:
             task = self._tasks.get(task_id)
-            if task:
-                task.updated_at = datetime.now()
-                if status is not None:
-                    task.status = status
-                if progress is not None:
-                    task.progress = progress
-                if message is not None:
-                    task.message = message
-                if result is not None:
-                    task.result = result
-                if error is not None:
-                    task.error = error
-                if progress_detail is not None:
-                    task.progress_detail = progress_detail
-    
+            if task is None:
+                return
+            task.updated_at = self._now()
+            for key, value in updates.items():
+                if value is not None:
+                    setattr(task, key, value)
+
     def complete_task(self, task_id: str, result: Dict):
-        """标记任务完成"""
         self.update_task(
             task_id,
             status=TaskStatus.COMPLETED,
             progress=100,
-            message="任务完成",
-            result=result
+            message="Task completed",
+            result=result,
         )
-    
+
     def fail_task(self, task_id: str, error: str):
-        """标记任务失败"""
         self.update_task(
             task_id,
             status=TaskStatus.FAILED,
-            message="任务失败",
-            error=error
+            message="Task failed",
+            error=error,
         )
-    
+
     def list_tasks(self, task_type: Optional[str] = None) -> list:
-        """列出任务"""
         with self._task_lock:
-            tasks = list(self._tasks.values())
+            tasks = self._tasks.values()
             if task_type:
-                tasks = [t for t in tasks if t.task_type == task_type]
-            return [t.to_dict() for t in sorted(tasks, key=lambda x: x.created_at, reverse=True)]
-    
+                tasks = [task for task in tasks if task.task_type == task_type]
+            return self._snapshot(tasks)
+
     def find_running_task(self, task_type: str, metadata_filter: Optional[Dict] = None) -> Optional[Dict]:
-        """
-        查找正在运行的任务（PENDING 或 PROCESSING）
-        
-        Args:
-            task_type: 任务类型
-            metadata_filter: 元数据过滤条件（键值需完全匹配）
-            
-        Returns:
-            匹配的任务字典，未找到则返回 None
-        """
+        expected = metadata_filter or {}
+        active_status = {TaskStatus.PENDING, TaskStatus.PROCESSING}
         with self._task_lock:
             for task in self._tasks.values():
-                if task.task_type != task_type:
+                if task.task_type != task_type or task.status not in active_status:
                     continue
-                if task.status not in (TaskStatus.PENDING, TaskStatus.PROCESSING):
-                    continue
-                if metadata_filter:
-                    match = all(
-                        task.metadata.get(k) == v
-                        for k, v in metadata_filter.items()
-                    )
-                    if not match:
-                        continue
-                return task.to_dict()
+                if all(task.metadata.get(key) == value for key, value in expected.items()):
+                    return task.to_dict()
         return None
-    
-    def cleanup_old_tasks(self, max_age_hours: int = 24):
-        """清理旧任务"""
-        from datetime import timedelta
-        cutoff = datetime.now() - timedelta(hours=max_age_hours)
-        
-        with self._task_lock:
-            old_ids = [
-                tid for tid, task in self._tasks.items()
-                if task.created_at < cutoff and task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]
-            ]
-            for tid in old_ids:
-                del self._tasks[tid]
 
+    def cleanup_old_tasks(self, max_age_hours: int = 24):
+        cutoff = self._now() - timedelta(hours=max_age_hours)
+        removable = {TaskStatus.COMPLETED, TaskStatus.FAILED}
+        with self._task_lock:
+            expired_ids = [
+                task_id for task_id, task in self._tasks.items()
+                if task.created_at < cutoff and task.status in removable
+            ]
+            for task_id in expired_ids:
+                self._tasks.pop(task_id, None)

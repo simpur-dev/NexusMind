@@ -2,8 +2,9 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
 
-const app = createApp(App)
+const installPlugins = (app) => {
+  app.use(router)
+  return app
+}
 
-app.use(router)
-
-app.mount('#app')
+installPlugins(createApp(App)).mount('#app')

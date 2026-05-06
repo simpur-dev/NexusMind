@@ -1,0 +1,177 @@
+{
+  "case_id": "case_02_huazhong_agricultural_university_academic_misconduct",
+  "case_name": "华中农业大学研究生实名举报导师学术不端事件",
+  "knowledge_tier": "A (Full)",
+  "source_artifacts": {
+    "simulation_id": "sim_b277466c5398",
+    "report_id": "report_cf535f98cef0",
+    "simulation_dir": "backend/uploads/simulations/sim_b277466c5398",
+    "report_dir": "backend/uploads/reports/report_cf535f98cef0",
+    "run_state": {
+      "runner_status": "completed",
+      "current_round": 20,
+      "total_rounds": 20,
+      "twitter_actions_count": 69,
+      "reddit_actions_count": 11,
+      "total_actions_count": 80,
+      "completed_at": "2026-05-05T16:13:34.180825"
+    },
+    "key_files": [
+      "world_state_history.jsonl",
+      "events.jsonl",
+      "causal_edges.jsonl",
+      "reddit/actions.jsonl",
+      "twitter/actions.jsonl",
+      "simulation_config.json",
+      "reddit_profiles.json",
+      "twitter_profiles.csv",
+      "full_report.md"
+    ]
+  },
+  "phase_sentiment_directions": [
+    "negative_rising",
+    "negative_peak",
+    "negative_sustained",
+    "mixed",
+    "neutral_declining"
+  ],
+  "phase_extraction_evidence": [
+    {
+      "phase": "P1",
+      "rounds": "1-2",
+      "direction": "negative_rising",
+      "evidence": "第1轮出现 heat_spike、sentiment_shift、sustained_panic_rise；关注度升至0.588，恐慌升至0.529。"
+    },
+    {
+      "phase": "P2",
+      "rounds": "2-5",
+      "direction": "negative_peak",
+      "evidence": "第2轮检测到 official_response，信任度回升至0.476，但第3-5轮出现 trust_drop 与 sustained_trust_erosion，负面压力仍处高位。"
+    },
+    {
+      "phase": "P3",
+      "rounds": "6-13",
+      "direction": "negative_sustained",
+      "evidence": "第10轮再次 heat_spike，第11-13轮关注度维持高位，说明媒体和公共讨论继续扩散。"
+    },
+    {
+      "phase": "P4",
+      "rounds": "14-16",
+      "direction": "mixed",
+      "evidence": "第14轮热度上升并伴随信任修复，第15轮又出现 sentiment_shift 与 trust_drop，第16轮开始 stabilization，呈现处置后混合评价。"
+    },
+    {
+      "phase": "P5",
+      "rounds": "17-20",
+      "direction": "neutral_declining",
+      "evidence": "第17-20轮 attention、panic、risk 持续回落，stability 上升至0.922，符合反思收敛期。"
+    }
+  ],
+  "turning_points_hit": [
+    {
+      "tp_id": "T1",
+      "hit": "same_phase",
+      "evidence": "P1/第1轮出现舆论热度急剧上升、负面情绪扩散加剧和持续恐慌上升，对应实名举报公开后的爆发。"
+    },
+    {
+      "tp_id": "T2",
+      "hit": "same_phase",
+      "evidence": "P2/第2轮检测到 official_response，信任度回升并出现稳定化信号，对应校方成立调查组和权威回应。"
+    },
+    {
+      "tp_id": "T3",
+      "hit": "same_phase",
+      "evidence": "P4/第14-16轮出现处理后热度上升、信任波动和系统稳定化，对应最终处理公布与学生安置诉求。"
+    }
+  ],
+  "actor_coverage": [
+    {
+      "actor_id": "A1",
+      "name": "华中农业大学",
+      "in_graph": true,
+      "in_agent": true,
+      "in_report": true,
+      "evidence": {
+        "agent_profile": "reddit_profiles.json line 6 / twitter_profiles.csv line 2",
+        "simulation_config": "simulation_config.json line 468",
+        "report": "report_cf535f98cef0/full_report.md"
+      }
+    },
+    {
+      "actor_id": "A2",
+      "name": "举报研究生",
+      "in_graph": true,
+      "in_agent": true,
+      "in_report": true,
+      "evidence": {
+        "agent_profile": "reddit_profiles.json line 6 / twitter_profiles.csv line 2",
+        "simulation_config": "simulation_config.json line 73",
+        "world_event": "initial_posts 中包含 11名在读硕博生实名举报内容"
+      }
+    },
+    {
+      "actor_id": "A3",
+      "name": "涉事导师",
+      "in_graph": true,
+      "in_agent": true,
+      "in_report": true,
+      "evidence": {
+        "agent_profile": "reddit_profiles.json line 7 / twitter_profiles.csv line 2",
+        "simulation_config": "simulation_config.json line 282",
+        "event_config": "举报和处置文本均围绕导师学术不端与师德失范展开"
+      }
+    },
+    {
+      "actor_id": "A4",
+      "name": "媒体",
+      "in_graph": true,
+      "in_agent": true,
+      "in_report": true,
+      "evidence": {
+        "agent_profile": "reddit_profiles.json line 7 / twitter_profiles.csv line 2",
+        "simulation_config": "simulation_config.json line 814",
+        "event_config": "scheduled_events 中包含澎湃新闻报道节点"
+      }
+    },
+    {
+      "actor_id": "A5",
+      "name": "学界 / 科研共同体",
+      "in_graph": true,
+      "in_agent": true,
+      "in_report": true,
+      "evidence": {
+        "simulation_config": "hot_topics 包含学术不端举报、师德师风建设等科研伦理议题",
+        "event_config": "后续事件包含中国畜牧兽医学会和团体标准研制"
+      }
+    },
+    {
+      "actor_id": "A6",
+      "name": "教育主管部门",
+      "in_graph": true,
+      "in_agent": true,
+      "in_report": true,
+      "evidence": {
+        "agent_profile": "reddit_profiles.json line 7 / twitter_profiles.csv line 2",
+        "simulation_config": "simulation_config.json line 591 / line 1224",
+        "event_config": "scheduled_events 中包含教育部高教司重点任务信号"
+      }
+    }
+  ],
+  "event_order_simulation": [
+    "研究生实名举报材料公开",
+    "舆情快速升温并引发社会关注",
+    "学校成立调查组并暂停涉事导师相关工作",
+    "媒体与学界持续追问科研伦理问题",
+    "学校公布最终处理结果",
+    "研究生培养安置方案落地",
+    "热度逐步收敛"
+  ],
+  "event_order_evidence": [
+    "simulation_config.event_config.initial_posts：11名硕博生联名举报与自媒体扩散",
+    "events.jsonl 第1轮：heat_spike、sentiment_shift、sustained_panic_rise",
+    "simulation_config.event_config.scheduled_events：媒体报道与校方调查组说明",
+    "events.jsonl 第10轮、第14轮：二次 heat_spike，对应持续追问与处理通报引发讨论",
+    "events.jsonl 第16-20轮：stabilization 与风险回落，对应热度收敛"
+  ],
+  "extraction_notes": "本文件基于 sim_b277466c5398 的世界状态、事件日志、双平台动作日志、Agent Profile、模拟配置和 report_cf535f98cef0 完整报告人工抽取，用于 benchmark/scoring.py 自动评分。"
+}

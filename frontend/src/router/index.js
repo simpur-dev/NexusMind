@@ -1,38 +1,22 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import Home from '../views/Home.vue'
-import Process from '../views/Process.vue'
-import SimGraphPage from '../views/SimGraphPage.vue'
-import IncidentWorkspaceView from '../views/IncidentWorkspaceView.vue'
 
-const routes = [
-  {
-    path: '/',
-    name: 'Home',
-    component: Home
-  },
-  {
-    path: '/process/:projectId',
-    name: 'Process',
-    component: Process,
-    props: true
-  },
-  {
-    path: '/sim-graph/:simulationId',
-    name: 'SimGraph',
-    component: SimGraphPage,
-    props: true
-  },
-  {
-    path: '/incident/:projectId',
-    name: 'IncidentWorkspace',
-    component: IncidentWorkspaceView,
-    props: true
-  }
-]
+const loadView = (name) => () => import(`../views/${name}.vue`)
 
-const router = createRouter({
-  history: createWebHistory(),
-  routes
+const defineRoute = (path, name, viewName, props = false) => ({
+  path,
+  name,
+  component: loadView(viewName),
+  props
 })
 
-export default router
+const routes = [
+  defineRoute('/', 'Home', 'Home'),
+  defineRoute('/process/:projectId', 'Process', 'Process', true),
+  defineRoute('/sim-graph/:simulationId', 'SimGraph', 'SimGraphPage', true),
+  defineRoute('/incident/:projectId', 'IncidentWorkspace', 'IncidentWorkspaceView', true)
+]
+
+export default createRouter({
+  history: createWebHistory(import.meta.env.BASE_URL),
+  routes
+})

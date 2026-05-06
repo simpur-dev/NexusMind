@@ -11,6 +11,36 @@ from openai import OpenAI
 from ..config import Config
 
 
+_THINKING_BLOCK_RE = re.compile(r'<think>[\s\S]*?</think>', re.IGNORECASE)
+_FENCED_JSON_RE = re.compile(r'^\s*```(?:json)?\s*|\s*```\s*$', re.IGNORECASE)
+
+
+def _clean_model_text(content: Optional[str]) -> str:
+    return _THINKING_BLOCK_RE.sub('', content or '').strip()
+
+
+def _strip_code_fence(content: str) -> str:
+    return _FENCED_JSON_RE.sub('', content.strip()).strip()
+
+
+def _loads_json_object(content: str) -> Dict[str, Any]:
+    cleaned = _strip_code_fence(content)
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        start = cleaned.find('{')
+        end = cleaned.rfind('}')
+        if start == -1 or end <= start:
+            raise ValueError(f"LLM返回的JSON格式无效: {cleaned}") from None
+        try:
+            parsed = json.loads(cleaned[start:end + 1])
+        except json.JSONDecodeError:
+            raise ValueError(f"LLM返回的JSON格式无效: {cleaned}") from None
+    if not isinstance(parsed, dict):
+        raise ValueError(f"LLM返回的JSON不是对象: {cleaned}")
+    return parsed
+
+
 class LLMClient:
     """LLM客户端"""
     
@@ -27,10 +57,7 @@ class LLMClient:
         if not self.api_key:
             raise ValueError("LLM_API_KEY 未配置")
         
-        self.client = OpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url
-        )
+        self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
     
     def chat(
         self,
@@ -51,7 +78,7 @@ class LLMClient:
         Returns:
             模型响应文本
         """
-        kwargs = {
+        request_payload = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
@@ -59,13 +86,11 @@ class LLMClient:
         }
         
         if response_format:
-            kwargs["response_format"] = response_format
+            request_payload["response_format"] = response_format
         
-        response = self.client.chat.completions.create(**kwargs)
-        content = response.choices[0].message.content
+        response = self.client.chat.completions.create(**request_payload)
         # 部分模型（如MiniMax M2.5）会在content中包含<think>思考内容，需要移除
-        content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
-        return content
+        return _clean_model_text(response.choices[0].message.content)
     
     def chat_json(
         self,
@@ -84,20 +109,12 @@ class LLMClient:
         Returns:
             解析后的JSON对象
         """
-        response = self.chat(
+        response_text = self.chat(
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
             response_format={"type": "json_object"}
         )
         # 清理markdown代码块标记
-        cleaned_response = response.strip()
-        cleaned_response = re.sub(r'^```(?:json)?\s*\n?', '', cleaned_response, flags=re.IGNORECASE)
-        cleaned_response = re.sub(r'\n?```\s*$', '', cleaned_response)
-        cleaned_response = cleaned_response.strip()
-
-        try:
-            return json.loads(cleaned_response)
-        except json.JSONDecodeError:
-            raise ValueError(f"LLM返回的JSON格式无效: {cleaned_response}")
+        return _loads_json_object(response_text)
 

@@ -1,59 +1,58 @@
-﻿import service, { requestWithRetry } from './index'
+import service, { requestWithRetry } from './index'
+
+const REPORT_API = '/api/report'
+const reportUrl = (path) => `${REPORT_API}${path}`
+const getReportApi = (path, params) => service.get(reportUrl(path), params ? { params } : undefined)
+const postReportApi = (path, data, config) => service.post(reportUrl(path), data, config)
+const postReportRetry = (path, data, retries = 3, delay = 1000, config) => {
+  return requestWithRetry(() => postReportApi(path, data, config), retries, delay)
+}
 
 /**
- * 开始决策简报与智能研判
- * @param {Object} data - { simulation_id, force_regenerate? }
+ * Report API wrapper
  */
 export const generateReport = (data) => {
-  return requestWithRetry(() => service.post('/api/report/generate', data), 3, 1000)
+  return postReportRetry('/generate', data)
 }
 
 /**
- * 获取决策简报与智能研判状态
- * @param {string} reportId
+ * Report API wrapper
  */
 export const getReportStatus = (reportId) => {
-  return service.get(`/api/report/generate/status`, { params: { report_id: reportId } })
+  return getReportApi('/generate/status', { report_id: reportId })
 }
 
 /**
- * 获取 Agent 日志（增量）
- * @param {string} reportId
- * @param {number} fromLine - 从第几行开始获取
+ * Report API wrapper
  */
 export const getAgentLog = (reportId, fromLine = 0) => {
-  return service.get(`/api/report/${reportId}/agent-log`, { params: { from_line: fromLine } })
+  return getReportApi(`/${reportId}/agent-log`, { from_line: fromLine })
 }
 
 /**
- * 获取控制台日志（增量）
- * @param {string} reportId
- * @param {number} fromLine - 从第几行开始获取
+ * Report API wrapper
  */
 export const getConsoleLog = (reportId, fromLine = 0) => {
-  return service.get(`/api/report/${reportId}/console-log`, { params: { from_line: fromLine } })
+  return getReportApi(`/${reportId}/console-log`, { from_line: fromLine })
 }
 
 /**
- * 获取报告详情
- * @param {string} reportId
+ * Report API wrapper
  */
 export const getReport = (reportId) => {
-  return service.get(`/api/report/${reportId}`)
+  return getReportApi(`/${reportId}`)
 }
 
 /**
- * 获取已生成的章节列表
- * @param {string} reportId
+ * Report API wrapper
  */
 export const getReportSections = (reportId) => {
-  return service.get(`/api/report/${reportId}/sections`)
+  return getReportApi(`/${reportId}/sections`)
 }
 
 /**
- * 与 Report Agent 对话
- * @param {Object} data - { simulation_id, message, chat_history? }
+ * Report API wrapper
  */
 export const chatWithReport = (data) => {
-  return requestWithRetry(() => service.post('/api/report/chat', data, { timeout: 60000 }), 2, 1000)
+  return postReportRetry('/chat', data, 2, 1000, { timeout: 60000 })
 }

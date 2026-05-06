@@ -690,7 +690,7 @@ class GraphBuilderService:
             return node_result.records, edge_result.records, cooccur_result.records
         
         try:
-            node_records, edge_records, cooccur_records = run_async(_fetch())
+            node_records, edge_records, cooccur_records = run_async(_fetch(), timeout=120)
         except Exception as e:
             import traceback
             traceback.print_exc()

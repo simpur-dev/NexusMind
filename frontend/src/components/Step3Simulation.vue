@@ -490,7 +490,10 @@ const redditProgress = computed(() => {
 const simulationStartTime = ref(null)
 const etaText = computed(() => {
   if (!simulationStartTime.value) return ''
-  const maxR = Math.max(runStatus.value.twitter_current_round || 0, runStatus.value.reddit_current_round || 0)
+  const tR = runStatus.value.twitter_current_round || 0
+  const rR = runStatus.value.reddit_current_round || 0
+  // 用较慢平台的进度估算 ETA（两个平台都完成才算结束）
+  const maxR = Math.min(tR, rR) || Math.max(tR, rR)
   if (maxR <= 0) return '计算中...'
   const elapsed = (Date.now() - simulationStartTime.value) / 1000
   const perRound = elapsed / maxR

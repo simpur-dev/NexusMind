@@ -9,7 +9,7 @@
 
 [![GitHub Stars](https://img.shields.io/github/stars/666ghj/NexusMind?style=flat-square&color=DAA520)](https://github.com/666ghj/NexusMind/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/666ghj/NexusMind?style=flat-square)](https://github.com/666ghj/NexusMind/network)
-[![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](./package.json)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](./LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Vue](https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vue.js&logoColor=white)](https://vuejs.org/)
 [![Neo4j](https://img.shields.io/badge/Neo4j-5.x-4581C3?style=flat-square&logo=neo4j&logoColor=white)](https://neo4j.com/)
@@ -22,7 +22,7 @@
 
 ## 1. Project Introduction
 
-**NexusMind** is a multi-agent public opinion simulation and decision support system built around a **Social World Model**. Starting from seed materials of real public events, the system automatically performs fact understanding, knowledge graph construction, Agent society generation, public opinion simulation, world-state tracking, causal-chain analysis, and decision report generation.
+**NexusMind** is a multi-agent public opinion simulation and decision support system built around a **Social World Model**. Starting from seed materials of real public events, the system automatically performs fact understanding, knowledge graph construction, multi-role population modeling, public opinion simulation, world-state tracking, causal-chain analysis, and decision brief generation.
 
 The Social World Model represents the dynamic social environment around a public event. It does not only care about "who said what"; it continuously tracks state variables such as public attention, public trust, emotional pressure, stance polarization, overall risk, and system stability. Multiple types of Agents post, comment, repost, search, and interact across an information square and topic communities. These actions change the world state, while the world state feeds back into subsequent Agent behavior, forming a closed-loop simulation of **individual behavior → collective emergence → social situation → decision response**.
 
@@ -500,8 +500,9 @@ Core message:
 NexusMind is made possible by the open-source ecosystem and related academic research:
 
 - Thanks to **CAMEL-AI OASIS** for providing the multi-agent social simulation foundation.
+- Thanks to **MiroFish** for its open-source inspiration and reference value. While following the relevant open-source license and acknowledgment requirements, NexusMind reorganizes the system goals and engineering implementation for university and public-opinion events by integrating simulation orchestration, population-environment modeling, scenario configuration generation, runtime state management, decision briefs, and interactive analysis into a closed-loop simulation workflow. The project focuses on a paper-based Social World Model, incremental material ingestion, rolling forecasting, and decision support.
 - Thanks to **Graphiti / Neo4j** for supporting the knowledge graph and retrieval layer.
 - Thanks to Vue, Flask, D3, OpenAI SDK, and other open-source projects.
 - The Social World Model and Agent cognition design are inspired by research directions such as Social World Models, Agent Society Simulation, Public Opinion Simulation, Generative Agents, and World Models.
 
-This project is released under the `AGPL-3.0` license. If you develop or deploy derivative work based on this project, please comply with the corresponding open-source license.
+This project is released under the `AGPL-3.0` license. If you develop or deploy derivative work based on this project, please comply with the corresponding open-source license. Third-party acknowledgments, MiroFish reference notes, and copyright-preservation notices are provided in [`NOTICE`](./NOTICE).

@@ -257,10 +257,10 @@ def main():
         print(f"或使用人工标注模板填写评分数据。")
         sys.exit(1)
 
-    with open(ref_path, "r", encoding="utf-8") as f:
+    with open(ref_path, "r", encoding="utf-8-sig") as f:
         reference = json.load(f)
 
-    with open(eval_path, "r", encoding="utf-8") as f:
+    with open(eval_path, "r", encoding="utf-8-sig") as f:
         evaluation = json.load(f)
 
     case_name = reference.get("case_name", os.path.basename(case_dir))

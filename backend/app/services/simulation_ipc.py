@@ -1,37 +1,39 @@
 """
-模拟IPC通信模块
-用于Flask后端和模拟脚本之间的进程间通信
-
-通过文件系统实现简单的命令/响应模式：
-1. Flask写入命令到 commands/ 目录
-2. 模拟脚本轮询命令目录，执行命令并写入响应到 responses/ 目录
-3. Flask轮询响应目录获取结果
+File-system IPC bridge between the Flask backend and simulation workers.
 """
 
-import os
+import ctypes
 import json
+import os
 import time
 import uuid
-from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
+from typing import Dict, Any, Optional, List
 
 from ..utils.logger import get_logger
 
 logger = get_logger('nexusmind.simulation_ipc')
 
+COMMANDS_DIRNAME = "ipc_commands"
+RESPONSES_DIRNAME = "ipc_responses"
+ENV_STATUS_FILE = "env_status.json"
+ENV_STALE_SECONDS = 300
+ALIVE_CHECK_INTERVAL = 15
+
 
 class CommandType(str, Enum):
-    """命令类型"""
-    INTERVIEW = "interview"           # 单个Agent采访
-    BATCH_INTERVIEW = "batch_interview"  # 批量采访
-    INJECT_EVENT = "inject_event"     # 动态事件注入（上帝视角）
-    CLOSE_ENV = "close_env"           # 关闭环境
+    """IPC command types."""
+    INTERVIEW = "interview"
+    BATCH_INTERVIEW = "batch_interview"
+    INJECT_EVENT = "inject_event"
+    CLOSE_ENV = "close_env"
 
 
 class CommandStatus(str, Enum):
-    """命令状态"""
+    """IPC command status values."""
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
@@ -40,48 +42,48 @@ class CommandStatus(str, Enum):
 
 @dataclass
 class IPCCommand:
-    """IPC命令"""
+    """Serialized IPC command."""
     command_id: str
     command_type: CommandType
     args: Dict[str, Any]
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "command_id": self.command_id,
             "command_type": self.command_type.value,
             "args": self.args,
-            "timestamp": self.timestamp
+            "timestamp": self.timestamp,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'IPCCommand':
         return cls(
             command_id=data["command_id"],
             command_type=CommandType(data["command_type"]),
             args=data.get("args", {}),
-            timestamp=data.get("timestamp", datetime.now().isoformat())
+            timestamp=data.get("timestamp", datetime.now().isoformat()),
         )
 
 
 @dataclass
 class IPCResponse:
-    """IPC响应"""
+    """Serialized IPC response."""
     command_id: str
     status: CommandStatus
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "command_id": self.command_id,
             "status": self.status.value,
             "result": self.result,
             "error": self.error,
-            "timestamp": self.timestamp
+            "timestamp": self.timestamp,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'IPCResponse':
         return cls(
@@ -89,32 +91,88 @@ class IPCResponse:
             status=CommandStatus(data["status"]),
             result=data.get("result"),
             error=data.get("error"),
-            timestamp=data.get("timestamp", datetime.now().isoformat())
+            timestamp=data.get("timestamp", datetime.now().isoformat()),
         )
 
 
-class SimulationIPCClient:
-    """
-    模拟IPC客户端（Flask端使用）
-    
-    用于向模拟进程发送命令并等待响应
-    """
-    
+def _ensure_dir(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def _read_json(path: Path) -> Dict[str, Any]:
+    return json.loads(path.read_text(encoding='utf-8'))
+
+
+def _write_json(path: Path, payload: Dict[str, Any]) -> None:
+    _ensure_dir(path.parent)
+    tmp_path = path.with_suffix(path.suffix + '.tmp')
+    tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+    tmp_path.replace(path)
+
+
+def _delete_quietly(*paths: Path) -> None:
+    for path in paths:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
+def _pid_is_alive(pid: Any) -> bool:
+    try:
+        pid_int = int(pid)
+    except (TypeError, ValueError):
+        return True
+    if pid_int <= 0:
+        return False
+    if os.name == 'nt':
+        process_query = 0x1000
+        still_active = 259
+        handle = ctypes.windll.kernel32.OpenProcess(process_query, False, pid_int)
+        if not handle:
+            return False
+        try:
+            exit_code = ctypes.c_ulong()
+            ok = ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+            return bool(ok) and exit_code.value == still_active
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid_int, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _make_command(command_type: CommandType, args: Dict[str, Any]) -> IPCCommand:
+    return IPCCommand(command_id=str(uuid.uuid4()), command_type=command_type, args=args)
+
+
+class _IPCPaths:
     def __init__(self, simulation_dir: str):
-        """
-        初始化IPC客户端
-        
-        Args:
-            simulation_dir: 模拟数据目录
-        """
+        self.root = Path(simulation_dir)
+        self.commands = self.root / COMMANDS_DIRNAME
+        self.responses = self.root / RESPONSES_DIRNAME
+        self.env_status = self.root / ENV_STATUS_FILE
+        _ensure_dir(self.commands)
+        _ensure_dir(self.responses)
+
+    def command_file(self, command_id: str) -> Path:
+        return self.commands / f"{command_id}.json"
+
+    def response_file(self, command_id: str) -> Path:
+        return self.responses / f"{command_id}.json"
+
+
+class SimulationIPCClient:
+    """IPC client used by Flask routes to command a running simulation."""
+
+    def __init__(self, simulation_dir: str):
         self.simulation_dir = simulation_dir
-        self.commands_dir = os.path.join(simulation_dir, "ipc_commands")
-        self.responses_dir = os.path.join(simulation_dir, "ipc_responses")
-        
-        # 确保目录存在
-        os.makedirs(self.commands_dir, exist_ok=True)
-        os.makedirs(self.responses_dir, exist_ok=True)
-    
+        self._paths = _IPCPaths(simulation_dir)
+        self.commands_dir = str(self._paths.commands)
+        self.responses_dir = str(self._paths.responses)
+
     def send_command(
         self,
         command_type: CommandType,
@@ -122,86 +180,44 @@ class SimulationIPCClient:
         timeout: float = 60.0,
         poll_interval: float = 0.5
     ) -> IPCResponse:
-        """
-        发送命令并等待响应
-        
-        Args:
-            command_type: 命令类型
-            args: 命令参数
-            timeout: 超时时间（秒）
-            poll_interval: 轮询间隔（秒）
-            
-        Returns:
-            IPCResponse
-            
-        Raises:
-            TimeoutError: 等待响应超时
-        """
-        command_id = str(uuid.uuid4())
-        command = IPCCommand(
-            command_id=command_id,
-            command_type=command_type,
-            args=args
-        )
-        
-        # 写入命令文件
-        command_file = os.path.join(self.commands_dir, f"{command_id}.json")
-        with open(command_file, 'w', encoding='utf-8') as f:
-            json.dump(command.to_dict(), f, ensure_ascii=False, indent=2)
-        
-        logger.info(f"发送IPC命令: {command_type.value}, command_id={command_id}")
-        
-        # 等待响应
-        response_file = os.path.join(self.responses_dir, f"{command_id}.json")
+        command = _make_command(command_type, args)
+        command_file = self._paths.command_file(command.command_id)
+        response_file = self._paths.response_file(command.command_id)
+        _write_json(command_file, command.to_dict())
+        logger.info(f"IPC command sent: {command_type.value}, command_id={command.command_id}")
+
         start_time = time.time()
-        
-        alive_check_interval = 15  # 每 15 秒检查一次进程存活
-        last_alive_check = start_time
-        
+        next_alive_check = start_time + ALIVE_CHECK_INTERVAL
         while time.time() - start_time < timeout:
-            if os.path.exists(response_file):
-                try:
-                    with open(response_file, 'r', encoding='utf-8') as f:
-                        response_data = json.load(f)
-                    response = IPCResponse.from_dict(response_data)
-                    
-                    # 清理命令和响应文件
-                    try:
-                        os.remove(command_file)
-                        os.remove(response_file)
-                    except OSError:
-                        pass
-                    
-                    logger.info(f"收到IPC响应: command_id={command_id}, status={response.status.value}")
-                    return response
-                except (json.JSONDecodeError, KeyError) as e:
-                    logger.warning(f"解析响应失败: {e}")
-            
-            # 定期检查模拟进程是否仍然存活，避免白等
+            response = self._try_read_response(response_file)
+            if response:
+                _delete_quietly(command_file, response_file)
+                logger.info(f"IPC response received: command_id={command.command_id}, status={response.status.value}")
+                return response
+
             now = time.time()
-            if now - last_alive_check >= alive_check_interval:
-                last_alive_check = now
+            if now >= next_alive_check:
+                next_alive_check = now + ALIVE_CHECK_INTERVAL
                 if not self.check_env_alive():
-                    logger.warning(f"等待IPC响应期间检测到模拟进程已退出，提前终止: command_id={command_id}")
-                    try:
-                        os.remove(command_file)
-                    except OSError:
-                        pass
-                    raise TimeoutError(f"模拟进程已退出，无法完成命令 ({command_type.value})")
-            
+                    _delete_quietly(command_file)
+                    logger.warning(f"Simulation process exited while waiting for IPC response: command_id={command.command_id}")
+                    raise TimeoutError(f"Simulation process exited before command completed ({command_type.value})")
+
             time.sleep(poll_interval)
-        
-        # 超时
-        logger.error(f"等待IPC响应超时: command_id={command_id}")
-        
-        # 清理命令文件
+
+        _delete_quietly(command_file)
+        logger.error(f"IPC response timeout: command_id={command.command_id}")
+        raise TimeoutError(f"Command response timed out after {timeout} seconds")
+
+    def _try_read_response(self, response_file: Path) -> Optional[IPCResponse]:
+        if not response_file.exists():
+            return None
         try:
-            os.remove(command_file)
-        except OSError:
-            pass
-        
-        raise TimeoutError(f"等待命令响应超时 ({timeout}秒)")
-    
+            return IPCResponse.from_dict(_read_json(response_file))
+        except (json.JSONDecodeError, KeyError, OSError, ValueError) as exc:
+            logger.warning(f"Failed to parse IPC response: {exc}")
+            return None
+
     def send_interview(
         self,
         agent_id: int,
@@ -209,64 +225,22 @@ class SimulationIPCClient:
         platform: str = None,
         timeout: float = 60.0
     ) -> IPCResponse:
-        """
-        发送单个Agent采访命令
-        
-        Args:
-            agent_id: Agent ID
-            prompt: 采访问题
-            platform: 指定平台（可选）
-                - "twitter": 只采访Twitter平台
-                - "reddit": 只采访Reddit平台  
-                - None: 双平台模拟时同时采访两个平台，单平台模拟时采访该平台
-            timeout: 超时时间
-            
-        Returns:
-            IPCResponse，result字段包含采访结果
-        """
-        args = {
-            "agent_id": agent_id,
-            "prompt": prompt
-        }
+        args = {"agent_id": agent_id, "prompt": prompt}
         if platform:
             args["platform"] = platform
-            
-        return self.send_command(
-            command_type=CommandType.INTERVIEW,
-            args=args,
-            timeout=timeout
-        )
-    
+        return self.send_command(CommandType.INTERVIEW, args, timeout=timeout)
+
     def send_batch_interview(
         self,
         interviews: List[Dict[str, Any]],
         platform: str = None,
         timeout: float = 120.0
     ) -> IPCResponse:
-        """
-        发送批量采访命令
-        
-        Args:
-            interviews: 采访列表，每个元素包含 {"agent_id": int, "prompt": str, "platform": str(可选)}
-            platform: 默认平台（可选，会被每个采访项的platform覆盖）
-                - "twitter": 默认只采访Twitter平台
-                - "reddit": 默认只采访Reddit平台
-                - None: 双平台模拟时每个Agent同时采访两个平台
-            timeout: 超时时间
-            
-        Returns:
-            IPCResponse，result字段包含所有采访结果
-        """
         args = {"interviews": interviews}
         if platform:
             args["platform"] = platform
-            
-        return self.send_command(
-            command_type=CommandType.BATCH_INTERVIEW,
-            args=args,
-            timeout=timeout
-        )
-    
+        return self.send_command(CommandType.BATCH_INTERVIEW, args, timeout=timeout)
+
     def send_inject_event(
         self,
         event_type: str,
@@ -275,30 +249,6 @@ class SimulationIPCClient:
         affected_variables: Dict[str, float] = None,
         timeout: float = 10.0
     ) -> IPCResponse:
-        """
-        发送动态事件注入命令（上帝视角）
-        
-        在模拟运行过程中注入一个外部事件，影响世界状态和Agent行为。
-        
-        Args:
-            event_type: 事件类型
-                - "breaking_news": 突发新闻
-                - "official_statement": 官方声明
-                - "policy_change": 政策变化
-                - "rumor_spread": 谣言传播
-                - "public_protest": 公众抗议
-                - "expert_opinion": 专家观点
-                - "custom": 自定义事件
-            description: 事件描述（会出现在Agent的环境prompt中）
-            severity: 事件严重度 (0.0-1.0)，影响事件可见性和状态变化幅度
-            affected_variables: 受影响的状态变量及变化方向
-                例: {"panic_level": 0.15, "trust_level": -0.1}
-                正值表示上升，负值表示下降
-            timeout: 超时时间
-            
-        Returns:
-            IPCResponse
-        """
         args = {
             "event_type": event_type,
             "description": description,
@@ -306,172 +256,83 @@ class SimulationIPCClient:
         }
         if affected_variables:
             args["affected_variables"] = affected_variables
-            
-        return self.send_command(
-            command_type=CommandType.INJECT_EVENT,
-            args=args,
-            timeout=timeout
-        )
-    
+        return self.send_command(CommandType.INJECT_EVENT, args, timeout=timeout)
+
     def send_close_env(self, timeout: float = 30.0) -> IPCResponse:
-        """
-        发送关闭环境命令
-        
-        Args:
-            timeout: 超时时间
-            
-        Returns:
-            IPCResponse
-        """
-        return self.send_command(
-            command_type=CommandType.CLOSE_ENV,
-            args={},
-            timeout=timeout
-        )
-    
+        return self.send_command(CommandType.CLOSE_ENV, {}, timeout=timeout)
+
     def check_env_alive(self) -> bool:
-        """
-        检查模拟环境是否存活
-        
-        通过检查 env_status.json 文件 + PID 存活性 + 文件新鲜度来判断
-        """
-        status_file = os.path.join(self.simulation_dir, "env_status.json")
-        if not os.path.exists(status_file):
+        status_file = self._paths.env_status
+        if not status_file.exists():
             return False
-        
         try:
-            with open(status_file, 'r', encoding='utf-8') as f:
-                status = json.load(f)
-            if status.get("status") != "alive":
-                return False
-            
-            # 检查 PID 是否仍在运行（使用标准库）
-            pid = status.get("pid")
-            if pid:
-                try:
-                    os.kill(int(pid), 0)  # 信号 0 不杀进程，仅检查存在性
-                except OSError:
-                    logger.warning(f"env_status 标记 alive 但 PID {pid} 已不存在")
-                    return False
-                except (ValueError, TypeError):
-                    pass
-            
-            # 检查文件修改时间，超过 5 分钟未更新视为僵尸
-            mtime = os.path.getmtime(status_file)
-            if time.time() - mtime > 300:
-                logger.warning(f"env_status.json 超过 5 分钟未更新，可能已僵死")
-                return False
-            
-            return True
+            status = _read_json(status_file)
         except (json.JSONDecodeError, OSError):
             return False
+        if status.get("status") != "alive":
+            return False
+        if status.get("pid") and not _pid_is_alive(status.get("pid")):
+            logger.warning(f"env_status says alive but PID {status.get('pid')} is gone")
+            return False
+        if time.time() - status_file.stat().st_mtime > ENV_STALE_SECONDS:
+            logger.warning("env_status.json is stale; treating simulation as not alive")
+            return False
+        return True
 
 
 class SimulationIPCServer:
-    """
-    模拟IPC服务器（模拟脚本端使用）
-    
-    轮询命令目录，执行命令并返回响应
-    """
-    
+    """IPC server used by simulation scripts to poll commands and publish responses."""
+
     def __init__(self, simulation_dir: str):
-        """
-        初始化IPC服务器
-        
-        Args:
-            simulation_dir: 模拟数据目录
-        """
         self.simulation_dir = simulation_dir
-        self.commands_dir = os.path.join(simulation_dir, "ipc_commands")
-        self.responses_dir = os.path.join(simulation_dir, "ipc_responses")
-        
-        # 确保目录存在
-        os.makedirs(self.commands_dir, exist_ok=True)
-        os.makedirs(self.responses_dir, exist_ok=True)
-        
-        # 环境状态
+        self._paths = _IPCPaths(simulation_dir)
+        self.commands_dir = str(self._paths.commands)
+        self.responses_dir = str(self._paths.responses)
         self._running = False
-    
+
     def start(self):
-        """标记服务器为运行状态"""
         self._running = True
         self._update_env_status("alive")
-    
+
     def stop(self):
-        """标记服务器为停止状态"""
         self._running = False
         self._update_env_status("stopped")
-    
+
     def _update_env_status(self, status: str):
-        """更新环境状态文件"""
-        status_file = os.path.join(self.simulation_dir, "env_status.json")
-        with open(status_file, 'w', encoding='utf-8') as f:
-            json.dump({
-                "status": status,
-                "pid": os.getpid(),
-                "timestamp": datetime.now().isoformat()
-            }, f, ensure_ascii=False, indent=2)
-    
+        _write_json(self._paths.env_status, {
+            "status": status,
+            "pid": os.getpid(),
+            "timestamp": datetime.now().isoformat(),
+        })
+
     def poll_commands(self) -> Optional[IPCCommand]:
-        """
-        轮询命令目录，返回第一个待处理的命令
-        
-        Returns:
-            IPCCommand 或 None
-        """
-        if not os.path.exists(self.commands_dir):
+        if not self._paths.commands.exists():
             return None
-        
-        # 按时间排序获取命令文件
-        command_files = []
-        for filename in os.listdir(self.commands_dir):
-            if filename.endswith('.json'):
-                filepath = os.path.join(self.commands_dir, filename)
-                command_files.append((filepath, os.path.getmtime(filepath)))
-        
-        command_files.sort(key=lambda x: x[1])
-        
-        for filepath, _ in command_files:
+        command_files = sorted(
+            self._paths.commands.glob('*.json'),
+            key=lambda path: path.stat().st_mtime,
+        )
+        for command_file in command_files:
             try:
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                return IPCCommand.from_dict(data)
-            except (json.JSONDecodeError, KeyError, OSError) as e:
-                logger.warning(f"读取命令文件失败: {filepath}, {e}")
-                continue
-        
+                return IPCCommand.from_dict(_read_json(command_file))
+            except (json.JSONDecodeError, KeyError, OSError, ValueError) as exc:
+                logger.warning(f"Failed to read IPC command file: {command_file}, {exc}")
         return None
-    
+
     def send_response(self, response: IPCResponse):
-        """
-        发送响应
-        
-        Args:
-            response: IPC响应
-        """
-        response_file = os.path.join(self.responses_dir, f"{response.command_id}.json")
-        with open(response_file, 'w', encoding='utf-8') as f:
-            json.dump(response.to_dict(), f, ensure_ascii=False, indent=2)
-        
-        # 删除命令文件
-        command_file = os.path.join(self.commands_dir, f"{response.command_id}.json")
-        try:
-            os.remove(command_file)
-        except OSError:
-            pass
-    
+        _write_json(self._paths.response_file(response.command_id), response.to_dict())
+        _delete_quietly(self._paths.command_file(response.command_id))
+
     def send_success(self, command_id: str, result: Dict[str, Any]):
-        """发送成功响应"""
         self.send_response(IPCResponse(
             command_id=command_id,
             status=CommandStatus.COMPLETED,
-            result=result
+            result=result,
         ))
-    
+
     def send_error(self, command_id: str, error: str):
-        """发送错误响应"""
         self.send_response(IPCResponse(
             command_id=command_id,
             status=CommandStatus.FAILED,
-            error=error
+            error=error,
         ))

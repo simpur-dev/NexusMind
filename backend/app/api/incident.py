@@ -551,6 +551,25 @@ def rebuild_baseline_graph(project_id: str, baseline_id: str):
                 project.status = ProjectStatus.GRAPH_COMPLETED
                 project.graph_id = graph_id
                 ProjectManager.save_project(project)
+
+                # 同步更新关联 simulation 的 graph_id，防止 prepare 时查旧图谱
+                if project.simulation_id:
+                    try:
+                        from ..services.simulation_manager import SimulationManager
+                        sim_mgr = SimulationManager()
+                        sim_state = sim_mgr.get_simulation(project.simulation_id)
+                        if sim_state:
+                            sim_state.graph_id = graph_id
+                            # 重置失败状态，允许重新 prepare
+                            from ..models.simulation import SimulationStatus
+                            if sim_state.status == SimulationStatus.FAILED:
+                                sim_state.status = SimulationStatus.CREATED
+                                sim_state.error = None
+                            sim_mgr._save_simulation_state(sim_state)
+                            _logger.info(f"已同步 simulation {project.simulation_id} 的 graph_id 为 {graph_id}")
+                    except Exception as se:
+                        _logger.warning(f"同步 simulation graph_id 失败（非致命）: {se}")
+
                 _logger.info(f"基线 {baseline_id} 图谱重建完成: {graph_id}")
             except Exception as e:
                 _logger.error(f"基线图谱重建失败: {e}")

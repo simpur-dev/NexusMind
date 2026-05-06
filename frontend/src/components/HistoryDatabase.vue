@@ -221,440 +221,295 @@ import { getSimulationHistory, deleteSimulation } from '../api/simulation'
 const router = useRouter()
 const route = useRoute()
 
-// 状态
 const projects = ref([])
 const loading = ref(true)
 const isExpanded = ref(false)
 const hoveringCard = ref(null)
 const historyContainer = ref(null)
-const selectedProject = ref(null)  // 当前选中的项目（用于弹窗）
-let observer = null
-let isAnimating = false  // 动画锁，防止闪烁
-let expandDebounceTimer = null  // 防抖定时器
-let pendingState = null  // 记录待执行的目标状态
+const selectedProject = ref(null)
 
-// 卡片布局配置 - 调整为更宽的比例
-const CARDS_PER_ROW = 4
-const CARD_WIDTH = 280  
-const CARD_HEIGHT = 280 
-const CARD_GAP = 24
-
-// 动态计算容器高度样式
-const containerStyle = computed(() => {
-  if (!isExpanded.value) {
-    // 折叠态：固定高度
-    return { minHeight: '420px' }
-  }
-  
-  // 展开态：根据卡片数量动态计算高度
-  const total = projects.value.length
-  if (total === 0) {
-    return { minHeight: '280px' }
-  }
-  
-  const rows = Math.ceil(total / CARDS_PER_ROW)
-  // 计算实际需要的高度：行数 * 卡片高度 + (行数-1) * 间距 + 少量底部间距
-  const expandedHeight = rows * CARD_HEIGHT + (rows - 1) * CARD_GAP + 10
-  
-  return { minHeight: `${expandedHeight}px` }
+const CARD_LAYOUT = Object.freeze({
+  perRow: 4,
+  width: 280,
+  height: 280,
+  gap: 24,
+  foldedHeight: 420,
+  emptyHeight: 280,
+  topOffset: 20,
+  foldedTop: 25,
+  foldedStepX: 35,
+  foldedStepY: 8,
+  foldedRotate: 3,
+  foldedScale: 0.05,
+  animationMs: 750,
+  expandDelay: 50,
+  collapseDelay: 200
 })
 
-// 获取卡片样式
-const getCardStyle = (index) => {
+const CARD_TRANSITION = 'transform 700ms cubic-bezier(0.23, 1, 0.32, 1), opacity 700ms cubic-bezier(0.23, 1, 0.32, 1), box-shadow 0.3s ease, border-color 0.3s ease'
+const FILE_TYPE_CLASS = Object.freeze({
+  pdf: 'pdf',
+  doc: 'doc',
+  docx: 'doc',
+  xls: 'xls',
+  xlsx: 'xls',
+  csv: 'xls',
+  ppt: 'ppt',
+  pptx: 'ppt',
+  txt: 'txt',
+  md: 'txt',
+  json: 'code',
+  jpg: 'img',
+  jpeg: 'img',
+  png: 'img',
+  gif: 'img',
+  zip: 'zip',
+  rar: 'zip',
+  '7z': 'zip'
+})
+
+let observer = null
+let isAnimating = false
+let expandDebounceTimer = null
+let expandReleaseTimer = null
+let pendingState = null
+
+const containerStyle = computed(() => {
+  if (!isExpanded.value) return { minHeight: `${CARD_LAYOUT.foldedHeight}px` }
   const total = projects.value.length
-  
-  if (isExpanded.value) {
-    // 展开态：网格布局
-    const transition = 'transform 700ms cubic-bezier(0.23, 1, 0.32, 1), opacity 700ms cubic-bezier(0.23, 1, 0.32, 1), box-shadow 0.3s ease, border-color 0.3s ease'
+  if (!total) return { minHeight: `${CARD_LAYOUT.emptyHeight}px` }
+  const rows = Math.ceil(total / CARD_LAYOUT.perRow)
+  const height = rows * CARD_LAYOUT.height + (rows - 1) * CARD_LAYOUT.gap + 10
+  return { minHeight: `${height}px` }
+})
 
-    const col = index % CARDS_PER_ROW
-    const row = Math.floor(index / CARDS_PER_ROW)
-    
-    // 计算当前行的卡片数量，确保每行居中
-    const currentRowStart = row * CARDS_PER_ROW
-    const currentRowCards = Math.min(CARDS_PER_ROW, total - currentRowStart)
-    
-    const rowWidth = currentRowCards * CARD_WIDTH + (currentRowCards - 1) * CARD_GAP
-    
-    const startX = -(rowWidth / 2) + (CARD_WIDTH / 2)
-    const colInRow = index % CARDS_PER_ROW
-    const x = startX + colInRow * (CARD_WIDTH + CARD_GAP)
-    
-    // 向下展开，增加与标题的间距
-    const y = 20 + row * (CARD_HEIGHT + CARD_GAP)
+const positionedCard = (x, y, rotate, scale, zIndex) => ({
+  transform: `translate(${x}px, ${y}px) rotate(${rotate}deg) scale(${scale})`,
+  zIndex,
+  opacity: 1,
+  transition: CARD_TRANSITION
+})
 
-    return {
-      transform: `translate(${x}px, ${y}px) rotate(0deg) scale(1)`,
-      zIndex: 100 + index,
-      opacity: 1,
-      transition: transition
-    }
-  } else {
-    // 折叠态：扇形堆叠
-    const transition = 'transform 700ms cubic-bezier(0.23, 1, 0.32, 1), opacity 700ms cubic-bezier(0.23, 1, 0.32, 1), box-shadow 0.3s ease, border-color 0.3s ease'
-
-    const centerIndex = (total - 1) / 2
-    const offset = index - centerIndex
-    
-    const x = offset * 35
-    // 调整起始位置，靠近标题但保持适当间距
-    const y = 25 + Math.abs(offset) * 8
-    const r = offset * 3
-    const s = 0.95 - Math.abs(offset) * 0.05
-    
-    return {
-      transform: `translate(${x}px, ${y}px) rotate(${r}deg) scale(${s})`,
-      zIndex: 10 + index,
-      opacity: 1,
-      transition: transition
-    }
-  }
+const expandedCardStyle = (index, total) => {
+  const row = Math.floor(index / CARD_LAYOUT.perRow)
+  const rowStart = row * CARD_LAYOUT.perRow
+  const rowCards = Math.min(CARD_LAYOUT.perRow, total - rowStart)
+  const rowWidth = rowCards * CARD_LAYOUT.width + (rowCards - 1) * CARD_LAYOUT.gap
+  const col = index % CARD_LAYOUT.perRow
+  const x = -(rowWidth / 2) + (CARD_LAYOUT.width / 2) + col * (CARD_LAYOUT.width + CARD_LAYOUT.gap)
+  const y = CARD_LAYOUT.topOffset + row * (CARD_LAYOUT.height + CARD_LAYOUT.gap)
+  return positionedCard(x, y, 0, 1, 100 + index)
 }
 
-// 根据轮数进度获取样式类
+const foldedCardStyle = (index, total) => {
+  const offset = index - (total - 1) / 2
+  const x = offset * CARD_LAYOUT.foldedStepX
+  const y = CARD_LAYOUT.foldedTop + Math.abs(offset) * CARD_LAYOUT.foldedStepY
+  const rotate = offset * CARD_LAYOUT.foldedRotate
+  const scale = 0.95 - Math.abs(offset) * CARD_LAYOUT.foldedScale
+  return positionedCard(x, y, rotate, scale, 10 + index)
+}
+
+const getCardStyle = (index) => {
+  const total = projects.value.length
+  return isExpanded.value ? expandedCardStyle(index, total) : foldedCardStyle(index, total)
+}
+
 const getProgressClass = (simulation) => {
   const current = simulation.current_round || 0
   const total = simulation.total_rounds || 0
-  
-  if (total === 0 || current === 0) {
-    // 未开始
-    return 'not-started'
-  } else if (current >= total) {
-    // 已完成
-    return 'completed'
-  } else {
-    // 进行中
-    return 'in-progress'
-  }
+  if (!total || !current) return 'not-started'
+  return current >= total ? 'completed' : 'in-progress'
 }
 
-// 格式化日期（只显示日期部分）
+const asDate = (dateStr) => {
+  if (!dateStr) return null
+  const date = new Date(dateStr)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
 const formatDate = (dateStr) => {
-  if (!dateStr) return ''
-  try {
-    const date = new Date(dateStr)
-    return date.toISOString().slice(0, 10)
-  } catch {
-    return dateStr?.slice(0, 10) || ''
-  }
+  const date = asDate(dateStr)
+  return date ? date.toISOString().slice(0, 10) : (dateStr?.slice(0, 10) || '')
 }
 
-// 格式化时间（显示时:分）
 const formatTime = (dateStr) => {
-  if (!dateStr) return ''
-  try {
-    const date = new Date(dateStr)
-    const hours = date.getHours().toString().padStart(2, '0')
-    const minutes = date.getMinutes().toString().padStart(2, '0')
-    return `${hours}:${minutes}`
-  } catch {
-    return ''
-  }
+  const date = asDate(dateStr)
+  if (!date) return ''
+  const hours = date.getHours().toString().padStart(2, '0')
+  const minutes = date.getMinutes().toString().padStart(2, '0')
+  return `${hours}:${minutes}`
 }
 
-// 截断文本
 const truncateText = (text, maxLength) => {
   if (!text) return ''
-  return text.length > maxLength ? text.slice(0, maxLength) + '...' : text
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text
 }
 
-// 从模拟需求生成标题（取前20字）
-const getSimulationTitle = (requirement) => {
-  if (!requirement) return '未命名模拟'
-  const title = requirement.slice(0, 20)
-  return requirement.length > 20 ? title + '...' : title
-}
+const getSimulationTitle = (requirement) => requirement ? truncateText(requirement, 20) : '\u672a\u547d\u540d\u6a21\u62df'
 
-// 格式化 simulation_id 显示（截取前6位）
 const formatSimulationId = (simulationId) => {
   if (!simulationId) return 'SIM_UNKNOWN'
-  const prefix = simulationId.replace('sim_', '').slice(0, 6)
-  return `SIM_${prefix.toUpperCase()}`
+  return `SIM_${simulationId.replace('sim_', '').slice(0, 6).toUpperCase()}`
 }
 
-// 格式化轮数显示（当前轮/总轮数）
 const formatRounds = (simulation) => {
-  const current = simulation.current_round || 0
   const total = simulation.total_rounds || 0
-  if (total === 0) return '未开始'
-  return `${current}/${total} 轮`
+  if (!total) return '\u672a\u5f00\u59cb'
+  return `${simulation.current_round || 0}/${total} \u8f6e`
 }
 
-// 获取文件类型（用于样式）
-const getFileType = (filename) => {
-  if (!filename) return 'other'
-  const ext = filename.split('.').pop()?.toLowerCase()
-  const typeMap = {
-    'pdf': 'pdf',
-    'doc': 'doc', 'docx': 'doc',
-    'xls': 'xls', 'xlsx': 'xls', 'csv': 'xls',
-    'ppt': 'ppt', 'pptx': 'ppt',
-    'txt': 'txt', 'md': 'txt', 'json': 'code',
-    'jpg': 'img', 'jpeg': 'img', 'png': 'img', 'gif': 'img',
-    'zip': 'zip', 'rar': 'zip', '7z': 'zip'
-  }
-  return typeMap[ext] || 'other'
-}
+const fileExtension = (filename) => filename?.split('.').pop()?.toLowerCase() || ''
 
-// 获取文件类型标签文本
-const getFileTypeLabel = (filename) => {
-  if (!filename) return 'FILE'
-  const ext = filename.split('.').pop()?.toUpperCase()
-  return ext || 'FILE'
-}
+const getFileType = (filename) => FILE_TYPE_CLASS[fileExtension(filename)] || 'other'
 
-// 截断文件名（保留扩展名）
+const getFileTypeLabel = (filename) => fileExtension(filename).toUpperCase() || 'FILE'
+
 const truncateFilename = (filename, maxLength) => {
-  if (!filename) return '未知文件'
+  if (!filename) return '\u672a\u77e5\u6587\u4ef6'
   if (filename.length <= maxLength) return filename
-  
-  const ext = filename.includes('.') ? '.' + filename.split('.').pop() : ''
-  const nameWithoutExt = filename.slice(0, filename.length - ext.length)
-  const truncatedName = nameWithoutExt.slice(0, maxLength - ext.length - 3) + '...'
-  return truncatedName + ext
+  const dotIndex = filename.lastIndexOf('.')
+  const ext = dotIndex > -1 ? filename.slice(dotIndex) : ''
+  const base = dotIndex > -1 ? filename.slice(0, dotIndex) : filename
+  return `${base.slice(0, maxLength - ext.length - 3)}...${ext}`
 }
 
-// 打开项目详情弹窗
 const navigateToProject = (simulation) => {
   selectedProject.value = simulation
 }
 
-// 删除推演记录（带确认）
-const confirmDelete = async (project) => {
-  if (!project?.simulation_id) return
-  const simLabel = formatSimulationId(project.simulation_id)
-  const confirmed = window.confirm(`确定要删除推演记录 ${simLabel} 吗？\n此操作会停止运行中的进程并删除相关数据，不可撤销。`)
-  if (!confirmed) return
-  
-  try {
-    const res = await deleteSimulation(project.simulation_id)
-    if (res.success) {
-      // 乐观更新：从列表中移除
-      projects.value = projects.value.filter(p => p.simulation_id !== project.simulation_id)
-      // 若当前打开了详情弹窗则关闭
-      if (selectedProject.value?.simulation_id === project.simulation_id) {
-        selectedProject.value = null
-      }
-    } else {
-      alert('删除失败：' + (res.error || '未知错误'))
-    }
-  } catch (err) {
-    console.error('删除推演记录失败:', err)
-    alert('删除失败：' + (err.message || '网络错误'))
-  }
-}
-
-// 关闭弹窗
 const closeModal = () => {
   selectedProject.value = null
 }
 
-// 导航到事件图谱生成页面（Project）
-const goToProject = () => {
-  if (selectedProject.value?.project_id) {
-    router.push({
-      name: 'Process',
-      params: { projectId: selectedProject.value.project_id },
-      query: { step: 1 }
-    })
-    closeModal()
-  }
+const pushRoute = (routeConfig, shouldClose = true) => {
+  router.push(routeConfig)
+  if (shouldClose) closeModal()
 }
 
-// 导航到环境配置页面（Simulation）
-// 跳转到 Process 页面，通过 query.step=2 强制定位到 Step 2
-const goToSimulation = () => {
-  if (selectedProject.value?.project_id) {
-    router.push({
-      name: 'Process',
-      params: { projectId: selectedProject.value.project_id },
-      query: { step: 2 }
-    })
-    closeModal()
-  }
+const pushProcessStep = (step) => {
+  const projectId = selectedProject.value?.project_id
+  if (!projectId) return
+  pushRoute({ name: 'Process', params: { projectId }, query: { step } })
 }
 
-// 导航到启动推演页面
-const goToStep3 = () => {
-  if (selectedProject.value?.project_id) {
-    router.push({
-      name: 'Process',
-      params: { projectId: selectedProject.value.project_id },
-      query: { step: 3 }
-    })
-    closeModal()
-  }
-}
+const goToProject = () => pushProcessStep(1)
+const goToSimulation = () => pushProcessStep(2)
+const goToStep3 = () => pushProcessStep(3)
+const goToReport = () => pushProcessStep(4)
 
-// 导航到决策简报页面
-// 跳转到 Process 页面，通过 query.step=4 强制定位到 Step 4
-const goToReport = () => {
-  if (selectedProject.value?.project_id) {
-    router.push({
-      name: 'Process',
-      params: { projectId: selectedProject.value.project_id },
-      query: { step: 4 }
-    })
-    closeModal()
-  }
-}
-
-// 导航到事件工作台（滚动预测决策支持）
 const goToIncidentWorkspace = () => {
-  if (selectedProject.value?.project_id) {
-    router.push({
-      name: 'IncidentWorkspace',
-      params: { projectId: selectedProject.value.project_id }
-    })
-    closeModal()
-  }
+  const projectId = selectedProject.value?.project_id
+  if (!projectId) return
+  pushRoute({ name: 'IncidentWorkspace', params: { projectId } })
 }
 
-// 卡片上的快捷工作台入口
 const quickGoWorkspace = (project) => {
-  if (project.project_id) {
-    router.push({
-      name: 'IncidentWorkspace',
-      params: { projectId: project.project_id }
-    })
+  if (!project.project_id) return
+  pushRoute({ name: 'IncidentWorkspace', params: { projectId: project.project_id } }, false)
+}
+
+const confirmDelete = async (project) => {
+  if (!project?.simulation_id) return
+  const simLabel = formatSimulationId(project.simulation_id)
+  const confirmed = window.confirm(`\u786e\u5b9a\u8981\u5220\u9664\u63a8\u6f14\u8bb0\u5f55 ${simLabel} \u5417\uff1f\n\u6b64\u64cd\u4f5c\u4f1a\u505c\u6b62\u8fd0\u884c\u4e2d\u7684\u8fdb\u7a0b\u5e76\u5220\u9664\u76f8\u5173\u6570\u636e\uff0c\u4e0d\u53ef\u64a4\u9500\u3002`)
+  if (!confirmed) return
+
+  try {
+    const res = await deleteSimulation(project.simulation_id)
+    if (!res.success) {
+      alert('\u5220\u9664\u5931\u8d25\uff1a' + (res.error || '\u672a\u77e5\u9519\u8bef'))
+      return
+    }
+    projects.value = projects.value.filter(item => item.simulation_id !== project.simulation_id)
+    if (selectedProject.value?.simulation_id === project.simulation_id) closeModal()
+  } catch (err) {
+    console.error('delete simulation history failed:', err)
+    alert('\u5220\u9664\u5931\u8d25\uff1a' + (err.message || '\u7f51\u7edc\u9519\u8bef'))
   }
 }
 
-// 加载历史项目
+const withTimeout = (promise, ms) => Promise.race([
+  promise,
+  new Promise((_, reject) => setTimeout(() => reject(new Error('\u52a0\u8f7d\u8d85\u65f6')), ms))
+])
+
 const loadHistory = async () => {
   loading.value = true
-  // 10秒超时保护，避免后端卡死导致前端永久加载
-  const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('加载超时')), 10000)
-  )
   try {
-    const response = await Promise.race([getSimulationHistory(20), timeoutPromise])
-    if (response.success) {
-      projects.value = response.data || []
-    }
+    const response = await withTimeout(getSimulationHistory(20), 10000)
+    projects.value = response.success ? (response.data || []) : []
   } catch (error) {
-    console.error('加载历史项目失败:', error)
+    console.error('load simulation history failed:', error)
     projects.value = []
   } finally {
     loading.value = false
   }
 }
 
-// 初始化 IntersectionObserver
-const initObserver = () => {
-  if (observer) {
-    observer.disconnect()
-  }
-  
-  observer = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        const shouldExpand = entry.isIntersecting
-        
-        // 更新待执行的目标状态（无论是否在动画中都要记录最新的目标状态）
-        pendingState = shouldExpand
-        
-        // 清除之前的防抖定时器（新的滚动意图会覆盖旧的）
-        if (expandDebounceTimer) {
-          clearTimeout(expandDebounceTimer)
-          expandDebounceTimer = null
-        }
-        
-        // 如果正在动画中，只记录状态，等动画结束后处理
-        if (isAnimating) return
-        
-        // 如果目标状态与当前状态相同，不需要处理
-        if (shouldExpand === isExpanded.value) {
-          pendingState = null
-          return
-        }
-        
-        // 使用防抖延迟状态切换，防止快速闪烁
-        // 展开时延迟较短(50ms)，收起时延迟较长(200ms)以增加稳定性
-        const delay = shouldExpand ? 50 : 200
-        
-        expandDebounceTimer = setTimeout(() => {
-          // 检查是否正在动画
-          if (isAnimating) return
-          
-          // 检查待执行状态是否仍需要执行（可能已被后续滚动覆盖）
-          if (pendingState === null || pendingState === isExpanded.value) return
-          
-          // 设置动画锁
-          isAnimating = true
-          isExpanded.value = pendingState
-          pendingState = null
-          
-          // 动画完成后解除锁定，并检查是否有待处理的状态变化
-          setTimeout(() => {
-            isAnimating = false
-            
-            // 动画结束后，检查是否有新的待执行状态
-            if (pendingState !== null && pendingState !== isExpanded.value) {
-              // 延迟一小段时间再执行，避免太快切换
-              expandDebounceTimer = setTimeout(() => {
-                if (pendingState !== null && pendingState !== isExpanded.value) {
-                  isAnimating = true
-                  isExpanded.value = pendingState
-                  pendingState = null
-                  setTimeout(() => {
-                    isAnimating = false
-                  }, 750)
-                }
-              }, 100)
-            }
-          }, 750)
-        }, delay)
-      })
-    },
-    {
-      // 使用多个阈值，使检测更平滑
-      threshold: [0.4, 0.6, 0.8],
-      // 调整 rootMargin，视口底部向上收缩，需要滚动更多才触发展开
-      rootMargin: '0px 0px -150px 0px'
-    }
-  )
-  
-  // 开始观察
-  if (historyContainer.value) {
-    observer.observe(historyContainer.value)
+const clearExpandTimers = () => {
+  if (expandDebounceTimer) clearTimeout(expandDebounceTimer)
+  if (expandReleaseTimer) clearTimeout(expandReleaseTimer)
+  expandDebounceTimer = null
+  expandReleaseTimer = null
+}
+
+const releaseAnimation = () => {
+  isAnimating = false
+  if (pendingState !== null && pendingState !== isExpanded.value) {
+    expandDebounceTimer = setTimeout(applyPendingState, 100)
   }
 }
 
-// 监听路由变化，当返回首页时重新加载数据
-watch(() => route.path, (newPath) => {
-  if (newPath === '/') {
-    loadHistory()
+const applyPendingState = () => {
+  if (isAnimating || pendingState === null || pendingState === isExpanded.value) return
+  isAnimating = true
+  isExpanded.value = pendingState
+  pendingState = null
+  expandReleaseTimer = setTimeout(releaseAnimation, CARD_LAYOUT.animationMs)
+}
+
+const scheduleExpandedState = (nextState) => {
+  pendingState = nextState
+  if (expandDebounceTimer) clearTimeout(expandDebounceTimer)
+  if (nextState === isExpanded.value) {
+    pendingState = null
+    return
   }
+  if (isAnimating) return
+  const delay = nextState ? CARD_LAYOUT.expandDelay : CARD_LAYOUT.collapseDelay
+  expandDebounceTimer = setTimeout(applyPendingState, delay)
+}
+
+const initObserver = () => {
+  if (observer) observer.disconnect()
+  observer = new IntersectionObserver(
+    entries => entries.forEach(entry => scheduleExpandedState(entry.isIntersecting)),
+    { threshold: [0.4, 0.6, 0.8], rootMargin: '0px 0px -150px 0px' }
+  )
+  if (historyContainer.value) observer.observe(historyContainer.value)
+}
+
+watch(() => route.path, (newPath) => {
+  if (newPath === '/') loadHistory()
 })
 
 onMounted(async () => {
-  // 确保 DOM 渲染完成后再加载数据
   await nextTick()
   await loadHistory()
-  
-  // 等待 DOM 渲染后初始化观察器
-  setTimeout(() => {
-    initObserver()
-  }, 100)
+  setTimeout(initObserver, 100)
 })
 
-// 如果使用 keep-alive，在组件激活时重新加载数据
 onActivated(() => {
   loadHistory()
 })
 
 onUnmounted(() => {
-  // 清理 Intersection Observer
   if (observer) {
     observer.disconnect()
     observer = null
   }
-  // 清理防抖定时器
-  if (expandDebounceTimer) {
-    clearTimeout(expandDebounceTimer)
-    expandDebounceTimer = null
-  }
+  clearExpandTimers()
 })
 </script>
 

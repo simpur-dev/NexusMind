@@ -9,7 +9,7 @@
 
 [![GitHub Stars](https://img.shields.io/github/stars/666ghj/NexusMind?style=flat-square&color=DAA520)](https://github.com/666ghj/NexusMind/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/666ghj/NexusMind?style=flat-square)](https://github.com/666ghj/NexusMind/network)
-[![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](./package.json)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](./LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Vue](https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vue.js&logoColor=white)](https://vuejs.org/)
 [![Neo4j](https://img.shields.io/badge/Neo4j-5.x-4581C3?style=flat-square&logo=neo4j&logoColor=white)](https://neo4j.com/)
@@ -22,7 +22,7 @@
 
 ## 1. 项目简介
 
-**NexusMind** 是一套以**社会世界模型**为核心的多智能体舆情推演与决策辅助系统。系统以现实公共事件中的种子材料为起点，自动完成事实理解、知识图谱构建、Agent 社会生成、舆情态势推演、世界状态追踪、因果链分析与决策报告生成。
+**NexusMind** 是一套以**社会世界模型**为核心的多智能体舆情推演与决策辅助系统。系统以现实公共事件中的种子材料为起点，自动完成事实理解、知识图谱构建、多角色群体建模、舆情态势推演、世界状态追踪、因果链分析与决策简报生成。
 
 社会世界模型用于刻画公共事件所处的动态社会环境：它不仅关注“谁说了什么”，还持续追踪关注度、公众信任、情绪压力、立场极化、综合风险和系统稳定性等状态变量。多类 Agent 会在信息广场和话题社区中发帖、评论、转发、搜索与互动；这些行为会改变世界状态，而世界状态又会反馈影响后续 Agent 行为，从而形成“个体行为—群体涌现—社会态势—决策响应”的闭环推演。
 
@@ -508,13 +508,27 @@ docker compose up -d
 
 ---
 
-## 13. 开源与致谢
+## 13. 开源协议与致谢
+
+### 13.1 开源协议
+
+本项目基于 **GNU Affero General Public License v3.0（AGPL-3.0）** 开源发布，完整协议文本见 [`LICENSE`](./LICENSE)。
+
+如果你复制、修改、分发本项目，或基于本项目提供网络服务，应遵守 AGPL-3.0 的相关要求，包括但不限于：
+
+- 保留原始版权声明和开源协议信息。
+- 在分发修改版本时，说明修改内容并继续以 AGPL-3.0 协议发布。
+- 如果将修改后的版本作为网络服务提供给用户使用，应向这些用户提供对应版本的源代码获取方式。
+- 本项目按“原样”提供，不提供任何明示或默示担保。
+
+本项目引用或依赖的第三方开源组件，仍遵循其各自的开源协议。第三方开源致谢、MiroFish 参考说明和版权保留声明见 [`NOTICE`](./NOTICE)。
+
+### 13.2 致谢
 
 NexusMind 的实现离不开开源生态和相关学术研究：
 
 - 感谢 **CAMEL-AI OASIS** 提供多智能体社交仿真基础。
+- 感谢 **MiroFish** 开源项目提供的开源启发与参考。NexusMind 在遵循相关开源协议和致谢要求的基础上，面向高校与公共舆情事件重新组织系统目标和工程实现，将仿真调度、群体环境建模、场景配置生成、运行状态管理、决策简报与交互研判等能力整合为闭环推演流程，核心侧重于基于相关论文实现的社会世界模型、增量材料接入、滚动预测和辅助决策。
 - 感谢 **Graphiti / Neo4j** 为知识图谱和检索层提供基础能力。
 - 感谢 Vue、Flask、D3、OpenAI SDK 等开源项目。
 - 社会世界模型与 Agent 认知设计参考了 Social World Model、Agent Society Simulation、Public Opinion Simulation、Generative Agents、World Models 等方向的研究成果。
-
-本项目遵循 `AGPL-3.0` 开源许可。若基于本项目进行二次开发或部署，请遵守相应开源协议。

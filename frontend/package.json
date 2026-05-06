@@ -1,12 +1,14 @@
 {
-  "name": "frontend",
+  "name": "nexusmind-frontend",
   "private": true,
   "version": "0.1.0",
+  "description": "NexusMind web console for event simulation and decision support",
+  "license": "AGPL-3.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host",
+    "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
     "axios": "1.13.2",
